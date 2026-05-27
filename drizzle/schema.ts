@@ -140,3 +140,108 @@ export const userSettings = mysqlTable("userSettings", {
 
 export type UserSettings = typeof userSettings.$inferSelect;
 export type InsertUserSettings = typeof userSettings.$inferInsert;
+
+
+// Email signatures table - stores user email signatures
+export const emailSignatures = mysqlTable("emailSignatures", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  signatureHtml: text("signatureHtml").notNull(), // HTML signature
+  signaturePlainText: text("signaturePlainText"), // Plain text fallback
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type EmailSignature = typeof emailSignatures.$inferSelect;
+export type InsertEmailSignature = typeof emailSignatures.$inferInsert;
+
+// Follow-up emails table - tracks follow-up emails sent to leads
+export const followUpEmails = mysqlTable("followUpEmails", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignLeadId: int("campaignLeadId").notNull(),
+  sequenceNumber: int("sequenceNumber").notNull(), // 1st follow-up, 2nd follow-up, etc.
+  emailType: mysqlEnum("emailType", ["discovery", "value_prop", "social_proof", "urgency", "custom"]).notNull(),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  emailBody: text("emailBody").notNull(), // HTML email body
+  ctaLink: varchar("ctaLink", { length: 2048 }), // Call-to-action link
+  status: mysqlEnum("status", ["draft", "scheduled", "sent", "opened", "clicked", "failed"]).default("draft").notNull(),
+  scheduledFor: timestamp("scheduledFor"),
+  sentAt: timestamp("sentAt"),
+  openedAt: timestamp("openedAt"),
+  clickedAt: timestamp("clickedAt"),
+  trackingToken: varchar("trackingToken", { length: 255 }).unique(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FollowUpEmail = typeof followUpEmails.$inferSelect;
+export type InsertFollowUpEmail = typeof followUpEmails.$inferInsert;
+
+// Follow-up calls table - tracks follow-up calls to leads
+export const followUpCalls = mysqlTable("followUpCalls", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignLeadId: int("campaignLeadId").notNull(),
+  attemptNumber: int("attemptNumber").notNull(), // 1st call attempt, 2nd attempt, etc.
+  retellCallId: varchar("retellCallId", { length: 255 }).unique(),
+  phoneNumber: varchar("phoneNumber", { length: 20 }).notNull(),
+  status: mysqlEnum("status", ["scheduled", "initiated", "ringing", "in_progress", "completed", "failed", "no_answer", "voicemail"]).default("scheduled").notNull(),
+  duration: int("duration"), // Duration in seconds
+  transcript: text("transcript"),
+  recordingUrl: varchar("recordingUrl", { length: 2048 }),
+  callAnalysis: json("callAnalysis"), // Stores call summary, sentiment, etc.
+  scheduledFor: timestamp("scheduledFor"),
+  initiatedAt: timestamp("initiatedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FollowUpCall = typeof followUpCalls.$inferSelect;
+export type InsertFollowUpCall = typeof followUpCalls.$inferInsert;
+
+// Lead weak points analysis table - stores AI-identified weak points for each lead
+export const leadWeakPoints = mysqlTable("leadWeakPoints", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull().unique(),
+  weakPoints: json("weakPoints").notNull(), // Array of identified weak points
+  analysis: text("analysis"), // Detailed analysis of the lead's weak points
+  suggestedEmailTypes: json("suggestedEmailTypes"), // Suggested email types based on weak points
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LeadWeakPoints = typeof leadWeakPoints.$inferSelect;
+export type InsertLeadWeakPoints = typeof leadWeakPoints.$inferInsert;
+
+// Email templates library - pre-built professional email templates
+export const emailTemplates = mysqlTable("emailTemplates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  emailType: mysqlEnum("emailType", ["discovery", "value_prop", "social_proof", "urgency", "custom"]).notNull(),
+  subjectTemplate: varchar("subjectTemplate", { length: 255 }).notNull(), // Subject with {{variables}}
+  bodyTemplate: text("bodyTemplate").notNull(), // HTML body with {{variables}}
+  description: text("description"),
+  isDefault: boolean("isDefault").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+export type InsertEmailTemplate = typeof emailTemplates.$inferInsert;
+
+// Follow-up schedule configuration table
+export const followUpSchedules = mysqlTable("followUpSchedules", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  emailFollowUpCount: int("emailFollowUpCount").default(7).notNull(), // Number of follow-up emails
+  emailFollowUpIntervalDays: int("emailFollowUpIntervalDays").default(7).notNull(), // Days between follow-ups
+  callFollowUpCount: int("callFollowUpCount").default(7).notNull(), // Number of follow-up calls
+  callFollowUpIntervalHours: int("callFollowUpIntervalHours").default(24).notNull(), // Hours between call attempts
+  enableAutoFollowUp: boolean("enableAutoFollowUp").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FollowUpSchedule = typeof followUpSchedules.$inferSelect;
+export type InsertFollowUpSchedule = typeof followUpSchedules.$inferInsert;

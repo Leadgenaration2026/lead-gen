@@ -439,8 +439,111 @@ Return ONLY valid JSON array, no other text.`;
         }
 
         return db.getEmailTrackingEventsByCampaignLead(campaignLeadId);
+  }),
+      }),
+
+  // Email signature router
+  signature: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      return db.getEmailSignature(ctx.user.id);
+    }),
+    update: protectedProcedure
+      .input(z.object({
+        signatureHtml: z.string(),
+        signaturePlainText: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.upsertEmailSignature(ctx.user.id, input.signatureHtml, input.signaturePlainText);
+        return { success: true };
       }),
   }),
-});
 
+  // Follow-up emails router
+  followUpEmails: router({
+    create: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+        sequenceNumber: z.number(),
+        emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]),
+        subject: z.string(),
+        emailBody: z.string(),
+        ctaLink: z.string().optional(),
+        scheduledFor: z.date().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) throw new TRPCError({ code: "NOT_FOUND" });
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        
+        const trackingToken = nanoid();
+        return db.createFollowUpEmail({
+          ...input,
+          trackingToken,
+          status: input.scheduledFor ? "scheduled" : "draft",
+        });
+      }),
+    getByCampaignLead: protectedProcedure
+      .input(z.number())
+      .query(async ({ input: campaignLeadId, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+        if (!campaignLead) throw new TRPCError({ code: "NOT_FOUND" });
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        return db.getFollowUpEmailsByCampaignLead(campaignLeadId);
+      }),
+  }),
+
+  // Follow-up calls router
+  followUpCalls: router({
+    create: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+        attemptNumber: z.number(),
+        phoneNumber: z.string(),
+        scheduledFor: z.date().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) throw new TRPCError({ code: "NOT_FOUND" });
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        
+        return db.createFollowUpCall({
+          ...input,
+          status: input.scheduledFor ? "scheduled" : "initiated",
+        });
+      }),
+    getByCampaignLead: protectedProcedure
+      .input(z.number())
+      .query(async ({ input: campaignLeadId, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+        if (!campaignLead) throw new TRPCError({ code: "NOT_FOUND" });
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        return db.getFollowUpCallsByCampaignLead(campaignLeadId);
+      }),
+  }),
+
+  // Email templates router
+  emailTemplates: router({
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]),
+        subjectTemplate: z.string(),
+        bodyTemplate: z.string(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        return db.createEmailTemplate({
+          userId: ctx.user.id,
+          ...input,
+        });
+      }),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getEmailTemplatesByUser(ctx.user.id);
+    }),
+  }),
+});
 export type AppRouter = typeof appRouter;

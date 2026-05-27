@@ -242,3 +242,140 @@ export async function upsertUserSettings(data: InsertUserSettings) {
   }
   return db.insert(userSettings).values(data);
 }
+
+
+// Email signatures queries
+export async function getEmailSignature(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { emailSignatures } = await import("../drizzle/schema");
+  const result = await db.select().from(emailSignatures).where(eq(emailSignatures.userId, userId)).limit(1);
+  return result[0];
+}
+
+export async function upsertEmailSignature(userId: number, signatureHtml: string, signaturePlainText?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { emailSignatures } = await import("../drizzle/schema");
+  
+  const existing = await getEmailSignature(userId);
+  if (existing) {
+    return db.update(emailSignatures).set({ signatureHtml, signaturePlainText, updatedAt: new Date() }).where(eq(emailSignatures.userId, userId));
+  }
+  return db.insert(emailSignatures).values({ userId, signatureHtml, signaturePlainText });
+}
+
+// Follow-up emails queries
+export async function createFollowUpEmail(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpEmails } = await import("../drizzle/schema");
+  return db.insert(followUpEmails).values(data);
+}
+
+export async function getFollowUpEmailsByCampaignLead(campaignLeadId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpEmails } = await import("../drizzle/schema");
+  return db.select().from(followUpEmails).where(eq(followUpEmails.campaignLeadId, campaignLeadId));
+}
+
+export async function updateFollowUpEmail(id: number, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpEmails } = await import("../drizzle/schema");
+  return db.update(followUpEmails).set({ ...data, updatedAt: new Date() }).where(eq(followUpEmails.id, id));
+}
+
+// Follow-up calls queries
+export async function createFollowUpCall(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpCalls } = await import("../drizzle/schema");
+  return db.insert(followUpCalls).values(data);
+}
+
+export async function getFollowUpCallsByCampaignLead(campaignLeadId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpCalls } = await import("../drizzle/schema");
+  return db.select().from(followUpCalls).where(eq(followUpCalls.campaignLeadId, campaignLeadId));
+}
+
+export async function updateFollowUpCall(id: number, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpCalls } = await import("../drizzle/schema");
+  return db.update(followUpCalls).set({ ...data, updatedAt: new Date() }).where(eq(followUpCalls.id, id));
+}
+
+// Lead weak points queries
+export async function getLeadWeakPoints(leadId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { leadWeakPoints } = await import("../drizzle/schema");
+  const result = await db.select().from(leadWeakPoints).where(eq(leadWeakPoints.leadId, leadId)).limit(1);
+  return result[0];
+}
+
+export async function upsertLeadWeakPoints(leadId: number, weakPoints: any, analysis: string, suggestedEmailTypes: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { leadWeakPoints } = await import("../drizzle/schema");
+  
+  const existing = await getLeadWeakPoints(leadId);
+  if (existing) {
+    return db.update(leadWeakPoints).set({ weakPoints, analysis, suggestedEmailTypes, updatedAt: new Date() }).where(eq(leadWeakPoints.leadId, leadId));
+  }
+  return db.insert(leadWeakPoints).values({ leadId, weakPoints, analysis, suggestedEmailTypes });
+}
+
+// Email templates queries
+export async function createEmailTemplate(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { emailTemplates } = await import("../drizzle/schema");
+  return db.insert(emailTemplates).values(data);
+}
+
+export async function getEmailTemplatesByUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { emailTemplates } = await import("../drizzle/schema");
+  return db.select().from(emailTemplates).where(eq(emailTemplates.userId, userId));
+}
+
+export async function updateEmailTemplate(id: number, data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { emailTemplates } = await import("../drizzle/schema");
+  return db.update(emailTemplates).set({ ...data, updatedAt: new Date() }).where(eq(emailTemplates.id, id));
+}
+
+export async function deleteEmailTemplate(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { emailTemplates } = await import("../drizzle/schema");
+  return db.delete(emailTemplates).where(eq(emailTemplates.id, id));
+}
+
+// Follow-up schedule queries
+export async function getFollowUpSchedule(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpSchedules } = await import("../drizzle/schema");
+  const result = await db.select().from(followUpSchedules).where(eq(followUpSchedules.userId, userId)).limit(1);
+  return result[0];
+}
+
+export async function upsertFollowUpSchedule(data: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpSchedules } = await import("../drizzle/schema");
+  
+  const existing = await getFollowUpSchedule(data.userId);
+  if (existing) {
+    return db.update(followUpSchedules).set({ ...data, updatedAt: new Date() }).where(eq(followUpSchedules.userId, data.userId));
+  }
+  return db.insert(followUpSchedules).values(data);
+}
