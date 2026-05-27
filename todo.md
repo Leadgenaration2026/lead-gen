@@ -115,3 +115,10 @@
 ## Follow-Up Call Schedule Update
 - [x] Update follow-up call schedule: Day 3 (2 calls), Day 6 (2 calls), Day 12 (2 calls), plus initial call = 7 total
 - [x] Implement 2 calls per day logic (morning and afternoon)
+
+## Comprehensive Reports Enhancement
+- [x] Show all emails sent with status (sent, opened, clicked)
+- [x] Show follow-up emails done vs pending per lead
+- [x] Show all calls made with status (completed, no answer, pending)
+- [x] Show follow-up calls done vs pending per lead
+- [x] Per-lead timeline view of all activity

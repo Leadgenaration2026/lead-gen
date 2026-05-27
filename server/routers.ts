@@ -446,6 +446,135 @@ Return ONLY valid JSON array, no other text.`;
       }),
   }),
 
+  // Comprehensive reports router
+  reports: router({
+    // Get full campaign report with all emails, follow-ups, and calls
+    campaignReport: protectedProcedure
+      .input(z.number())
+      .query(async ({ input: campaignId, ctx }) => {
+        const campaign = await db.getCampaignById(campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        const campaignLeadsList = await db.getCampaignLeads(campaignId);
+        const report = [];
+
+        for (const cl of campaignLeadsList) {
+          const lead = await db.getLeadById(cl.leadId);
+          if (!lead) continue;
+
+          // Get follow-up emails for this campaign lead
+          const followUpEmailsList = await db.getFollowUpEmailsByCampaignLead(cl.id);
+          // Get follow-up calls for this campaign lead
+          const followUpCallsList = await db.getFollowUpCallsByCampaignLead(cl.id);
+          // Get email tracking events
+          const trackingEvents = await db.getEmailTrackingEventsByCampaignLead(cl.id);
+          // Get initial call logs
+          const initialCallLogs = await db.getCallLogsByCampaignLead(cl.id);
+
+          // Calculate email stats
+          const emailsDone = followUpEmailsList.filter((e: any) => ["sent", "opened", "clicked"].includes(e.status));
+          const emailsPending = followUpEmailsList.filter((e: any) => ["draft", "scheduled"].includes(e.status));
+          const emailsFailed = followUpEmailsList.filter((e: any) => e.status === "failed");
+
+          // Calculate call stats
+          const callsDone = followUpCallsList.filter((c: any) => ["completed", "in_progress", "no_answer", "voicemail", "failed"].includes(c.status));
+          const callsPending = followUpCallsList.filter((c: any) => ["scheduled", "initiated", "ringing"].includes(c.status));
+
+          report.push({
+            leadId: lead.id,
+            leadName: lead.ownerName,
+            companyName: lead.companyName,
+            email: lead.email,
+            phone: lead.phoneNumber,
+            // Initial email status
+            initialEmail: {
+              sent: cl.emailSent,
+              sentAt: cl.emailSentAt,
+              opened: cl.emailOpened,
+              openedAt: cl.emailOpenedAt,
+              clicked: cl.emailClicked,
+              clickedAt: cl.emailClickedAt,
+            },
+            // Initial call
+            initialCall: {
+              triggered: cl.callTriggered,
+              triggeredAt: cl.callTriggeredAt,
+              status: initialCallLogs.length > 0 ? (initialCallLogs[0] as any).status : (cl.callTriggered ? "initiated" : "not_triggered"),
+              duration: initialCallLogs.length > 0 ? (initialCallLogs[0] as any).duration : null,
+            },
+            // Follow-up emails breakdown
+            followUpEmails: followUpEmailsList.map((e: any) => ({
+              id: e.id,
+              sequenceNumber: e.sequenceNumber,
+              emailType: e.emailType,
+              subject: e.subject,
+              status: e.status,
+              scheduledFor: e.scheduledFor,
+              sentAt: e.sentAt,
+              openedAt: e.openedAt,
+              clickedAt: e.clickedAt,
+            })),
+            // Follow-up calls breakdown
+            followUpCalls: followUpCallsList.map((c: any) => ({
+              id: c.id,
+              attemptNumber: c.attemptNumber,
+              status: c.status,
+              scheduledFor: c.scheduledFor,
+              initiatedAt: c.initiatedAt,
+              completedAt: c.completedAt,
+              duration: c.duration,
+              outcome: c.outcome,
+            })),
+            // Summary counts
+            summary: {
+              totalFollowUpEmails: followUpEmailsList.length,
+              emailsSent: emailsDone.length,
+              emailsPending: emailsPending.length,
+              emailsFailed: emailsFailed.length,
+              totalFollowUpCalls: followUpCallsList.length,
+              callsMade: callsDone.length,
+              callsPending: callsPending.length,
+            },
+            // Tracking events
+            trackingEvents: trackingEvents.map((t: any) => ({
+              type: t.eventType,
+              occurredAt: t.createdAt,
+            })),
+          });
+        }
+
+        // Campaign-level summary
+        const totalLeads = report.length;
+        const totalEmailsSent = report.reduce((sum, r) => sum + (r.initialEmail.sent ? 1 : 0) + r.summary.emailsSent, 0);
+        const totalEmailsOpened = report.reduce((sum, r) => sum + (r.initialEmail.opened ? 1 : 0) + r.followUpEmails.filter((e: any) => e.openedAt).length, 0);
+        const totalEmailsClicked = report.reduce((sum, r) => sum + (r.initialEmail.clicked ? 1 : 0) + r.followUpEmails.filter((e: any) => e.clickedAt).length, 0);
+        const totalCallsMade = report.reduce((sum, r) => sum + (r.initialCall.triggered ? 1 : 0) + r.summary.callsMade, 0);
+        const totalCallsPending = report.reduce((sum, r) => sum + r.summary.callsPending, 0);
+        const totalEmailsPending = report.reduce((sum, r) => sum + r.summary.emailsPending, 0);
+
+        return {
+          campaign: {
+            id: campaign.id,
+            name: campaign.name,
+            status: campaign.status,
+            createdAt: campaign.createdAt,
+          },
+          summary: {
+            totalLeads,
+            totalEmailsSent,
+            totalEmailsOpened,
+            totalEmailsClicked,
+            totalCallsMade,
+            totalCallsPending,
+            totalEmailsPending,
+          },
+          leads: report,
+        };
+      }),
+  }),
+
   // Email tracking router - actual tracking handled by Express routes
   tracking: router({
     getEvents: protectedProcedure
