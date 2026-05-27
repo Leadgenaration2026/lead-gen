@@ -1,0 +1,144 @@
+import axios from "axios";
+import * as db from "../db";
+
+const RETELL_API_BASE = "https://api.retellai.com";
+
+export interface RetellCallResponse {
+  call_id: string;
+  agent_id: string;
+  to_number: string;
+  from_number: string;
+  status: string;
+  created_at: string;
+}
+
+/**
+ * Trigger an outbound call via Retell.AI
+ */
+export async function triggerRetellCall(
+  campaignLeadId: number,
+  phoneNumber: string,
+  apiKey: string,
+  agentId: string,
+  senderPhoneNumber: string,
+  triggerReason: "email_open" | "email_click"
+): Promise<string | null> {
+  try {
+    if (!apiKey || !agentId || !senderPhoneNumber) {
+      console.error("Missing Retell.AI configuration");
+      return null;
+    }
+
+    // Make API call to Retell.AI
+    const response = await axios.post<RetellCallResponse>(
+      `${RETELL_API_BASE}/v1/create-phone-call`,
+      {
+        agent_id: agentId,
+        to_number: phoneNumber,
+        from_number: senderPhoneNumber,
+        // Optional: Add custom variables or context
+        custom_data: {
+          campaign_lead_id: campaignLeadId,
+          trigger_reason: triggerReason,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const callId = response.data.call_id;
+
+    // Log the call in database
+    await db.createCallLog({
+      campaignLeadId,
+      retellCallId: callId,
+      phoneNumber,
+      status: "initiated",
+      triggerType: triggerReason,
+    });
+
+    // Update campaign lead to mark call as triggered
+    const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+    if (campaignLead) {
+      await db.updateCampaignLead(campaignLeadId, {
+        callTriggered: true,
+        callTriggeredAt: new Date(),
+      });
+
+      // Update campaign call count
+      const campaign = await db.getCampaignById(campaignLead.campaignId);
+      if (campaign) {
+        await db.updateCampaign(campaignLead.campaignId, {
+          callCount: (campaign.callCount || 0) + 1,
+        });
+      }
+    }
+
+    return callId;
+  } catch (error) {
+    console.error("Failed to trigger Retell.AI call:", error);
+    return null;
+  }
+}
+
+/**
+ * Handle Retell.AI webhook for call status updates
+ */
+export async function handleRetellWebhook(payload: any) {
+  try {
+    const { call_id, status, end_reason } = payload;
+
+    if (!call_id) {
+      console.error("Missing call_id in webhook payload");
+      return;
+    }
+
+    // Find the call log
+    const callLog = await db.getCallLogByRetellId(call_id);
+    if (!callLog) {
+      console.warn(`Call log not found for call_id: ${call_id}`);
+      return;
+    }
+
+    // Update call status
+    const updateData: any = {
+      status,
+    };
+
+    if (status === "completed" || status === "failed") {
+      updateData.updatedAt = new Date();
+    }
+
+    await db.updateCallLog(callLog.id, updateData);
+  } catch (error) {
+    console.error("Failed to handle Retell webhook:", error);
+  }
+}
+
+/**
+ * Get call status from Retell.AI
+ */
+export async function getCallStatus(
+  callId: string,
+  apiKey: string
+): Promise<RetellCallResponse | null> {
+  try {
+    const response = await axios.get<RetellCallResponse>(
+      `${RETELL_API_BASE}/v1/get-phone-call/${callId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("Failed to get call status:", error);
+    return null;
+  }
+}

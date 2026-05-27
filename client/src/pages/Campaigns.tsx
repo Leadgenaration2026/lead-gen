@@ -1,0 +1,243 @@
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Plus, Mail, Play, Pause } from "lucide-react";
+import { toast } from "sonner";
+
+export default function CampaignsPage() {
+  const campaignsQuery = trpc.campaigns.list.useQuery();
+  const createCampaignMutation = trpc.campaigns.create.useMutation();
+  const launchCampaignMutation = trpc.campaigns.launch.useMutation();
+  const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    subject: "",
+    emailTemplate: "",
+    leadIds: [] as number[],
+  });
+
+  const handleCreateCampaign = async () => {
+    if (!formData.name || !formData.subject || !formData.emailTemplate) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      await createCampaignMutation.mutateAsync({
+        ...formData,
+        leadIds: formData.leadIds,
+      });
+      toast.success("Campaign created successfully");
+      setFormData({
+        name: "",
+        description: "",
+        subject: "",
+        emailTemplate: "",
+        leadIds: [],
+      });
+      setIsOpen(false);
+      campaignsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to create campaign");
+    }
+  };
+
+  const handleLaunchCampaign = async (campaignId: number) => {
+    try {
+      await launchCampaignMutation.mutateAsync(campaignId);
+      toast.success("Campaign launched successfully");
+      campaignsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to launch campaign");
+    }
+  };
+
+  const handlePauseCampaign = async (campaignId: number) => {
+    try {
+      await pauseCampaignMutation.mutateAsync(campaignId);
+      toast.success("Campaign paused");
+      campaignsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to pause campaign");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Create Campaign Dialog */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogTrigger asChild>
+          <Button className="gap-2">
+            <Plus className="w-4 h-4" />
+            Create Campaign
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create New Campaign</DialogTitle>
+            <DialogDescription>
+              Set up a new email campaign with personalized templates
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Campaign Name</label>
+              <Input
+                placeholder="e.g., Q2 SaaS Outreach"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description (Optional)</label>
+              <Textarea
+                placeholder="Describe the purpose of this campaign"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="mt-2 min-h-20"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Email Subject</label>
+              <Input
+                placeholder="e.g., Quick question about {{companyName}}"
+                value={formData.subject}
+                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Email Template</label>
+              <Textarea
+                placeholder="HTML email template. Use {{companyName}}, {{ownerName}}, {{email}} for personalization"
+                value={formData.emailTemplate}
+                onChange={(e) => setFormData({ ...formData, emailTemplate: e.target.value })}
+                className="mt-2 min-h-32 font-mono text-xs"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setIsOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateCampaign}
+                disabled={createCampaignMutation.isPending}
+              >
+                {createCampaignMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Campaign"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Campaigns List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="w-5 h-5" />
+            Your Campaigns ({campaignsQuery.data?.length || 0})
+          </CardTitle>
+          <CardDescription>Manage your email campaigns and track performance</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {campaignsQuery.isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : campaignsQuery.data && campaignsQuery.data.length > 0 ? (
+            <div className="space-y-4">
+              {campaignsQuery.data.map((campaign) => (
+                <div
+                  key={campaign.id}
+                  className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-semibold">{campaign.name}</h3>
+                      <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
+                    </div>
+                    <Badge variant={
+                      campaign.status === "active" ? "default" :
+                      campaign.status === "draft" ? "secondary" :
+                      campaign.status === "paused" ? "outline" :
+                      "secondary"
+                    }>
+                      {campaign.status}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 py-3 border-y border-border">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Leads</p>
+                      <p className="text-lg font-semibold">{campaign.totalLeads}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Sent</p>
+                      <p className="text-lg font-semibold">{campaign.sentCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Opens</p>
+                      <p className="text-lg font-semibold">{campaign.openCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Calls</p>
+                      <p className="text-lg font-semibold">{campaign.callCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {campaign.status === "draft" && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleLaunchCampaign(campaign.id)}
+                        disabled={launchCampaignMutation.isPending}
+                        className="gap-2"
+                      >
+                        <Play className="w-4 h-4" />
+                        Launch
+                      </Button>
+                    )}
+                    {campaign.status === "active" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handlePauseCampaign(campaign.id)}
+                        disabled={pauseCampaignMutation.isPending}
+                        className="gap-2"
+                      >
+                        <Pause className="w-4 h-4" />
+                        Pause
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground">No campaigns yet. Create one to get started!</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

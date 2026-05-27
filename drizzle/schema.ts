@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, json } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -25,4 +25,118 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+// Leads table - stores generated leads
+export const leads = mysqlTable("leads", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  companyName: varchar("companyName", { length: 255 }).notNull(),
+  ownerName: varchar("ownerName", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  phoneNumber: varchar("phoneNumber", { length: 20 }).notNull(),
+  website: varchar("website", { length: 255 }),
+  industry: varchar("industry", { length: 100 }),
+  customData: json("customData"), // For storing additional lead attributes
+  status: mysqlEnum("status", ["new", "contacted", "qualified", "converted", "rejected"]).default("new").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = typeof leads.$inferInsert;
+
+// Campaigns table - stores email campaigns
+export const campaigns = mysqlTable("campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  emailTemplate: text("emailTemplate").notNull(), // HTML email template with {{variable}} placeholders
+  status: mysqlEnum("status", ["draft", "active", "paused", "completed"]).default("draft").notNull(),
+  totalLeads: int("totalLeads").default(0).notNull(),
+  sentCount: int("sentCount").default(0).notNull(),
+  openCount: int("openCount").default(0).notNull(),
+  clickCount: int("clickCount").default(0).notNull(),
+  callCount: int("callCount").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  launchedAt: timestamp("launchedAt"),
+});
+
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = typeof campaigns.$inferInsert;
+
+// Campaign leads junction table - tracks which leads are in which campaigns
+export const campaignLeads = mysqlTable("campaignLeads", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaignId").notNull(),
+  leadId: int("leadId").notNull(),
+  emailSent: boolean("emailSent").default(false).notNull(),
+  emailSentAt: timestamp("emailSentAt"),
+  emailOpened: boolean("emailOpened").default(false).notNull(),
+  emailOpenedAt: timestamp("emailOpenedAt"),
+  emailClicked: boolean("emailClicked").default(false).notNull(),
+  emailClickedAt: timestamp("emailClickedAt"),
+  callTriggered: boolean("callTriggered").default(false).notNull(),
+  callTriggeredAt: timestamp("callTriggeredAt"),
+  retellCallId: varchar("retellCallId", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CampaignLead = typeof campaignLeads.$inferSelect;
+export type InsertCampaignLead = typeof campaignLeads.$inferInsert;
+
+// Email tracking events table - detailed log of all email interactions
+export const emailTrackingEvents = mysqlTable("emailTrackingEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignLeadId: int("campaignLeadId").notNull(),
+  eventType: mysqlEnum("eventType", ["open", "click", "bounce", "unsubscribe"]).notNull(),
+  trackingToken: varchar("trackingToken", { length: 255 }).notNull().unique(),
+  userAgent: text("userAgent"),
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  clickUrl: varchar("clickUrl", { length: 2048 }), // For click events
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type EmailTrackingEvent = typeof emailTrackingEvents.$inferSelect;
+export type InsertEmailTrackingEvent = typeof emailTrackingEvents.$inferInsert;
+
+// Call logs table - tracks all Retell.AI calls
+export const callLogs = mysqlTable("callLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignLeadId: int("campaignLeadId").notNull(),
+  retellCallId: varchar("retellCallId", { length: 255 }).notNull().unique(),
+  phoneNumber: varchar("phoneNumber", { length: 20 }).notNull(),
+  status: mysqlEnum("status", ["initiated", "ringing", "in_progress", "completed", "failed", "no_answer"]).default("initiated").notNull(),
+  duration: int("duration"), // Duration in seconds
+  transcript: text("transcript"),
+  recordingUrl: varchar("recordingUrl", { length: 2048 }),
+  callAnalysis: json("callAnalysis"), // Stores call summary, sentiment, etc.
+  triggerType: mysqlEnum("triggerType", ["email_open", "email_click", "manual"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CallLog = typeof callLogs.$inferSelect;
+export type InsertCallLog = typeof callLogs.$inferInsert;
+
+// User settings table - stores API keys and configuration
+export const userSettings = mysqlTable("userSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  retellApiKey: varchar("retellApiKey", { length: 255 }),
+  retellAgentId: varchar("retellAgentId", { length: 255 }),
+  senderPhoneNumber: varchar("senderPhoneNumber", { length: 20 }),
+  smtpHost: varchar("smtpHost", { length: 255 }),
+  smtpPort: int("smtpPort"),
+  smtpUsername: varchar("smtpUsername", { length: 255 }),
+  smtpPassword: varchar("smtpPassword", { length: 255 }),
+  senderEmail: varchar("senderEmail", { length: 320 }),
+  senderName: varchar("senderName", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type UserSettings = typeof userSettings.$inferSelect;
+export type InsertUserSettings = typeof userSettings.$inferInsert;
