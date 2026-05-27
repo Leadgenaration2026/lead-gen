@@ -7,17 +7,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Wand2, Trash2 } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LeadsPage() {
   const leadsQuery = trpc.leads.list.useQuery();
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
+  const addLeadMutation = trpc.leads.addManual.useMutation();
 
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [manualLead, setManualLead] = useState({
+    companyName: "",
+    ownerName: "",
+    email: "",
+    phoneNumber: "",
+    industry: "",
+    companySize: "",
+  });
 
   const handleGenerateLeads = async () => {
     if (!instruction.trim()) {
@@ -51,8 +60,140 @@ export default function LeadsPage() {
     }
   };
 
+  const handleAddManualLead = async () => {
+    if (!manualLead.companyName || !manualLead.ownerName || !manualLead.email || !manualLead.phoneNumber) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      await addLeadMutation.mutateAsync({
+        companyName: manualLead.companyName,
+        ownerName: manualLead.ownerName,
+        email: manualLead.email,
+        phoneNumber: manualLead.phoneNumber,
+        industry: manualLead.industry || "Unknown",
+        companySize: manualLead.companySize || "Unknown",
+      });
+      toast.success("Lead added successfully");
+      setManualLead({
+        companyName: "",
+        ownerName: "",
+        email: "",
+        phoneNumber: "",
+        industry: "",
+        companySize: "",
+      });
+      leadsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to add lead");
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Manual Lead Entry Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5" />
+            Add Lead Manually
+          </CardTitle>
+          <CardDescription>
+            Add a lead that you've already found or generated
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button className="w-full gap-2">
+                <Plus className="w-4 h-4" />
+                Add New Lead
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add New Lead</DialogTitle>
+                <DialogDescription>
+                  Enter the details of the lead you want to add
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Company Name *</label>
+                  <Input
+                    placeholder="e.g., Acme Corporation"
+                    value={manualLead.companyName}
+                    onChange={(e) => setManualLead({ ...manualLead, companyName: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Owner/Contact Name *</label>
+                  <Input
+                    placeholder="e.g., John Smith"
+                    value={manualLead.ownerName}
+                    onChange={(e) => setManualLead({ ...manualLead, ownerName: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Email Address *</label>
+                  <Input
+                    type="email"
+                    placeholder="e.g., john@acme.com"
+                    value={manualLead.email}
+                    onChange={(e) => setManualLead({ ...manualLead, email: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Phone Number *</label>
+                  <Input
+                    placeholder="e.g., +1-555-123-4567"
+                    value={manualLead.phoneNumber}
+                    onChange={(e) => setManualLead({ ...manualLead, phoneNumber: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Industry</label>
+                  <Input
+                    placeholder="e.g., SaaS, Real Estate, Consulting"
+                    value={manualLead.industry}
+                    onChange={(e) => setManualLead({ ...manualLead, industry: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Company Size</label>
+                  <Input
+                    placeholder="e.g., 50-100 employees"
+                    value={manualLead.companySize}
+                    onChange={(e) => setManualLead({ ...manualLead, companySize: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+                <Button
+                  onClick={handleAddManualLead}
+                  disabled={addLeadMutation.isPending}
+                  className="w-full"
+                >
+                  {addLeadMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Lead"
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
+
       {/* Generate Leads Section */}
       <Card>
         <CardHeader>

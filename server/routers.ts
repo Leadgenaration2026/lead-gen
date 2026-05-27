@@ -107,6 +107,29 @@ export const appRouter = router({
       return db.deleteLead(leadId);
     }),
 
+    addManual: protectedProcedure
+      .input(z.object({
+        companyName: z.string().min(1),
+        ownerName: z.string().min(1),
+        email: z.string().email(),
+        phoneNumber: z.string().min(1),
+        industry: z.string().optional(),
+        companySize: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        return db.createLead({
+          companyName: input.companyName,
+          ownerName: input.ownerName,
+          email: input.email,
+          phoneNumber: input.phoneNumber,
+          industry: input.industry,
+          website: undefined,
+          customData: { companySize: input.companySize },
+          userId: ctx.user.id,
+          status: "new",
+        });
+      }),
+
     // AI-powered lead generation from natural language
     generate: protectedProcedure
       .input(generateLeadsSchema)
