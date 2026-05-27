@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Mail, Play, Pause } from "lucide-react";
 import { toast } from "sonner";
+import { ActivityFeed } from "@/components/ActivityFeed";
 
 export default function CampaignsPage() {
   const campaignsQuery = trpc.campaigns.list.useQuery();
@@ -17,6 +18,7 @@ export default function CampaignsPage() {
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -226,7 +228,19 @@ export default function CampaignsPage() {
                         Pause
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}
+                    >
+                      {selectedCampaignId === campaign.id ? "Hide" : "View"} Activity
+                    </Button>
                   </div>
+                  {selectedCampaignId === campaign.id && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <ActivityFeed campaignId={campaign.id} />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

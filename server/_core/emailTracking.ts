@@ -1,5 +1,6 @@
 import { Express, Request, Response } from "express";
 import * as db from "../db";
+import { triggerRetellCall } from "./retellAI";
 
 // 1x1 transparent GIF pixel
 const PIXEL_GIF = Buffer.from([
@@ -44,6 +45,27 @@ export function registerEmailTrackingRoutes(app: Express) {
           await db.updateCampaign(campaignLead.campaignId, {
             openCount: (campaign.openCount || 0) + 1,
           });
+        }
+
+        // Trigger Retell.AI call on email open
+        if (!campaignLead.callTriggered) {
+          try {
+            const lead = await db.getLeadById(campaignLead.leadId);
+            const settings = await db.getUserSettings(campaign.userId);
+            
+            if (lead && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
+              await triggerRetellCall(
+                campaignLead.id,
+                lead.phoneNumber,
+                settings.retellApiKey,
+                settings.retellAgentId,
+                settings.senderPhoneNumber,
+                'email_open'
+              );
+            }
+          } catch (error) {
+            console.error("Failed to trigger Retell call on open:", error);
+          }
         }
       }
 
@@ -103,8 +125,26 @@ export function registerEmailTrackingRoutes(app: Express) {
             });
           }
 
-          // TODO: Trigger Retell.AI call on click
-          // await triggerRetellCall(campaignLead, 'email_click');
+          // Trigger Retell.AI call on email click
+          if (!campaignLead.callTriggered) {
+            try {
+              const lead = await db.getLeadById(campaignLead.leadId);
+              const settings = await db.getUserSettings(campaign.userId);
+              
+              if (lead && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
+                await triggerRetellCall(
+                  campaignLead.id,
+                  lead.phoneNumber,
+                  settings.retellApiKey,
+                  settings.retellAgentId,
+                  settings.senderPhoneNumber,
+                  'email_click'
+                );
+              }
+            } catch (error) {
+              console.error("Failed to trigger Retell call on click:", error);
+            }
+          }
         }
       }
 
@@ -119,6 +159,29 @@ export function registerEmailTrackingRoutes(app: Express) {
       } else {
         res.status(400).json({ error: "Failed to process click" });
       }
+    }
+  });
+
+  /**
+   * Retell.AI webhook for call status updates
+   * POST /api/webhooks/retell
+   * Receives call status updates from Retell.AI
+   */
+  app.post("/api/webhooks/retell", async (req: Request, res: Response) => {
+    try {
+      const payload = req.body;
+      
+      // Verify webhook signature (optional, depends on Retell.AI implementation)
+      // For now, we'll accept all webhooks and let the handler validate
+      
+      // Handle the webhook
+      const { handleRetellWebhook } = await import("./retellAI");
+      await handleRetellWebhook(payload);
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error handling Retell webhook:", error);
+      res.status(500).json({ error: "Failed to process webhook" });
     }
   });
 }
