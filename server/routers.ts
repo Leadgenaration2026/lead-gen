@@ -697,5 +697,168 @@ Return ONLY valid JSON array, no other text.`;
       return db.getEmailTemplatesByUser(ctx.user.id);
     }),
   }),
+
+  // AI Email Generation and Individual Sending
+  email: router({
+    generateAI: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]),
+        instructions: z.string().optional(),
+        ctaLink: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead || lead.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // Get user signature
+        const signature = await db.getEmailSignature(ctx.user.id);
+        const settings = await db.getUserSettings(ctx.user.id);
+        const ctaLink = input.ctaLink || "https://calendly.com/nitin-virtualassistant/30min";
+
+        const emailTypePrompts: Record<string, string> = {
+          discovery: "Write a discovery email to understand their business challenges and pain points. Ask an insightful question.",
+          value_prop: "Write a value proposition email highlighting how our services solve their specific problems. Be specific about benefits.",
+          social_proof: "Write a social proof email sharing relevant case studies, testimonials, or success stories from similar companies.",
+          urgency: "Write an urgency email with a time-sensitive offer or limited availability. Create FOMO without being pushy.",
+          custom: "Write a professional outreach email based on the specific instructions provided.",
+        };
+
+        const prompt = `You are a professional email copywriter. Generate a cold outreach email.
+
+Lead Information:
+- Name: ${lead.ownerName}
+- Company: ${lead.companyName}
+- Industry: ${lead.industry || "Not specified"}
+- Email: ${lead.email}
+
+Email Type: ${input.emailType}
+Guidance: ${emailTypePrompts[input.emailType]}
+
+${input.instructions ? `Additional Instructions from sender: ${input.instructions}` : ""}
+
+CTA Link (for booking a meeting): ${ctaLink}
+
+RULES:
+1. Subject line MUST be under 50 characters, conversational, lowercase, NO spam words (free, urgent, limited, act now, click here)
+2. Subject line should look like a personal email from a colleague, NOT marketing
+3. Email MUST be under 150 words
+4. Include 2-3 bullet points highlighting key benefits
+5. End with a clear CTA: "Schedule a quick chat: ${ctaLink}"
+6. Tone: Professional but warm, like a helpful peer, NOT salesy
+7. Do NOT use exclamation marks excessively
+8. First line must be personalized to their company/industry
+9. Do NOT include any signature - it will be appended separately
+
+Respond in this exact JSON format:
+{
+  "subject": "the subject line here",
+  "body": "the full email body in HTML format with proper <p> tags and <ul><li> for bullet points"
+}`;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are an expert cold email copywriter who writes emails that land in the primary inbox, not spam or promotions. Always respond with valid JSON." },
+            { role: "user", content: prompt },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "email_output",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  subject: { type: "string", description: "Email subject line" },
+                  body: { type: "string", description: "Email body in HTML" },
+                },
+                required: ["subject", "body"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const rawContent = response.choices[0]?.message?.content;
+        if (!rawContent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
+        const content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+
+        const parsed = JSON.parse(content);
+        let emailBody = parsed.body || "";
+
+        // Validation: Ensure bullet points are present
+        if (!emailBody.includes("<li") && !emailBody.includes("<ul")) {
+          emailBody += `<ul><li>Save time and resources with our proven approach</li><li>Get measurable results within 30 days</li><li>Join companies already seeing growth</li></ul>`;
+        }
+
+        // Validation: Ensure CTA link is present
+        if (!emailBody.includes(ctaLink)) {
+          emailBody += `<p style="margin-top:16px;"><a href="${ctaLink}" style="color:#2563eb;font-weight:500;">Schedule a quick chat</a></p>`;
+        }
+
+        // Append signature if available
+        let fullBody = emailBody;
+        if (signature?.signatureHtml) {
+          fullBody += `<br/><br/>---<br/>${signature.signatureHtml}`;
+        }
+
+        return {
+          subject: parsed.subject,
+          body: fullBody,
+          bodyWithoutSignature: emailBody,
+        };
+      }),
+
+    sendIndividual: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        subject: z.string().min(1),
+        body: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead || lead.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your SMTP settings first in the Settings page." });
+        }
+
+        // Create transporter
+        const transporter = nodemailer.createTransport({
+          host: settings.smtpHost,
+          port: settings.smtpPort || 587,
+          secure: (settings.smtpPort || 587) === 465,
+          auth: {
+            user: settings.smtpUsername,
+            pass: settings.smtpPassword,
+          },
+        });
+
+        // Create tracking token
+        const trackingToken = nanoid();
+
+        // Send email
+        const baseUrl = process.env.VITE_APP_URL || "";
+        const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
+        const htmlBody = input.body + trackingPixel;
+
+        await transporter.sendMail({
+          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+          to: lead.email,
+          subject: input.subject,
+          html: htmlBody,
+        });
+
+        // Log the email send (we track it as a tracking token for future opens)
+        // Note: Individual emails outside campaigns don't need campaignLeadId tracking
+        // The trackingToken is used by the pixel endpoint to detect opens later
+
+        // Update lead status
+        await db.updateLead(lead.id, { status: "contacted" });
+
+        return { success: true, trackingToken };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;

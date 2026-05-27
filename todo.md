@@ -122,3 +122,8 @@
 - [x] Show all calls made with status (completed, no answer, pending)
 - [x] Show follow-up calls done vs pending per lead
 - [x] Per-lead timeline view of all activity
+
+## UI Fixes
+- [x] Add "Generate with AI" button to Email Composer that works with manually added leads
+- [x] Add Signature management section to Settings page
+- [x] Ensure AI email generation includes bullet points, CTA link, and signature
