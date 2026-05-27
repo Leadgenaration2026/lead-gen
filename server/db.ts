@@ -379,3 +379,30 @@ export async function upsertFollowUpSchedule(data: any) {
   }
   return db.insert(followUpSchedules).values(data);
 }
+
+// Get all scheduled follow-up calls that are due (scheduledFor <= now)
+export async function getDueFollowUpCalls() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpCalls } = await import("../drizzle/schema");
+  const { lte, and } = await import("drizzle-orm");
+  return db.select().from(followUpCalls)
+    .where(and(
+      eq(followUpCalls.status, "scheduled"),
+      lte(followUpCalls.scheduledFor, new Date())
+    ));
+}
+
+// Cancel all remaining scheduled calls for a campaign lead (when lead answers)
+export async function cancelRemainingFollowUpCalls(campaignLeadId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpCalls } = await import("../drizzle/schema");
+  const { and } = await import("drizzle-orm");
+  return db.update(followUpCalls)
+    .set({ status: "failed", updatedAt: new Date() })
+    .where(and(
+      eq(followUpCalls.campaignLeadId, campaignLeadId),
+      eq(followUpCalls.status, "scheduled")
+    ));
+}

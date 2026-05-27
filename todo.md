@@ -111,3 +111,7 @@
 - [x] Follow-up schedule customization
 - [x] Email template preferences
 - [x] Spam-check settings
+
+## Follow-Up Call Schedule Update
+- [x] Update follow-up call schedule: Day 3 (2 calls), Day 6 (2 calls), Day 12 (2 calls), plus initial call = 7 total
+- [x] Implement 2 calls per day logic (morning and afternoon)
