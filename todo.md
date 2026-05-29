@@ -127,3 +127,10 @@
 - [x] Add "Generate with AI" button to Email Composer that works with manually added leads
 - [x] Add Signature management section to Settings page
 - [x] Ensure AI email generation includes bullet points, CTA link, and signature
+
+## New Features (Batch 2)
+- [x] CSV Import — Upload spreadsheet of leads in bulk with preview dialog
+- [x] Email Preview Mode — "Send Test Email to Myself" button in Email Composer
+- [x] Lead Tags/Labels — Color-coded tags (Hot, Warm, Cold, Follow Up) with inline selector and filter dropdown
+- [x] Lead search by name, company, or email
+- [x] CSV format guide on Leads page

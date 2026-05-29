@@ -1,0 +1,1 @@
+ALTER TABLE `leads` ADD `tag` enum('hot','warm','cold','follow_up','none') DEFAULT 'none' NOT NULL;

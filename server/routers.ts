@@ -204,6 +204,58 @@ Return ONLY valid JSON array, no other text.`;
           leads: leadsData,
         };
       }),
+
+    // CSV Import - bulk upload leads
+    csvImport: protectedProcedure
+      .input(z.object({
+        leads: z.array(z.object({
+          companyName: z.string().min(1),
+          ownerName: z.string().min(1),
+          email: z.string().email(),
+          phoneNumber: z.string().min(1),
+          website: z.string().optional(),
+          industry: z.string().optional(),
+          tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const createdLeads = [];
+        const errors: string[] = [];
+        for (let i = 0; i < input.leads.length; i++) {
+          const leadData = input.leads[i];
+          try {
+            const result = await db.createLead({
+              companyName: leadData.companyName,
+              ownerName: leadData.ownerName,
+              email: leadData.email,
+              phoneNumber: leadData.phoneNumber,
+              website: leadData.website,
+              industry: leadData.industry,
+              userId: ctx.user.id,
+              status: "new",
+            });
+            // Update tag if provided
+            if (leadData.tag && leadData.tag !== "none" && result) {
+              await db.updateLead(Number(result), { tag: leadData.tag });
+            }
+            createdLeads.push(result);
+          } catch (e: any) {
+            errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
+          }
+        }
+        return { success: true, imported: createdLeads.length, errors };
+      }),
+
+    // Update lead tag
+    updateTag: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.updateLead(input.leadId, { tag: input.tag });
+        return { success: true };
+      }),
   }),
 
   // Campaigns router
@@ -858,6 +910,44 @@ Respond in this exact JSON format:
         await db.updateLead(lead.id, { status: "contacted" });
 
         return { success: true, trackingToken };
+      }),
+
+    // Send test email to yourself
+    sendTestEmail: protectedProcedure
+      .input(z.object({
+        subject: z.string().min(1),
+        body: z.string().min(1),
+        testEmail: z.string().email(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your SMTP settings first in the Settings page." });
+        }
+
+        const transporter = nodemailer.createTransport({
+          host: settings.smtpHost,
+          port: settings.smtpPort || 587,
+          secure: (settings.smtpPort || 587) === 465,
+          auth: {
+            user: settings.smtpUsername,
+            pass: settings.smtpPassword,
+          },
+        });
+
+        // Add a [TEST] prefix to subject
+        const testSubject = `[TEST PREVIEW] ${input.subject}`;
+        const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> — This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
+        const htmlBody = testBanner + input.body;
+
+        await transporter.sendMail({
+          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+          to: input.testEmail,
+          subject: testSubject,
+          html: htmlBody,
+        });
+
+        return { success: true };
       }),
   }),
 });

@@ -37,6 +37,7 @@ export const leads = mysqlTable("leads", {
   industry: varchar("industry", { length: 100 }),
   customData: json("customData"), // For storing additional lead attributes
   status: mysqlEnum("status", ["new", "contacted", "qualified", "converted", "rejected"]).default("new").notNull(),
+  tag: mysqlEnum("tag", ["hot", "warm", "cold", "follow_up", "none"]).default("none").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

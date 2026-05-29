@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube } from "lucide-react";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -31,9 +31,13 @@ export default function EmailComposer() {
   const [ctaLink, setCtaLink] = useState("https://calendly.com/nitin-virtualassistant/30min");
   const [showPreview, setShowPreview] = useState(false);
 
+  const [testEmail, setTestEmail] = useState("");
+  const [showTestEmailInput, setShowTestEmailInput] = useState(false);
+
   const leadsQuery = trpc.leads.list.useQuery();
   const generateEmailMutation = trpc.email.generateAI.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
+  const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
@@ -291,36 +295,92 @@ export default function EmailComposer() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <Button
-                  onClick={handleSendEmail}
-                  disabled={sendEmailMutation.isPending || !subject || !emailBody || !selectedLead}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                  size="lg"
-                >
-                  {sendEmailMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4 mr-2" />
-                      Send Email to {selectedLeadData?.ownerName || "Lead"}
-                    </>
+              <div className="flex flex-col gap-3 pt-2">
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleSendEmail}
+                    disabled={sendEmailMutation.isPending || !subject || !emailBody || !selectedLead}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    size="lg"
+                  >
+                    {sendEmailMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Email to {selectedLeadData?.ownerName || "Lead"}
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSubject("");
+                      setEmailBody("");
+                      setShowPreview(false);
+                    }}
+                    disabled={!subject && !emailBody}
+                  >
+                    Clear
+                  </Button>
+                </div>
+
+                {/* Send Test Email to Myself */}
+                <div className="border rounded-lg p-3 bg-amber-50/50 border-amber-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <TestTube className="w-4 h-4 text-amber-600" />
+                      <span className="text-sm font-medium text-amber-900">Send Test Email to Myself</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() => setShowTestEmailInput(!showTestEmailInput)}
+                    >
+                      {showTestEmailInput ? "Hide" : "Show"}
+                    </Button>
+                  </div>
+                  {showTestEmailInput && (
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder="your-email@example.com"
+                        value={testEmail}
+                        onChange={(e) => setTestEmail(e.target.value)}
+                        className="text-sm h-9 bg-white"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 h-9 border-amber-300 text-amber-700 hover:bg-amber-100"
+                        disabled={sendTestEmailMutation.isPending || !subject || !emailBody || !testEmail}
+                        onClick={async () => {
+                          try {
+                            await sendTestEmailMutation.mutateAsync({
+                              subject,
+                              body: emailBody,
+                              testEmail,
+                            });
+                            toast.success(`Test email sent to ${testEmail}! Check your inbox.`);
+                          } catch (error: any) {
+                            toast.error(error.message || "Failed to send test email. Check SMTP settings.");
+                          }
+                        }}
+                      >
+                        {sendTestEmailMutation.isPending ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <>Send Test</>  
+                        )}
+                      </Button>
+                    </div>
                   )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSubject("");
-                    setEmailBody("");
-                    setShowPreview(false);
-                  }}
-                  disabled={!subject && !emailBody}
-                >
-                  Clear
-                </Button>
+                  <p className="text-xs text-amber-700 mt-1.5">Preview how the email looks in your inbox before sending to the lead</p>
+                </div>
               </div>
             </CardContent>
           </Card>
