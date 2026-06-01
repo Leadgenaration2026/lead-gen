@@ -27,6 +27,7 @@ const createCampaignSchema = z.object({
   subject: z.string().min(1),
   emailTemplate: z.string().min(1),
   leadIds: z.array(z.number()),
+  templateId: z.number().optional(),
 });
 
 const generateLeadsSchema = z.object({
@@ -347,6 +348,7 @@ Return ONLY valid JSON array, no other text.`;
           description: input.description,
           subject: input.subject,
           emailTemplate: input.emailTemplate,
+          templateId: input.templateId || null,
           status: "draft",
           totalLeads: input.leadIds.length,
         });
@@ -1133,6 +1135,163 @@ Respond in this exact JSON format:
         const duplicateEmails = existingLeads.map((l: any) => l.email);
         return { duplicates: duplicateEmails };
       }),
+  }),
+
+  // ============ Analytics Router ============
+  analytics: router({
+    overview: protectedProcedure.query(async ({ ctx }) => {
+      const allCampaigns = await db.getCampaignsByUserId(ctx.user.id);
+      const allLeads = await db.getLeadsByUserId(ctx.user.id);
+
+      let totalSent = 0;
+      let totalOpened = 0;
+      let totalClicked = 0;
+      let totalCalls = 0;
+      const campaignMetrics: Array<{
+        id: number;
+        name: string;
+        status: string;
+        totalLeads: number;
+        sent: number;
+        opened: number;
+        clicked: number;
+        calls: number;
+        openRate: number;
+        clickRate: number;
+        createdAt: Date;
+      }> = [];
+
+      for (const campaign of allCampaigns) {
+        const campaignLeadsList = await db.getCampaignLeads(campaign.id);
+        const sent = campaignLeadsList.filter((cl: any) => cl.emailSent).length;
+        const opened = campaignLeadsList.filter((cl: any) => cl.emailOpened).length;
+        const clicked = campaignLeadsList.filter((cl: any) => cl.emailClicked).length;
+        const calls = campaignLeadsList.filter((cl: any) => cl.callTriggered).length;
+
+        totalSent += sent;
+        totalOpened += opened;
+        totalClicked += clicked;
+        totalCalls += calls;
+
+        campaignMetrics.push({
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          totalLeads: campaignLeadsList.length,
+          sent,
+          opened,
+          clicked,
+          calls,
+          openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
+          clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
+          createdAt: campaign.createdAt,
+        });
+      }
+
+      return {
+        totals: {
+          campaigns: allCampaigns.length,
+          leads: allLeads.length,
+          emailsSent: totalSent,
+          emailsOpened: totalOpened,
+          emailsClicked: totalClicked,
+          callsMade: totalCalls,
+          overallOpenRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
+          overallClickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
+        },
+        campaigns: campaignMetrics,
+      };
+    }),
+
+    // Time-series data for charts (aggregated by campaign creation date)
+    timeSeries: protectedProcedure.query(async ({ ctx }) => {
+      const allCampaigns = await db.getCampaignsByUserId(ctx.user.id);
+      const dataPoints: Array<{
+        date: string;
+        sent: number;
+        opened: number;
+        clicked: number;
+        calls: number;
+        openRate: number;
+        clickRate: number;
+      }> = [];
+
+      // Group campaigns by date and aggregate metrics
+      const dateMap = new Map<string, { sent: number; opened: number; clicked: number; calls: number }>();
+
+      for (const campaign of allCampaigns) {
+        const campaignLeadsList = await db.getCampaignLeads(campaign.id);
+        const dateKey = campaign.createdAt ? new Date(campaign.createdAt).toISOString().split("T")[0] : "unknown";
+
+        if (!dateMap.has(dateKey)) {
+          dateMap.set(dateKey, { sent: 0, opened: 0, clicked: 0, calls: 0 });
+        }
+        const entry = dateMap.get(dateKey)!;
+        for (const cl of campaignLeadsList) {
+          if ((cl as any).emailSent) entry.sent++;
+          if ((cl as any).emailOpened) entry.opened++;
+          if ((cl as any).emailClicked) entry.clicked++;
+          if ((cl as any).callTriggered) entry.calls++;
+        }
+      }
+
+      // Sort by date
+      const sortedDates = Array.from(dateMap.keys()).sort();
+      for (const date of sortedDates) {
+        const entry = dateMap.get(date)!;
+        const openRate = entry.sent > 0 ? Math.round((entry.opened / entry.sent) * 100) : 0;
+        const clickRate = entry.sent > 0 ? Math.round((entry.clicked / entry.sent) * 100) : 0;
+        dataPoints.push({ date, ...entry, openRate, clickRate });
+      }
+
+      return dataPoints;
+    }),
+
+    // Best-performing templates with computed open/click rates from linked campaigns
+    topTemplates: protectedProcedure.query(async ({ ctx }) => {
+      const templates = await db.getCampaignTemplatesByUserId(ctx.user.id);
+      const allCampaigns = await db.getCampaignsByUserId(ctx.user.id);
+
+      // For each template, find campaigns linked via templateId (primary) or subject match (fallback)
+      const enriched = await Promise.all(
+        templates.map(async (t: any) => {
+          const matchingCampaigns = allCampaigns.filter(
+            (c: any) => c.templateId === t.id || (!c.templateId && c.subject === t.subject)
+          );
+          let totalSent = 0;
+          let totalOpened = 0;
+          let totalClicked = 0;
+
+          for (const campaign of matchingCampaigns) {
+            const cls = await db.getCampaignLeads(campaign.id);
+            for (const cl of cls) {
+              if ((cl as any).emailSent) totalSent++;
+              if ((cl as any).emailOpened) totalOpened++;
+              if ((cl as any).emailClicked) totalClicked++;
+            }
+          }
+
+          return {
+            id: t.id,
+            name: t.name,
+            emailType: t.emailType,
+            usageCount: t.usageCount || 0,
+            subject: t.subject,
+            tags: t.tags,
+            totalSent,
+            totalOpened,
+            totalClicked,
+            openRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
+            clickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
+          };
+        })
+      );
+
+      // Sort by open rate descending, then usage count
+      return enriched
+        .sort((a, b) => b.openRate - a.openRate || b.usageCount - a.usageCount)
+        .slice(0, 10);
+    }),
   }),
 });
 export type AppRouter = typeof appRouter;

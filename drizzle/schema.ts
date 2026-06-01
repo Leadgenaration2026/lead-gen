@@ -53,6 +53,7 @@ export const campaigns = mysqlTable("campaigns", {
   description: text("description"),
   subject: varchar("subject", { length: 255 }).notNull(),
   emailTemplate: text("emailTemplate").notNull(), // HTML email template with {{variable}} placeholders
+  templateId: int("templateId"), // Links to campaignTemplates.id if created from a template
   status: mysqlEnum("status", ["draft", "active", "paused", "completed"]).default("draft").notNull(),
   totalLeads: int("totalLeads").default(0).notNull(),
   sentCount: int("sentCount").default(0).notNull(),

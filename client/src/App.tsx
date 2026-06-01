@@ -11,6 +11,7 @@ import SignatureEditor from "./pages/SignatureEditor";
 import FollowUpReports from "./pages/FollowUpReports";
 import CampaignTemplates from "./pages/CampaignTemplates";
 import ScheduledEmails from "./pages/ScheduledEmails";
+import Analytics from "./pages/Analytics";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -23,6 +24,7 @@ function Router() {
       <Route path={"/follow-up-reports"} component={FollowUpReports} />
       <Route path={"/templates"} component={CampaignTemplates} />
       <Route path={"/scheduled-emails"} component={ScheduledEmails} />
+      <Route path={"/analytics"} component={Analytics} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

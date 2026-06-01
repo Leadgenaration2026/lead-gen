@@ -5,14 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Mail, Play, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { LeadPicker } from "@/components/LeadPicker";
 
 export default function CampaignsPage() {
   const campaignsQuery = trpc.campaigns.list.useQuery();
+  const leadsQuery = trpc.leads.list.useQuery();
   const createCampaignMutation = trpc.campaigns.create.useMutation();
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
@@ -32,13 +33,17 @@ export default function CampaignsPage() {
       toast.error("Please fill in all required fields");
       return;
     }
+    if (formData.leadIds.length === 0) {
+      toast.error("Please select at least one lead for this campaign");
+      return;
+    }
 
     try {
       await createCampaignMutation.mutateAsync({
         ...formData,
         leadIds: formData.leadIds,
       });
-      toast.success("Campaign created successfully");
+      toast.success(`Campaign created with ${formData.leadIds.length} leads!`);
       setFormData({
         name: "",
         description: "",
@@ -83,51 +88,63 @@ export default function CampaignsPage() {
             Create Campaign
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Campaign</DialogTitle>
             <DialogDescription>
-              Set up a new email campaign with personalized templates
+              Set up a new email campaign with personalized templates and select target leads
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Campaign Name</label>
-              <Input
-                placeholder="e.g., Q2 SaaS Outreach"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="mt-2"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Campaign Name *</label>
+                <Input
+                  placeholder="e.g., Q2 SaaS Outreach"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  placeholder="Brief campaign description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
             </div>
             <div>
-              <label className="text-sm font-medium">Description (Optional)</label>
-              <Textarea
-                placeholder="Describe the purpose of this campaign"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="mt-2 min-h-20"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Email Subject</label>
+              <label className="text-sm font-medium">Email Subject *</label>
               <Input
                 placeholder="e.g., Quick question about {{companyName}}"
                 value={formData.subject}
                 onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                className="mt-2"
+                className="mt-1.5"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"} for personalization</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Email Template *</label>
+              <Textarea
+                placeholder="HTML email template with personalization variables"
+                value={formData.emailTemplate}
+                onChange={(e) => setFormData({ ...formData, emailTemplate: e.target.value })}
+                className="mt-1.5 min-h-28 font-mono text-xs"
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Email Template</label>
-              <Textarea
-                placeholder="HTML email template. Use {{companyName}}, {{ownerName}}, {{email}} for personalization"
-                value={formData.emailTemplate}
-                onChange={(e) => setFormData({ ...formData, emailTemplate: e.target.value })}
-                className="mt-2 min-h-32 font-mono text-xs"
+              <label className="text-sm font-medium mb-2 block">Select Leads *</label>
+              <LeadPicker
+                leads={leadsQuery.data || []}
+                selectedIds={formData.leadIds}
+                onChange={(ids) => setFormData({ ...formData, leadIds: ids })}
+                isLoading={leadsQuery.isLoading}
               />
             </div>
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-end pt-2 border-t">
               <Button variant="outline" onClick={() => setIsOpen(false)}>
                 Cancel
               </Button>
@@ -141,7 +158,7 @@ export default function CampaignsPage() {
                     Creating...
                   </>
                 ) : (
-                  "Create Campaign"
+                  <>Create Campaign ({formData.leadIds.length} leads)</>
                 )}
               </Button>
             </div>

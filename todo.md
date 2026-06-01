@@ -145,3 +145,14 @@
 - [x] Campaign Templates — Template library with preview
 - [x] Campaign Templates — Quick-launch from template (opens composer pre-filled with template data)
 - [x] Campaign Templates — Create new campaign from template with pre-filled fields
+
+## Batch 4 — Lead Picker & Analytics Dashboard
+- [x] Campaign Creation — Multi-select lead picker with search/filter in campaign creation dialog
+- [x] Campaign Creation — Show selected lead count and allow removing individual leads
+- [x] Campaign Creation — Also add lead picker to the create-campaign-from-template dialog
+- [x] Analytics Dashboard — New /analytics page with email performance overview
+- [x] Analytics Dashboard — Open rate trends chart (line/area chart over time)
+- [x] Analytics Dashboard — Click-through rate chart over time
+- [x] Analytics Dashboard — Best-performing templates table with open/click rates
+- [x] Analytics Dashboard — Campaign comparison metrics (sent, opened, clicked, called)
+- [x] Analytics Dashboard — Add navigation link in sidebar

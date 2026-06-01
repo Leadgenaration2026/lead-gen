@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { LeadPicker } from "@/components/LeadPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,9 @@ export default function CampaignTemplates() {
   const [campaignDescription, setCampaignDescription] = useState("");
   const [campaignSubject, setCampaignSubject] = useState("");
   const [campaignEmailTemplate, setCampaignEmailTemplate] = useState("");
+  const [campaignLeadIds, setCampaignLeadIds] = useState<number[]>([]);
 
+  const leadsQuery = trpc.leads.list.useQuery();
   const createCampaignMutation = trpc.campaigns.create.useMutation();
   const [newTemplate, setNewTemplate] = useState({
     name: "",
@@ -127,20 +130,26 @@ export default function CampaignTemplates() {
       toast.error("Please fill in all required fields");
       return;
     }
+    if (campaignLeadIds.length === 0) {
+      toast.error("Please select at least one lead");
+      return;
+    }
     try {
       await createCampaignMutation.mutateAsync({
         name: campaignName,
         description: campaignDescription,
         subject: campaignSubject,
         emailTemplate: campaignEmailTemplate,
-        leadIds: [],
+        leadIds: campaignLeadIds,
+        templateId: createCampaignTemplate.id,
       });
-      toast.success("Campaign created from template! Go to Campaigns tab to add leads and launch.");
+      toast.success("Campaign created from template! Go to Campaigns tab to launch.");
       setCreateCampaignTemplate(null);
       setCampaignName("");
       setCampaignDescription("");
       setCampaignSubject("");
       setCampaignEmailTemplate("");
+      setCampaignLeadIds([]);
     } catch (error: any) {
       toast.error(error.message || "Failed to create campaign");
     }
@@ -153,6 +162,7 @@ export default function CampaignTemplates() {
     setCampaignDescription(template.description || "");
     setCampaignSubject(template.subject || "");
     setCampaignEmailTemplate(template.emailTemplate || "");
+    setCampaignLeadIds([]);
   };
 
   const templates = templatesQuery.data || [];
@@ -413,12 +423,18 @@ export default function CampaignTemplates() {
                 />
                 <p className="text-xs text-muted-foreground">Available variables: {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"}, {"{{industry}}"}, {"{{ctaLink}}"}</p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                After creating, go to the Campaigns tab to add leads and launch the campaign.
-              </p>
+              <div className="space-y-2">
+                <Label>Select Leads *</Label>
+                <LeadPicker
+                  leads={leadsQuery.data || []}
+                  selectedIds={campaignLeadIds}
+                  onChange={setCampaignLeadIds}
+                  isLoading={leadsQuery.isLoading}
+                />
+              </div>
               <Button
                 onClick={handleCreateCampaignFromTemplate}
-                disabled={createCampaignMutation.isPending || !campaignName || !campaignSubject || !campaignEmailTemplate}
+                disabled={createCampaignMutation.isPending || !campaignName || !campaignSubject || !campaignEmailTemplate || campaignLeadIds.length === 0}
                 className="w-full bg-green-600 hover:bg-green-700"
               >
                 {createCampaignMutation.isPending ? (
