@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -405,4 +405,125 @@ export async function cancelRemainingFollowUpCalls(campaignLeadId: number) {
       eq(followUpCalls.campaignLeadId, campaignLeadId),
       eq(followUpCalls.status, "scheduled")
     ));
+}
+
+// ============ Lead Deduplication ============
+import { scheduledEmails, campaignTemplates } from "../drizzle/schema";
+import type { InsertScheduledEmail } from "../drizzle/schema";
+import type { InsertCampaignTemplate } from "../drizzle/schema";
+
+export async function getLeadsByEmail(email: string, userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(leads).where(
+    and(eq(leads.email, email), eq(leads.userId, userId))
+  );
+}
+
+export async function getLeadsByEmails(emails: string[], userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(leads).where(
+    and(inArray(leads.email, emails), eq(leads.userId, userId))
+  );
+}
+
+// ============ Scheduled Emails ============
+export async function createScheduledEmail(data: Omit<InsertScheduledEmail, "id" | "createdAt" | "updatedAt">) {
+  const database = await getDb();
+  if (!database) return null;
+  const result = await database.insert(scheduledEmails).values(data);
+  return result[0].insertId;
+}
+
+export async function getScheduledEmailsByUserId(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(scheduledEmails).where(eq(scheduledEmails.userId, userId)).orderBy(scheduledEmails.scheduledFor);
+}
+
+export async function getDueScheduledEmails() {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(scheduledEmails).where(
+    and(
+      eq(scheduledEmails.status, "pending"),
+      lte(scheduledEmails.scheduledFor, new Date())
+    )
+  );
+}
+
+export async function updateScheduledEmail(id: number, data: Partial<InsertScheduledEmail>) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(scheduledEmails).set(data).where(eq(scheduledEmails.id, id));
+}
+
+export async function cancelScheduledEmail(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(scheduledEmails).set({ status: "cancelled" }).where(eq(scheduledEmails.id, id));
+}
+
+// ============ Campaign Templates ============
+export async function createCampaignTemplate(data: Omit<InsertCampaignTemplate, "id" | "createdAt" | "updatedAt">) {
+  const database = await getDb();
+  if (!database) return null;
+  const result = await database.insert(campaignTemplates).values(data);
+  return result[0].insertId;
+}
+
+export async function getCampaignTemplatesByUserId(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(campaignTemplates).where(eq(campaignTemplates.userId, userId)).orderBy(campaignTemplates.createdAt);
+}
+
+export async function getCampaignTemplateById(id: number) {
+  const database = await getDb();
+  if (!database) return null;
+  const result = await database.select().from(campaignTemplates).where(eq(campaignTemplates.id, id));
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function deleteCampaignTemplate(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.delete(campaignTemplates).where(eq(campaignTemplates.id, id));
+}
+
+export async function incrementTemplateUsage(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  const template = await getCampaignTemplateById(id);
+  if (template) {
+    await database.update(campaignTemplates).set({ usageCount: template.usageCount + 1 }).where(eq(campaignTemplates.id, id));
+  }
+}
+
+// ============ Lead Upsert (Overwrite by email) ============
+export async function upsertLeadByEmail(data: InsertLead) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  // Case-insensitive email lookup
+  const emailLower = data.email.toLowerCase();
+  const existing = await database.select().from(leads).where(
+    and(eq(leads.userId, data.userId!), eq(leads.email, emailLower))
+  );
+  if (existing.length > 0) {
+    // Update existing lead
+    await database.update(leads).set({
+      companyName: data.companyName,
+      ownerName: data.ownerName,
+      phoneNumber: data.phoneNumber,
+      website: data.website,
+      industry: data.industry,
+      customData: data.customData,
+      updatedAt: new Date(),
+    }).where(eq(leads.id, existing[0].id));
+    return existing[0].id;
+  }
+  // Insert new
+  const result = await database.insert(leads).values({ ...data, email: emailLower });
+  return result[0].insertId;
 }

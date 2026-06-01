@@ -246,3 +246,39 @@ export const followUpSchedules = mysqlTable("followUpSchedules", {
 
 export type FollowUpSchedule = typeof followUpSchedules.$inferSelect;
 export type InsertFollowUpSchedule = typeof followUpSchedules.$inferInsert;
+
+// Scheduled emails table - stores emails to be sent at a specific time
+export const scheduledEmails = mysqlTable("scheduledEmails", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  leadId: int("leadId").notNull(),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  emailBody: text("emailBody").notNull(),
+  scheduledFor: timestamp("scheduledFor").notNull(),
+  status: mysqlEnum("status", ["pending", "sent", "failed", "cancelled"]).default("pending").notNull(),
+  sentAt: timestamp("sentAt"),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ScheduledEmail = typeof scheduledEmails.$inferSelect;
+export type InsertScheduledEmail = typeof scheduledEmails.$inferInsert;
+
+// Campaign templates table - reusable campaign configurations
+export const campaignTemplates = mysqlTable("campaignTemplates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  emailTemplate: text("emailTemplate").notNull(),
+  emailType: mysqlEnum("emailType", ["discovery", "value_prop", "social_proof", "urgency", "custom"]).default("custom").notNull(),
+  tags: varchar("tags", { length: 255 }), // comma-separated tags for categorization
+  usageCount: int("usageCount").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CampaignTemplate = typeof campaignTemplates.$inferSelect;
+export type InsertCampaignTemplate = typeof campaignTemplates.$inferInsert;

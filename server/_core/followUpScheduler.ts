@@ -166,8 +166,103 @@ export async function processScheduledFollowUpEmails() {
   try {
     const now = new Date();
     console.log("[FollowUpScheduler] Processing scheduled follow-up emails at", now);
+    // TODO: Implement follow-up email processing when needed
   } catch (error) {
     console.error("[FollowUpScheduler] Error processing scheduled follow-up emails:", error);
+  }
+}
+
+/**
+ * Process scheduled emails from the scheduledEmails table.
+ * Finds all pending emails whose scheduledFor <= now, sends them via SMTP,
+ * and updates their status to 'sent' or 'failed'.
+ */
+export async function processScheduledEmails() {
+  const nodemailer = await import("nodemailer");
+  try {
+    const dueEmails = await db.getDueScheduledEmails();
+    if (dueEmails.length === 0) return { processed: 0 };
+
+    console.log(`[ScheduledEmailProcessor] Found ${dueEmails.length} due scheduled emails`);
+    let sentCount = 0;
+    let failCount = 0;
+
+    for (const scheduledEmail of dueEmails) {
+      try {
+        // Get the lead info
+        const lead = await db.getLeadById(scheduledEmail.leadId);
+        if (!lead) {
+          await db.updateScheduledEmail(scheduledEmail.id, {
+            status: "failed",
+            errorMessage: "Lead not found",
+          });
+          failCount++;
+          continue;
+        }
+
+        // Get user SMTP settings
+        const settings = await db.getUserSettings(scheduledEmail.userId);
+        if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
+          await db.updateScheduledEmail(scheduledEmail.id, {
+            status: "failed",
+            errorMessage: "SMTP settings not configured",
+          });
+          failCount++;
+          continue;
+        }
+
+        // Create transporter
+        const transporter = nodemailer.default.createTransport({
+          host: settings.smtpHost,
+          port: settings.smtpPort || 587,
+          secure: (settings.smtpPort || 587) === 465,
+          auth: {
+            user: settings.smtpUsername,
+            pass: settings.smtpPassword,
+          },
+        });
+
+        // Create tracking token
+        const { nanoid: createId } = await import("nanoid");
+        const trackingToken = createId();
+        const baseUrl = process.env.VITE_APP_URL || "";
+        const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
+        const htmlBody = scheduledEmail.emailBody + trackingPixel;
+
+        // Send the email
+        await transporter.sendMail({
+          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+          to: lead.email,
+          subject: scheduledEmail.subject,
+          html: htmlBody,
+        });
+
+        // Mark as sent
+        await db.updateScheduledEmail(scheduledEmail.id, {
+          status: "sent",
+          sentAt: new Date(),
+        });
+
+        // Update lead status
+        await db.updateLead(lead.id, { status: "contacted" });
+
+        sentCount++;
+        console.log(`[ScheduledEmailProcessor] Sent scheduled email ${scheduledEmail.id} to ${lead.email}`);
+      } catch (emailError: any) {
+        console.error(`[ScheduledEmailProcessor] Failed to send email ${scheduledEmail.id}:`, emailError);
+        await db.updateScheduledEmail(scheduledEmail.id, {
+          status: "failed",
+          errorMessage: emailError.message || "Unknown error",
+        });
+        failCount++;
+      }
+    }
+
+    console.log(`[ScheduledEmailProcessor] Processed ${dueEmails.length} emails: ${sentCount} sent, ${failCount} failed`);
+    return { processed: dueEmails.length, sent: sentCount, failed: failCount };
+  } catch (error) {
+    console.error("[ScheduledEmailProcessor] Error processing scheduled emails:", error);
+    return { processed: 0, error: String(error) };
   }
 }
 

@@ -246,6 +246,71 @@ Return ONLY valid JSON array, no other text.`;
         return { success: true, imported: createdLeads.length, errors };
       }),
 
+    // Overwrite existing lead by email (upsert)
+    addManualOverwrite: protectedProcedure
+      .input(z.object({
+        companyName: z.string().min(1),
+        ownerName: z.string().min(1),
+        email: z.string().email(),
+        phoneNumber: z.string().min(1),
+        industry: z.string().optional(),
+        companySize: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        return db.upsertLeadByEmail({
+          companyName: input.companyName,
+          ownerName: input.ownerName,
+          email: input.email.toLowerCase(),
+          phoneNumber: input.phoneNumber,
+          industry: input.industry,
+          website: undefined,
+          customData: { companySize: input.companySize },
+          userId: ctx.user.id,
+          status: "new",
+        });
+      }),
+
+    // CSV Import with overwrite (upsert by email)
+    csvImportOverwrite: protectedProcedure
+      .input(z.object({
+        leads: z.array(z.object({
+          companyName: z.string().min(1),
+          ownerName: z.string().min(1),
+          email: z.string().email(),
+          phoneNumber: z.string().min(1),
+          website: z.string().optional(),
+          industry: z.string().optional(),
+          tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
+        })),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const upsertedLeads = [];
+        const errors: string[] = [];
+        for (let i = 0; i < input.leads.length; i++) {
+          const leadData = input.leads[i];
+          try {
+            const resultId = await db.upsertLeadByEmail({
+              companyName: leadData.companyName,
+              ownerName: leadData.ownerName,
+              email: leadData.email.toLowerCase(),
+              phoneNumber: leadData.phoneNumber,
+              website: leadData.website,
+              industry: leadData.industry,
+              userId: ctx.user.id,
+              status: "new",
+            });
+            // Update tag if provided
+            if (leadData.tag && leadData.tag !== "none" && resultId) {
+              await db.updateLead(Number(resultId), { tag: leadData.tag });
+            }
+            upsertedLeads.push(resultId);
+          } catch (e: any) {
+            errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
+          }
+        }
+        return { success: true, imported: upsertedLeads.length, errors };
+      }),
+
     // Update lead tag
     updateTag: protectedProcedure
       .input(z.object({
@@ -948,6 +1013,125 @@ Respond in this exact JSON format:
         });
 
         return { success: true };
+      }),
+  }),
+
+  // ============ Scheduled Emails Router ============
+  scheduledEmails: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getScheduledEmailsByUserId(ctx.user.id);
+    }),
+
+    schedule: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        subject: z.string().min(1),
+        emailBody: z.string().min(1),
+        scheduledFor: z.string(), // ISO date string
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await db.createScheduledEmail({
+          userId: ctx.user.id,
+          leadId: input.leadId,
+          subject: input.subject,
+          emailBody: input.emailBody,
+          scheduledFor: new Date(input.scheduledFor),
+          status: "pending",
+        });
+        return { success: true, id };
+      }),
+
+    cancel: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id }) => {
+        await db.cancelScheduledEmail(id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ Campaign Templates Router ============
+  campaignTemplates: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getCampaignTemplatesByUserId(ctx.user.id);
+    }),
+
+    get: protectedProcedure.input(z.number()).query(async ({ input: id }) => {
+      return db.getCampaignTemplateById(id);
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        subject: z.string().min(1),
+        emailTemplate: z.string().min(1),
+        emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]).optional(),
+        tags: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const id = await db.createCampaignTemplate({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description,
+          subject: input.subject,
+          emailTemplate: input.emailTemplate,
+          emailType: input.emailType || "custom",
+          tags: input.tags,
+          usageCount: 0,
+        });
+        return { success: true, id };
+      }),
+
+    saveFromCampaign: protectedProcedure
+      .input(z.object({
+        campaignId: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        tags: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const id = await db.createCampaignTemplate({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description || campaign.description || "",
+          subject: campaign.subject,
+          emailTemplate: campaign.emailTemplate,
+          emailType: "custom",
+          tags: input.tags,
+          usageCount: 0,
+        });
+        return { success: true, id };
+      }),
+
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id }) => {
+        await db.deleteCampaignTemplate(id);
+        return { success: true };
+      }),
+
+    incrementUsage: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id }) => {
+        await db.incrementTemplateUsage(id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ Lead Deduplication Check ============
+  dedup: router({
+    check: protectedProcedure
+      .input(z.object({
+        emails: z.array(z.string().email()),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const existingLeads = await db.getLeadsByEmails(input.emails, ctx.user.id);
+        const duplicateEmails = existingLeads.map((l: any) => l.email);
+        return { duplicates: duplicateEmails };
       }),
   }),
 });

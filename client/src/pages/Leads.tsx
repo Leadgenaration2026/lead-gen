@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -25,8 +26,11 @@ export default function LeadsPage() {
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
+  const addLeadOverwriteMutation = trpc.leads.addManualOverwrite.useMutation();
   const csvImportMutation = trpc.leads.csvImport.useMutation();
+  const csvImportOverwriteMutation = trpc.leads.csvImportOverwrite.useMutation();
   const updateTagMutation = trpc.leads.updateTag.useMutation();
+  const dedupCheckMutation = trpc.dedup.check.useMutation();
 
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);
@@ -45,6 +49,15 @@ export default function LeadsPage() {
     industry: "",
     companySize: "",
   });
+
+  // Duplicate warning dialog state
+  const [dupDialogOpen, setDupDialogOpen] = useState(false);
+  const [dupDialogData, setDupDialogData] = useState<{
+    mode: "manual" | "csv";
+    duplicateEmails: string[];
+    allLeads: any[];
+    uniqueLeads: any[];
+  } | null>(null);
 
   const handleGenerateLeads = async () => {
     if (!instruction.trim()) {
@@ -80,6 +93,20 @@ export default function LeadsPage() {
       return;
     }
     try {
+      // Check for duplicates first
+      const dedupResult = await dedupCheckMutation.mutateAsync({ emails: [manualLead.email] });
+      if (dedupResult.duplicates.length > 0) {
+        // Show duplicate warning dialog
+        setDupDialogData({
+          mode: "manual",
+          duplicateEmails: dedupResult.duplicates,
+          allLeads: [manualLead],
+          uniqueLeads: [],
+        });
+        setDupDialogOpen(true);
+        return;
+      }
+      // No duplicates — proceed directly
       await addLeadMutation.mutateAsync({
         companyName: manualLead.companyName,
         ownerName: manualLead.ownerName,
@@ -94,6 +121,79 @@ export default function LeadsPage() {
     } catch (error) {
       toast.error("Failed to add lead");
     }
+  };
+
+  // Handle "Skip Duplicates" action — for manual, just close; for CSV, import only unique
+  const handleDupSkip = async () => {
+    if (!dupDialogData) return;
+    if (dupDialogData.mode === "manual") {
+      toast.info("Duplicate lead skipped");
+      setDupDialogOpen(false);
+      setDupDialogData(null);
+      return;
+    }
+    // CSV mode — import only unique leads
+    if (dupDialogData.uniqueLeads.length === 0) {
+      toast.error("All leads are duplicates — nothing to import");
+      setDupDialogOpen(false);
+      setDupDialogData(null);
+      return;
+    }
+    try {
+      const result = await csvImportMutation.mutateAsync({ leads: dupDialogData.uniqueLeads });
+      toast.success(`Imported ${result.imported} leads (${dupDialogData.duplicateEmails.length} duplicates skipped)`);
+      if (result.errors.length > 0) {
+        toast.warning(`${result.errors.length} rows had errors`);
+      }
+      setCsvDialogOpen(false);
+      setCsvPreview([]);
+      setCsvFileName("");
+      leadsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to import leads");
+    }
+    setDupDialogOpen(false);
+    setDupDialogData(null);
+  };
+
+  // Handle "Overwrite Existing" action — upsert leads (update existing by email)
+  const handleDupOverwrite = async () => {
+    if (!dupDialogData) return;
+    if (dupDialogData.mode === "manual") {
+      try {
+        const lead = dupDialogData.allLeads[0];
+        await addLeadOverwriteMutation.mutateAsync({
+          companyName: lead.companyName,
+          ownerName: lead.ownerName,
+          email: lead.email,
+          phoneNumber: lead.phoneNumber,
+          industry: lead.industry || "Unknown",
+          companySize: lead.companySize || "Unknown",
+        });
+        toast.success("Lead updated (existing record overwritten)");
+        setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "" });
+        leadsQuery.refetch();
+      } catch (error) {
+        toast.error("Failed to overwrite lead");
+      }
+    } else {
+      // CSV mode — upsert all leads (update existing, insert new)
+      try {
+        const result = await csvImportOverwriteMutation.mutateAsync({ leads: dupDialogData.allLeads });
+        toast.success(`Imported ${result.imported} leads (duplicates overwritten)`);
+        if (result.errors.length > 0) {
+          toast.warning(`${result.errors.length} rows had errors`);
+        }
+        setCsvDialogOpen(false);
+        setCsvPreview([]);
+        setCsvFileName("");
+        leadsQuery.refetch();
+      } catch (error) {
+        toast.error("Failed to import leads");
+      }
+    }
+    setDupDialogOpen(false);
+    setDupDialogData(null);
   };
 
   const handleUpdateTag = async (leadId: number, tag: string) => {
@@ -195,6 +295,26 @@ export default function LeadsPage() {
   const handleCSVImport = async () => {
     if (csvPreview.length === 0) return;
     try {
+      // Check for duplicates before importing
+      const emails = csvPreview.map((r: any) => r.email).filter(Boolean);
+      const dedupResult = await dedupCheckMutation.mutateAsync({ emails });
+      const dupSet = new Set(dedupResult.duplicates);
+      const uniqueLeads = csvPreview.filter((r: any) => !dupSet.has(r.email));
+      const dupCount = csvPreview.length - uniqueLeads.length;
+
+      if (dupCount > 0) {
+        // Show duplicate warning dialog with Skip/Overwrite options
+        setDupDialogData({
+          mode: "csv",
+          duplicateEmails: dedupResult.duplicates,
+          allLeads: csvPreview,
+          uniqueLeads,
+        });
+        setDupDialogOpen(true);
+        return;
+      }
+
+      // No duplicates — import directly
       const result = await csvImportMutation.mutateAsync({ leads: csvPreview });
       toast.success(`Successfully imported ${result.imported} leads`);
       if (result.errors.length > 0) {
@@ -222,6 +342,65 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Duplicate Warning Dialog */}
+      <AlertDialog open={dupDialogOpen} onOpenChange={setDupDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Duplicate Leads Detected
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {dupDialogData?.mode === "manual"
+                    ? "A lead with this email already exists in your database:"
+                    : `${dupDialogData?.duplicateEmails.length} lead(s) already exist in your database:`}
+                </p>
+                <div className="bg-muted/50 rounded-md p-3 max-h-32 overflow-y-auto">
+                  {dupDialogData?.duplicateEmails.map((email, i) => (
+                    <div key={i} className="flex items-center gap-2 py-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                      <span className="text-sm font-mono">{email}</span>
+                    </div>
+                  ))}
+                </div>
+                {dupDialogData?.mode === "csv" && dupDialogData.uniqueLeads.length > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {dupDialogData.uniqueLeads.length} unique lead(s) can still be imported.
+                  </p>
+                )}
+                <p className="text-sm font-medium">What would you like to do?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex gap-2 sm:gap-2">
+            <AlertDialogCancel onClick={() => { setDupDialogOpen(false); setDupDialogData(null); }}>
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={handleDupSkip}
+              disabled={csvImportMutation.isPending}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20"
+            >
+              {dupDialogData?.mode === "manual" ? "Skip Duplicate" : `Skip ${dupDialogData?.duplicateEmails.length} Duplicate(s)`}
+            </Button>
+            <Button
+              onClick={handleDupOverwrite}
+              disabled={addLeadMutation.isPending || addLeadOverwriteMutation.isPending || csvImportMutation.isPending || csvImportOverwriteMutation.isPending}
+              className="bg-primary"
+            >
+              {(addLeadMutation.isPending || addLeadOverwriteMutation.isPending || csvImportMutation.isPending || csvImportOverwriteMutation.isPending) ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Processing...</>
+              ) : (
+                dupDialogData?.mode === "manual" ? "Add Anyway" : "Import All (Overwrite)"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Action Buttons Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Manual Lead Entry */}
@@ -371,8 +550,8 @@ export default function LeadsPage() {
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => { setCsvDialogOpen(false); setCsvPreview([]); }}>Cancel</Button>
-            <Button onClick={handleCSVImport} disabled={csvImportMutation.isPending} className="gap-2">
-              {csvImportMutation.isPending ? (<><Loader2 className="w-4 h-4 animate-spin" />Importing...</>) : (<><Upload className="w-4 h-4" />Import {csvPreview.length} Leads</>)}
+            <Button onClick={handleCSVImport} disabled={csvImportMutation.isPending || dedupCheckMutation.isPending} className="gap-2">
+              {(csvImportMutation.isPending || dedupCheckMutation.isPending) ? (<><Loader2 className="w-4 h-4 animate-spin" />Checking...</>) : (<><Upload className="w-4 h-4" />Import {csvPreview.length} Leads</>)}
             </Button>
           </div>
         </DialogContent>

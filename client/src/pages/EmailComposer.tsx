@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock } from "lucide-react";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -23,6 +24,7 @@ const emailTypeDescriptions: Record<EmailType, string> = {
 
 export default function EmailComposer() {
   const { user } = useAuth();
+  const searchString = useSearch();
   const [selectedLead, setSelectedLead] = useState<number | null>(null);
   const [emailType, setEmailType] = useState<EmailType>("discovery");
   const [instructions, setInstructions] = useState("");
@@ -30,14 +32,38 @@ export default function EmailComposer() {
   const [emailBody, setEmailBody] = useState("");
   const [ctaLink, setCtaLink] = useState("https://calendly.com/nitin-virtualassistant/30min");
   const [showPreview, setShowPreview] = useState(false);
+  const [prefilled, setPrefilled] = useState(false);
+
+  // Pre-fill from URL params (template quick-launch)
+  useEffect(() => {
+    if (prefilled) return;
+    const params = new URLSearchParams(searchString);
+    const paramSubject = params.get("subject");
+    const paramBody = params.get("body");
+    const paramEmailType = params.get("emailType");
+    if (paramSubject || paramBody) {
+      if (paramSubject) setSubject(paramSubject);
+      if (paramBody) setEmailBody(paramBody);
+      if (paramEmailType && ["discovery", "value_prop", "social_proof", "urgency", "custom"].includes(paramEmailType)) {
+        setEmailType(paramEmailType as EmailType);
+      }
+      setShowPreview(true);
+      setPrefilled(true);
+    }
+  }, [searchString, prefilled]);
 
   const [testEmail, setTestEmail] = useState("");
   const [showTestEmailInput, setShowTestEmailInput] = useState(false);
+
+  const [scheduleMode, setScheduleMode] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
 
   const leadsQuery = trpc.leads.list.useQuery();
   const generateEmailMutation = trpc.email.generateAI.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
+  const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
@@ -297,23 +323,74 @@ export default function EmailComposer() {
               {/* Action Buttons */}
               <div className="flex flex-col gap-3 pt-2">
                 <div className="flex gap-3">
+                  {!scheduleMode ? (
+                    <Button
+                      onClick={handleSendEmail}
+                      disabled={sendEmailMutation.isPending || !subject || !emailBody || !selectedLead}
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      size="lg"
+                    >
+                      {sendEmailMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Send Email to {selectedLeadData?.ownerName || "Lead"}
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={async () => {
+                        if (!selectedLead || !subject || !emailBody || !scheduledDate || !scheduledTime) {
+                          toast.error("Please fill in all fields and select a date/time");
+                          return;
+                        }
+                        try {
+                          const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+                          await scheduleEmailMutation.mutateAsync({
+                            leadId: selectedLead,
+                            subject,
+                            emailBody: emailBody,
+                            scheduledFor,
+                          });
+                          toast.success(`Email scheduled for ${scheduledDate} at ${scheduledTime}`);
+                          setSubject("");
+                          setEmailBody("");
+                          setScheduleMode(false);
+                          setScheduledDate("");
+                          setScheduledTime("");
+                          setShowPreview(false);
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to schedule email");
+                        }
+                      }}
+                      disabled={scheduleEmailMutation.isPending || !subject || !emailBody || !selectedLead || !scheduledDate || !scheduledTime}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                      size="lg"
+                    >
+                      {scheduleEmailMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Scheduling...
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="w-4 h-4 mr-2" />
+                          Schedule Email
+                        </>
+                      )}
+                    </Button>
+                  )}
                   <Button
-                    onClick={handleSendEmail}
-                    disabled={sendEmailMutation.isPending || !subject || !emailBody || !selectedLead}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                    size="lg"
+                    variant={scheduleMode ? "default" : "outline"}
+                    onClick={() => setScheduleMode(!scheduleMode)}
+                    className={scheduleMode ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-300" : ""}
                   >
-                    {sendEmailMutation.isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Send Email to {selectedLeadData?.ownerName || "Lead"}
-                      </>
-                    )}
+                    <Clock className="w-4 h-4" />
                   </Button>
                   <Button
                     variant="outline"
@@ -321,12 +398,45 @@ export default function EmailComposer() {
                       setSubject("");
                       setEmailBody("");
                       setShowPreview(false);
+                      setScheduleMode(false);
                     }}
                     disabled={!subject && !emailBody}
                   >
                     Clear
                   </Button>
                 </div>
+
+                {/* Schedule Date/Time Picker */}
+                {scheduleMode && (
+                  <div className="border rounded-lg p-3 bg-indigo-50/50 border-indigo-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="w-4 h-4 text-indigo-600" />
+                      <span className="text-sm font-medium text-indigo-900">Schedule Send</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-indigo-700">Date</Label>
+                        <Input
+                          type="date"
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          min={new Date().toISOString().split("T")[0]}
+                          className="text-sm h-9 bg-white"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-indigo-700">Time</Label>
+                        <Input
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          className="text-sm h-9 bg-white"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-indigo-600 mt-2">Tip: Emails sent Tuesday-Thursday between 9-11 AM get the best open rates</p>
+                  </div>
+                )}
 
                 {/* Send Test Email to Myself */}
                 <div className="border rounded-lg p-3 bg-amber-50/50 border-amber-200">

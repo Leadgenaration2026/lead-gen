@@ -134,3 +134,14 @@
 - [x] Lead Tags/Labels — Color-coded tags (Hot, Warm, Cold, Follow Up) with inline selector and filter dropdown
 - [x] Lead search by name, company, or email
 - [x] CSV format guide on Leads page
+
+## New Features (Batch 3)
+- [x] Lead Deduplication — Detect and warn on duplicate leads (same email) during CSV import and manual add
+- [x] Lead Deduplication — Show duplicate warning dialog with explicit Skip/Overwrite actions
+- [x] Email Scheduling — "Schedule Send" option in Email Composer with date/time picker
+- [x] Email Scheduling — Scheduled Emails queue page showing pending/sent/failed statuses
+- [x] Email Scheduling — Actual scheduled email processor (cron/heartbeat) that sends due emails
+- [x] Campaign Templates — Save campaigns as reusable templates
+- [x] Campaign Templates — Template library with preview
+- [x] Campaign Templates — Quick-launch from template (opens composer pre-filled with template data)
+- [x] Campaign Templates — Create new campaign from template with pre-filled fields

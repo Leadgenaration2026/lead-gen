@@ -38,6 +38,29 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerEmailTrackingRoutes(app);
+
+  // Scheduled email processor endpoint (called by heartbeat cron)
+  app.post("/api/scheduled/process-emails", async (req, res) => {
+    try {
+      // Authenticate cron request
+      const { sdk } = await import("./sdk");
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron) {
+        return res.status(403).json({ error: "cron-only" });
+      }
+
+      const { processScheduledEmails } = await import("./followUpScheduler");
+      const result = await processScheduledEmails();
+      res.json({ ok: true, ...result });
+    } catch (error: any) {
+      console.error("[ScheduledEmailProcessor] Handler error:", error);
+      res.status(500).json({
+        error: error.message || "Unknown error",
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",
