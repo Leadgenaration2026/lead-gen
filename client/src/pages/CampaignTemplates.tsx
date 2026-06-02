@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Loader2, Plus, Copy, Trash2, FileText, Sparkles, Eye, BookTemplate, Send, Rocket } from "lucide-react";
+import { AIWriteButton } from "@/components/AIWriteButton";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -270,7 +271,17 @@ export default function CampaignTemplates() {
                   <p className="text-xs text-muted-foreground">Use {"{{ownerName}}"}, {"{{companyName}}"} for personalization</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Email Template *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Email Template *</Label>
+                    <AIWriteButton
+                      onGenerated={(s, b) => setNewTemplate({ ...newTemplate, subject: s, emailTemplate: b })}
+                      includeVariables={true}
+                      buttonLabel="AI Write"
+                      buttonVariant="outline"
+                      buttonSize="sm"
+                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                    />
+                  </div>
                   <Textarea value={newTemplate.emailTemplate} onChange={(e) => setNewTemplate({ ...newTemplate, emailTemplate: e.target.value })} placeholder={"Hi {{ownerName}},\n\nI noticed {{companyName}} is doing great work in...\n\nHere's how we can help:\n• Point 1\n• Point 2\n• Point 3\n\nWould you be open to a quick 15-minute chat?\n\nSchedule here: {{ctaLink}}\n\nBest regards"} rows={10} className="text-sm font-mono" />
                   <p className="text-xs text-muted-foreground">Available variables: {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"}, {"{{industry}}"}, {"{{ctaLink}}"}</p>
                 </div>
@@ -413,7 +424,17 @@ export default function CampaignTemplates() {
                 <p className="text-xs text-muted-foreground">Use {"{{ownerName}}"}, {"{{companyName}}"} for personalization</p>
               </div>
               <div className="space-y-2">
-                <Label>Email Template *</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Email Template *</Label>
+                  <AIWriteButton
+                    onGenerated={(s, b) => { setCampaignSubject(s); setCampaignEmailTemplate(b); }}
+                    includeVariables={true}
+                    buttonLabel="AI Write"
+                    buttonVariant="outline"
+                    buttonSize="sm"
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  />
+                </div>
                 <Textarea
                   value={campaignEmailTemplate}
                   onChange={(e) => setCampaignEmailTemplate(e.target.value)}

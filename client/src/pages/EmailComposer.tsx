@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock } from "lucide-react";
+import { AIWriteButton } from "@/components/AIWriteButton";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -298,6 +299,20 @@ export default function EmailComposer() {
                     <span className="text-xs text-muted-foreground">{subject.length}/50 chars</span>
                   </div>
                 )}
+              </div>
+
+              {/* AI Write Button - Direct access */}
+              <div className="flex items-center gap-2">
+                <AIWriteButton
+                  onGenerated={(s, b) => { setSubject(s); setEmailBody(b); setShowPreview(true); }}
+                  leadId={selectedLead || undefined}
+                  includeVariables={false}
+                  buttonLabel="AI Write Email"
+                  buttonVariant="default"
+                  buttonSize="default"
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                />
+                <span className="text-xs text-muted-foreground">Describe what you want to say and AI writes a professional email</span>
               </div>
 
               {/* Email Body */}

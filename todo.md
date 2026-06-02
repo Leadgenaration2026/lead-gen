@@ -156,3 +156,12 @@
 - [x] Analytics Dashboard — Best-performing templates table with open/click rates
 - [x] Analytics Dashboard — Campaign comparison metrics (sent, opened, clicked, called)
 - [x] Analytics Dashboard — Add navigation link in sidebar
+
+## Batch 5 — AI Email Writing
+- [x] AI Email Writer — Backend tRPC procedure that uses LLM to generate professional, human-sounding, bullet-point emails
+- [x] AI Email Writer — Add "AI Write" button to manual EmailComposer page with prompt input
+- [x] AI Email Writer — Add "AI Write" button to Campaign Templates creation/editing
+- [x] AI Email Writer — Add "AI Write" button to Campaign creation email template field
+- [x] AI Email Writer — Generated emails should be professional, concise, bullet-point format with clear CTA
+- [x] AI Email Writer — Add CTA link validation/fallback in generateAITemplate post-processing
+- [x] AI Email Writer — Add AI Write support to edit-template flow (N/A - no edit flow exists, only create/delete)

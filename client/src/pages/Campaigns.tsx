@@ -10,6 +10,7 @@ import { Loader2, Plus, Mail, Play, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { LeadPicker } from "@/components/LeadPicker";
+import { AIWriteButton } from "@/components/AIWriteButton";
 
 export default function CampaignsPage() {
   const campaignsQuery = trpc.campaigns.list.useQuery();
@@ -127,7 +128,17 @@ export default function CampaignsPage() {
               <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"} for personalization</p>
             </div>
             <div>
-              <label className="text-sm font-medium">Email Template *</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Email Template *</label>
+                <AIWriteButton
+                  onGenerated={(s, b) => setFormData({ ...formData, subject: s, emailTemplate: b })}
+                  includeVariables={true}
+                  buttonLabel="AI Write"
+                  buttonVariant="outline"
+                  buttonSize="sm"
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                />
+              </div>
               <Textarea
                 placeholder="HTML email template with personalization variables"
                 value={formData.emailTemplate}
