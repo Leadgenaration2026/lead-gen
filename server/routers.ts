@@ -1032,111 +1032,21 @@ Respond in this exact JSON format:
         if (input.leadId) {
           const lead = await db.getLeadById(input.leadId);
           if (lead && lead.userId === ctx.user.id) {
-            leadContext = `\nLead Info:\n- Name: ${lead.ownerName}\n- Company: ${lead.companyName}\n- Industry: ${lead.industry || "Not specified"}\n- Email: ${lead.email}`;
+            leadContext = `Name: ${lead.ownerName}, Company: ${lead.companyName}, Industry: ${lead.industry || "Not specified"}, Email: ${lead.email}`;
           }
         }
 
-        const variableNote = input.includeVariables
-          ? `\nIMPORTANT: Use these template variables for personalization: {{ownerName}}, {{companyName}}, {{industry}}, {{ctaLink}}. Do NOT use actual names — use the variables so this can be sent to multiple leads.`
-          : leadContext
-            ? `\nPersonalize the email for the specific lead mentioned above.`
-            : ``;
+        const { generateEmailWithClaude } = await import("./claude");
 
-        const emailTypeGuidance: Record<string, string> = {
-          discovery: "Focus on understanding their challenges. Ask an insightful question about their business.",
-          value_prop: "Highlight specific benefits and outcomes. Focus on ROI and measurable results.",
-          social_proof: "Reference case studies or success stories. Use specific numbers and outcomes.",
-          urgency: "Create time-sensitivity without being pushy. Mention limited availability or upcoming deadlines.",
-          custom: "Follow the user's instructions precisely.",
-        };
-
-        const typeGuidance = input.emailType ? emailTypeGuidance[input.emailType] : emailTypeGuidance.custom;
-
-        const systemPrompt = `You are an expert email copywriter who writes professional, human-sounding cold outreach emails. Your emails:
-- Sound like they're written by a real person, not a marketing tool
-- Are concise and to the point (under 120 words)
-- Use bullet points (2-4) to highlight key benefits or talking points
-- Have a clear, single call-to-action
-- Never use spam trigger words (free, urgent, limited time, act now, click here)
-- Never use excessive exclamation marks or ALL CAPS
-- Have subject lines under 50 characters that look like personal emails
-
-Always respond with valid JSON.`;
-
-        const userPrompt = `Write a professional outreach email based on these instructions:
-
-What the sender wants to communicate: ${input.prompt}
-${leadContext}
-${input.companyContext ? `\nCompany/Industry Context: ${input.companyContext}` : ""}
-
-Email Type: ${input.emailType || "custom"}
-Guidance: ${typeGuidance}
-${variableNote}
-
-FORMAT RULES:
-1. Subject line: Under 50 chars, lowercase, conversational, looks like a personal email
-2. Email body in HTML format:
-   - Opening line: 1 sentence, personalized and relevant
-   - Body: 2-4 bullet points using <ul><li> tags highlighting key points
-   - Closing: 1 sentence with clear CTA
-   - Keep total under 120 words
-3. Tone: Professional but warm, like a helpful peer
-4. NO signature — it will be appended separately
-5. End with a CTA link: ${input.includeVariables ? "{{ctaLink}}" : "https://calendly.com/nitin-virtualassistant/30min"}
-
-Respond in this exact JSON format:
-{
-  "subject": "the subject line",
-  "body": "the HTML email body"
-}`;
-
-        const response = await invokeLLM({
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "ai_email_template",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  subject: { type: "string", description: "Email subject line" },
-                  body: { type: "string", description: "Email body in HTML" },
-                },
-                required: ["subject", "body"],
-                additionalProperties: false,
-              },
-            },
-          },
+        const result = await generateEmailWithClaude({
+          prompt: input.prompt,
+          emailType: input.emailType || undefined,
+          companyContext: input.companyContext || undefined,
+          leadContext: leadContext || undefined,
+          includeVariables: input.includeVariables || false,
         });
 
-        const rawContent = response.choices[0]?.message?.content;
-        if (!rawContent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
-        const content = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
-        const parsed = JSON.parse(content);
-
-        // Ensure bullet points exist
-        let emailBody = parsed.body || "";
-        if (!emailBody.includes("<li") && !emailBody.includes("<ul")) {
-          emailBody = emailBody.replace(
-            /<\/p>\s*<p/,
-            `</p><ul><li>Key benefit point</li><li>Another important point</li><li>Clear value proposition</li></ul><p`
-          );
-        }
-
-        // Ensure CTA link is present
-        const ctaTarget = input.includeVariables ? "{{ctaLink}}" : "https://calendly.com/nitin-virtualassistant/30min";
-        if (!emailBody.includes(ctaTarget) && !emailBody.includes("calendly.com") && !emailBody.includes("{{ctaLink}}")) {
-          emailBody += `<p style="margin-top:16px;"><a href="${ctaTarget}" style="color:#2563eb;font-weight:500;">Schedule a quick chat</a></p>`;
-        }
-
-        return {
-          subject: parsed.subject,
-          body: emailBody,
-        };
+        return result;
       }),
   }),
 

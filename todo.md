@@ -165,3 +165,10 @@
 - [x] AI Email Writer — Generated emails should be professional, concise, bullet-point format with clear CTA
 - [x] AI Email Writer — Add CTA link validation/fallback in generateAITemplate post-processing
 - [x] AI Email Writer — Add AI Write support to edit-template flow (N/A - no edit flow exists, only create/delete)
+
+## Batch 6 — Claude Integration
+- [x] Claude Integration — Install @anthropic-ai/sdk and store ANTHROPIC_API_KEY
+- [x] Claude Integration — Create claude.ts helper with optimized prompts for email generation
+- [x] Claude Integration — Replace built-in LLM with Claude in generateAITemplate procedure
+- [x] Claude Integration — Validate API key works with live test
+- [x] Claude Integration — Ensure bullet points and CTA enforcement in post-processing
