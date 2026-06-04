@@ -10,6 +10,7 @@ import { triggerRetellCall } from "./_core/retellAI";
 import { nanoid } from "nanoid";
 import nodemailer from "nodemailer";
 import { plainTextToHtml } from "@shared/emailFormat";
+import { getSignatureHtml, normalizePhoneNumber } from "./_core/followUpScheduler";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -457,9 +458,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           });
         }
 
-        // Get user's email signature
+        // Get user's email signature (uses plain text version for correct display)
         const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+        const signatureHtml = getSignatureHtml(signature);
 
         // Get campaign leads
         const campaignLeads = await db.getCampaignLeads(campaignId);
@@ -559,6 +560,28 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           launchedAt: new Date(),
           sentCount,
         });
+
+        // Schedule 7 follow-up emails for each lead (async, don't block)
+        const { scheduleFollowUpEmails } = await import("./_core/followUpScheduler");
+        const ctaLink = "https://calendly.com/nitin-virtualassistant/30min";
+        for (const campaignLead of campaignLeads) {
+          const leadForFollowUp = await db.getLeadById(campaignLead.leadId);
+          if (leadForFollowUp) {
+            scheduleFollowUpEmails(
+              campaignLead.id,
+              leadForFollowUp.id,
+              leadForFollowUp.email,
+              leadForFollowUp.phoneNumber || '',
+              leadForFollowUp.ownerName,
+              leadForFollowUp.companyName,
+              leadForFollowUp.industry || 'business services',
+              ctaLink,
+              ctx.user.id
+            ).catch((err: any) => {
+              console.error(`[CampaignLaunch] Failed to schedule follow-ups for lead ${leadForFollowUp.id}:`, err);
+            });
+          }
+        }
 
         return { success: true, sentCount };
       }),
@@ -1075,8 +1098,9 @@ Respond in this exact JSON format:
 
         // Append signature if available
         let fullBody = emailBody;
-        if (signature?.signatureHtml) {
-          fullBody += `<br/><br/>---<br/>${signature.signatureHtml}`;
+        const sigHtml = getSignatureHtml(signature);
+        if (sigHtml) {
+          fullBody += sigHtml;
         }
 
         return {
@@ -1115,9 +1139,9 @@ Respond in this exact JSON format:
         // Create tracking token
         const trackingToken = nanoid();
 
-        // Get user's email signature
+        // Get user's email signature (uses plain text version for correct display)
         const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+        const signatureHtml = getSignatureHtml(signature);
 
         // Use request origin for tracking URL
         const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
@@ -1166,9 +1190,9 @@ Respond in this exact JSON format:
           },
         });
 
-        // Get user's email signature
+        // Get user's email signature (uses plain text version for correct display)
         const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+        const signatureHtml = getSignatureHtml(signature);
 
         // Add a [TEST] prefix to subject
         const testSubject = `[TEST PREVIEW] ${input.subject}`;

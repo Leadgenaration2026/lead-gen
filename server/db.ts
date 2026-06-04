@@ -404,6 +404,19 @@ export async function upsertFollowUpSchedule(data: any) {
   return db.insert(followUpSchedules).values(data);
 }
 
+// Get all scheduled follow-up emails that are due (scheduledFor <= now)
+export async function getDueFollowUpEmails() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { followUpEmails } = await import("../drizzle/schema");
+  const { lte, and } = await import("drizzle-orm");
+  return db.select().from(followUpEmails)
+    .where(and(
+      eq(followUpEmails.status, "scheduled"),
+      lte(followUpEmails.scheduledFor, new Date())
+    ));
+}
+
 // Get all scheduled follow-up calls that are due (scheduledFor <= now)
 export async function getDueFollowUpCalls() {
   const db = await getDb();

@@ -83,8 +83,14 @@ export async function triggerRetellCall(
     }
 
     return callId;
-  } catch (error) {
-    console.error("Failed to trigger Retell.AI call:", error);
+  } catch (error: any) {
+    if (error.response) {
+      console.error(`[RetellAI] API Error ${error.response.status}:`, JSON.stringify(error.response.data));
+    } else if (error.request) {
+      console.error(`[RetellAI] No response received:`, error.message);
+    } else {
+      console.error(`[RetellAI] Error:`, error.message);
+    }
     return null;
   }
 }

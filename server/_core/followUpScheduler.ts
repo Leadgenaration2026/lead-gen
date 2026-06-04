@@ -1,29 +1,73 @@
 import * as db from "../db";
-import { generateFollowUpSequence } from "./emailGeneration";
 import { triggerRetellCall } from "./retellAI";
 import { nanoid } from "nanoid";
 
 /**
- * Follow-up call schedule configuration:
- * - Day 3: 2 calls (morning + afternoon)
- * - Day 6: 2 calls (morning + afternoon)
- * - Day 12: 2 calls (morning + afternoon)
- * - Plus the initial call on engagement = 7 total calls
- * 
- * Morning call: 10:00 AM
- * Afternoon call: 3:00 PM
+ * Follow-up email schedule:
+ * - Email 1: Day 2 (2 days after initial)
+ * - Email 2: Day 4 (2 days after email 1)
+ * - Email 3: Day 6 (2 days after email 2)
+ * - Email 4: Day 11 (5 days after email 3)
+ * - Email 5: Day 16 (5 days after email 4)
+ * - Email 6: Day 21 (5 days after email 5)
+ * - Email 7: Day 26 (5 days after email 6)
  */
-const FOLLOW_UP_CALL_SCHEDULE = [
-  { dayOffset: 3, timeSlot: "morning", hour: 10 },   // Day 3 - Morning
-  { dayOffset: 3, timeSlot: "afternoon", hour: 15 },  // Day 3 - Afternoon
-  { dayOffset: 6, timeSlot: "morning", hour: 10 },   // Day 6 - Morning
-  { dayOffset: 6, timeSlot: "afternoon", hour: 15 },  // Day 6 - Afternoon
-  { dayOffset: 12, timeSlot: "morning", hour: 10 },  // Day 12 - Morning
-  { dayOffset: 12, timeSlot: "afternoon", hour: 15 }, // Day 12 - Afternoon
+const FOLLOW_UP_EMAIL_SCHEDULE = [
+  { sequenceNumber: 1, dayOffset: 2, emailType: "discovery" as const },
+  { sequenceNumber: 2, dayOffset: 4, emailType: "value_prop" as const },
+  { sequenceNumber: 3, dayOffset: 6, emailType: "social_proof" as const },
+  { sequenceNumber: 4, dayOffset: 11, emailType: "urgency" as const },
+  { sequenceNumber: 5, dayOffset: 16, emailType: "value_prop" as const },
+  { sequenceNumber: 6, dayOffset: 21, emailType: "social_proof" as const },
+  { sequenceNumber: 7, dayOffset: 26, emailType: "custom" as const },
 ];
 
 /**
- * Schedule follow-up emails for a campaign lead
+ * Follow-up call schedule:
+ * A call is triggered each time a follow-up email is opened.
+ * Additionally, scheduled calls happen if emails are not opened:
+ * - Call after email 1 (Day 3)
+ * - Call after email 2 (Day 5)
+ * - Call after email 3 (Day 7)
+ * - Call after email 4 (Day 12)
+ * - Call after email 5 (Day 17)
+ * - Call after email 6 (Day 22)
+ * - Call after email 7 (Day 27)
+ */
+const FOLLOW_UP_CALL_SCHEDULE = [
+  { dayOffset: 3, hour: 10 },   // Day after email 1
+  { dayOffset: 5, hour: 14 },   // Day after email 2
+  { dayOffset: 7, hour: 10 },   // Day after email 3
+  { dayOffset: 12, hour: 14 },  // Day after email 4
+  { dayOffset: 17, hour: 10 },  // Day after email 5
+  { dayOffset: 22, hour: 14 },  // Day after email 6
+  { dayOffset: 27, hour: 10 },  // Day after email 7
+];
+
+/**
+ * Normalize phone number to E.164 format for Retell.AI
+ * Strips parentheses, dashes, spaces, and ensures +country code prefix
+ */
+export function normalizePhoneNumber(phone: string): string {
+  if (!phone) return phone;
+  // Remove all non-digit characters except leading +
+  let cleaned = phone.replace(/[^\d+]/g, '');
+  // If it starts with +, keep it; otherwise add +1 for US numbers
+  if (!cleaned.startsWith('+')) {
+    if (cleaned.startsWith('1') && cleaned.length === 11) {
+      cleaned = '+' + cleaned;
+    } else if (cleaned.length === 10) {
+      cleaned = '+1' + cleaned;
+    } else {
+      cleaned = '+' + cleaned;
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * Schedule follow-up emails for a campaign lead using Claude for generation.
+ * Schedule: 1st 3 emails every 2 days, remaining 4 emails every 5 days after the 3rd.
  */
 export async function scheduleFollowUpEmails(
   campaignLeadId: number,
@@ -32,59 +76,86 @@ export async function scheduleFollowUpEmails(
   leadPhone: string,
   ownerName: string,
   companyName: string,
+  industry: string,
   ctaLink: string,
-  signature: string,
-  emailFollowUpCount: number = 7,
-  emailFollowUpIntervalDays: number = 7
+  userId: number
 ) {
   try {
+    console.log(`[FollowUpScheduler] Scheduling 7 follow-up emails for campaignLead ${campaignLeadId}`);
+
     // Get lead weak points
     let weakPoints: any = await db.getLeadWeakPoints(leadId);
     if (!weakPoints) {
-      // Analyze weak points if not already done
       const { analyzeLeadWeakPoints } = await import("./emailGeneration");
       const points = await analyzeLeadWeakPoints({
         ownerName,
         companyName,
         email: leadEmail,
+        industry,
       });
       await db.upsertLeadWeakPoints(leadId, points, "Auto-analyzed", ["discovery", "value_prop"]);
       weakPoints = await db.getLeadWeakPoints(leadId);
     }
 
-    // Generate follow-up sequence
-    const sequence = await generateFollowUpSequence(
-      {
-        ownerName,
-        companyName,
-        email: leadEmail,
-      },
-      (weakPoints?.weakPoints as string[]) || [],
-      ctaLink,
-      signature
-    );
+    const weakPointsList = (weakPoints?.weakPoints as string[]) || ["business growth"];
 
-    // Schedule each follow-up email
-    for (let i = 0; i < Math.min(sequence.length, emailFollowUpCount); i++) {
-      const email = sequence[i];
+    // Generate all 7 follow-up emails using Claude
+    const { generateEmailWithClaude } = await import("../claude");
+
+    for (const schedule of FOLLOW_UP_EMAIL_SCHEDULE) {
       const scheduledDate = new Date();
-      scheduledDate.setDate(scheduledDate.getDate() + email.dayOffset);
+      scheduledDate.setDate(scheduledDate.getDate() + schedule.dayOffset);
+
+      // Determine the weak point to focus on for this email
+      const weakPointIndex = (schedule.sequenceNumber - 1) % weakPointsList.length;
+      const focusWeakPoint = weakPointsList[weakPointIndex] || "business growth";
+
+      // Generate email with Claude
+      let subject: string;
+      let emailBody: string;
+
+      try {
+        const emailTypeDescriptions: Record<string, string> = {
+          discovery: `Write a follow-up discovery email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Focus on their challenge: "${focusWeakPoint}". Ask an insightful question. This is a follow-up, so reference that you reached out before.`,
+          value_prop: `Write a follow-up value proposition email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Focus on solving: "${focusWeakPoint}". Share specific benefits and ROI numbers. Reference your previous email.`,
+          social_proof: `Write a follow-up social proof email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Share a case study about solving "${focusWeakPoint}" for a similar company. Include specific metrics.`,
+          urgency: `Write a follow-up email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Create mild urgency about "${focusWeakPoint}" — mention limited availability or upcoming changes. Don't be pushy.`,
+          custom: `Write a final follow-up email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. This is the last email in the sequence. Make it personal, reference previous attempts, and offer one last compelling reason to connect about "${focusWeakPoint}".`,
+        };
+
+        const result = await generateEmailWithClaude({
+          prompt: emailTypeDescriptions[schedule.emailType] || emailTypeDescriptions["value_prop"],
+          emailType: schedule.emailType,
+          leadContext: `Name: ${ownerName}, Company: ${companyName}, Industry: ${industry}, Email: ${leadEmail}`,
+          includeVariables: false,
+        });
+
+        subject = result.subject;
+        emailBody = result.body;
+      } catch (claudeError) {
+        console.error(`[FollowUpScheduler] Claude generation failed for email ${schedule.sequenceNumber}, using fallback:`, claudeError);
+        // Fallback subject and body
+        subject = `following up - ${companyName}`;
+        emailBody = `Hi ${ownerName},\n\nI wanted to follow up on my previous email about how we can help ${companyName} with ${focusWeakPoint} in the ${industry} space.\n\n• 🚀 **50+ qualified leads per week** generated on autopilot\n• 📈 **3x more booked calls** within 30 days\n• 💰 **Zero long-term contracts** — cancel anytime\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}\n\nBest,\nNitin`;
+      }
 
       const trackingToken = nanoid();
       await db.createFollowUpEmail({
         campaignLeadId,
-        sequenceNumber: i + 1,
-        emailType: email.emailType,
-        subject: email.subject,
-        emailBody: email.body,
+        sequenceNumber: schedule.sequenceNumber,
+        emailType: schedule.emailType,
+        subject,
+        emailBody,
         ctaLink,
         status: "scheduled",
         scheduledFor: scheduledDate,
         trackingToken,
       });
+
+      console.log(`[FollowUpScheduler] Scheduled follow-up email #${schedule.sequenceNumber} for day ${schedule.dayOffset} (${scheduledDate.toISOString()})`);
     }
 
-    return { success: true, emailsScheduled: Math.min(sequence.length, emailFollowUpCount) };
+    return { success: true, emailsScheduled: 7 };
   } catch (error) {
     console.error("[FollowUpScheduler] Error scheduling follow-up emails:", error);
     throw error;
@@ -92,52 +163,54 @@ export async function scheduleFollowUpEmails(
 }
 
 /**
- * Schedule follow-up calls for a campaign lead
- * 
- * Schedule: 
- * - Initial call (triggered on email open/click) = Call #1
- * - Day 3: 2 calls (morning 10 AM + afternoon 3 PM) = Calls #2 & #3
- * - Day 6: 2 calls (morning 10 AM + afternoon 3 PM) = Calls #4 & #5
- * - Day 12: 2 calls (morning 10 AM + afternoon 3 PM) = Calls #6 & #7
- * 
- * Total: 7 calls if client never picks up
+ * Schedule follow-up calls for a campaign lead.
+ * Calls are scheduled 1 day after each follow-up email.
  */
 export async function scheduleFollowUpCalls(
   campaignLeadId: number,
-  leadPhone: string,
-  callFollowUpCount: number = 7,
-  callFollowUpIntervalHours: number = 24
+  leadPhone: string
 ) {
   try {
     const now = new Date();
+    const normalizedPhone = normalizePhoneNumber(leadPhone);
 
-    // Schedule follow-up calls using the custom schedule
-    // (The initial call is Call #1, triggered immediately on email open/click)
-    // These are Calls #2 through #7
     for (let i = 0; i < FOLLOW_UP_CALL_SCHEDULE.length; i++) {
       const schedule = FOLLOW_UP_CALL_SCHEDULE[i];
       const scheduledDate = new Date(now);
-      
-      // Set the day offset
       scheduledDate.setDate(scheduledDate.getDate() + schedule.dayOffset);
-      
-      // Set the specific time (morning = 10 AM, afternoon = 3 PM)
       scheduledDate.setHours(schedule.hour, 0, 0, 0);
 
       await db.createFollowUpCall({
         campaignLeadId,
         attemptNumber: i + 2, // +2 because attempt #1 is the initial call
-        phoneNumber: leadPhone,
+        phoneNumber: normalizedPhone,
         status: "scheduled",
         scheduledFor: scheduledDate,
       });
     }
 
+    console.log(`[FollowUpScheduler] Scheduled ${FOLLOW_UP_CALL_SCHEDULE.length} follow-up calls for campaignLead ${campaignLeadId}`);
     return { success: true, callsScheduled: FOLLOW_UP_CALL_SCHEDULE.length };
   } catch (error) {
     console.error("[FollowUpScheduler] Error scheduling follow-up calls:", error);
     throw error;
   }
+}
+
+/**
+ * Get the follow-up email schedule description for display
+ */
+export function getFollowUpEmailScheduleDescription() {
+  return {
+    totalEmails: 7,
+    schedule: FOLLOW_UP_EMAIL_SCHEDULE.map((s) => ({
+      emailNumber: s.sequenceNumber,
+      dayOffset: s.dayOffset,
+      emailType: s.emailType,
+      label: `Follow-up #${s.sequenceNumber} (Day ${s.dayOffset})`,
+    })),
+    note: "First 3 emails sent every 2 days. Remaining 4 emails sent every 5 days after the 3rd.",
+  };
 }
 
 /**
@@ -147,28 +220,147 @@ export function getFollowUpCallScheduleDescription() {
   return {
     totalCalls: 7,
     schedule: [
-      { label: "Initial Call", timing: "Triggered immediately on email open/click", callNumber: 1 },
-      { label: "Day 3 - Morning", timing: "10:00 AM", callNumber: 2 },
-      { label: "Day 3 - Afternoon", timing: "3:00 PM", callNumber: 3 },
-      { label: "Day 6 - Morning", timing: "10:00 AM", callNumber: 4 },
-      { label: "Day 6 - Afternoon", timing: "3:00 PM", callNumber: 5 },
-      { label: "Day 12 - Morning", timing: "10:00 AM", callNumber: 6 },
-      { label: "Day 12 - Afternoon", timing: "3:00 PM", callNumber: 7 },
+      { label: "Initial Call", timing: "Triggered on email open/click", callNumber: 1 },
+      ...FOLLOW_UP_CALL_SCHEDULE.map((s, i) => ({
+        label: `Follow-up Call #${i + 2} (Day ${s.dayOffset})`,
+        timing: `${s.hour}:00`,
+        callNumber: i + 2,
+      })),
     ],
-    note: "Calls stop automatically once the client picks up.",
+    note: "Calls also trigger automatically when any follow-up email is opened. Calls stop once the client picks up.",
   };
 }
 
 /**
- * Process scheduled follow-up emails (called by cron job)
+ * Process scheduled follow-up emails (called by cron/heartbeat).
+ * Finds all pending follow-up emails whose scheduledFor <= now, sends them via SMTP,
+ * and updates their status.
  */
 export async function processScheduledFollowUpEmails() {
+  const nodemailer = await import("nodemailer");
   try {
     const now = new Date();
-    console.log("[FollowUpScheduler] Processing scheduled follow-up emails at", now);
-    // TODO: Implement follow-up email processing when needed
+    console.log("[FollowUpScheduler] Processing scheduled follow-up emails at", now.toISOString());
+
+    const dueEmails = await db.getDueFollowUpEmails();
+    if (!dueEmails || dueEmails.length === 0) {
+      console.log("[FollowUpScheduler] No due follow-up emails found");
+      return { processed: 0 };
+    }
+
+    console.log(`[FollowUpScheduler] Found ${dueEmails.length} due follow-up emails`);
+    let sentCount = 0;
+    let failCount = 0;
+
+    for (const followUpEmail of dueEmails) {
+      try {
+        // Get campaign lead info
+        const campaignLead = await db.getCampaignLeadById(followUpEmail.campaignLeadId);
+        if (!campaignLead) {
+          await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
+          failCount++;
+          continue;
+        }
+
+        // Get lead info
+        const lead = await db.getLeadById(campaignLead.leadId);
+        if (!lead) {
+          await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
+          failCount++;
+          continue;
+        }
+
+        // Get campaign to find userId
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign) {
+          await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
+          failCount++;
+          continue;
+        }
+
+        // Get user SMTP settings
+        const settings = await db.getUserSettings(campaign.userId);
+        if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
+          await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
+          failCount++;
+          continue;
+        }
+
+        // Get user's email signature (use plain text version, converted to HTML)
+        const signature = await db.getEmailSignature(campaign.userId);
+        const signatureHtml = getSignatureHtml(signature);
+
+        // Create transporter
+        const transporter = nodemailer.default.createTransport({
+          host: settings.smtpHost,
+          port: settings.smtpPort || 587,
+          secure: (settings.smtpPort || 587) === 465,
+          auth: {
+            user: settings.smtpUsername,
+            pass: settings.smtpPassword,
+          },
+        });
+
+        // Create tracking token for this follow-up email
+        const trackingToken = followUpEmail.trackingToken || nanoid();
+
+        // Create tracking event for open detection
+        await db.createEmailTrackingEvent({
+          campaignLeadId: followUpEmail.campaignLeadId,
+          eventType: "open",
+          trackingToken,
+        });
+
+        // Create click tracking token
+        const clickTrackingToken = nanoid();
+        await db.createEmailTrackingEvent({
+          campaignLeadId: followUpEmail.campaignLeadId,
+          eventType: "click",
+          trackingToken: clickTrackingToken,
+        });
+
+        // Use the deployed domain for tracking URLs
+        const baseUrl = process.env.SITE_URL || `https://${process.env.DOMAIN || 'leadgenoutreach-gkqazghm.manus.space'}`;
+        const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
+
+        // Replace CTA links with tracked versions
+        const ctaUrl = followUpEmail.ctaLink || 'https://calendly.com/nitin-virtualassistant/30min';
+        const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
+
+        // Convert plain text to HTML
+        const { plainTextToHtml } = await import("@shared/emailFormat");
+        let htmlBody = followUpEmail.emailBody
+          .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+        htmlBody = plainTextToHtml(htmlBody) + signatureHtml + trackingPixel;
+
+        // Send the email
+        await transporter.sendMail({
+          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+          to: lead.email,
+          subject: followUpEmail.subject,
+          html: htmlBody,
+        });
+
+        // Mark as sent
+        await db.updateFollowUpEmail(followUpEmail.id, {
+          status: "sent",
+          sentAt: new Date(),
+        });
+
+        sentCount++;
+        console.log(`[FollowUpScheduler] Sent follow-up email #${followUpEmail.sequenceNumber} to ${lead.email}`);
+      } catch (emailError: any) {
+        console.error(`[FollowUpScheduler] Failed to send follow-up email ${followUpEmail.id}:`, emailError);
+        await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
+        failCount++;
+      }
+    }
+
+    console.log(`[FollowUpScheduler] Processed ${dueEmails.length} follow-up emails: ${sentCount} sent, ${failCount} failed`);
+    return { processed: dueEmails.length, sent: sentCount, failed: failCount };
   } catch (error) {
     console.error("[FollowUpScheduler] Error processing scheduled follow-up emails:", error);
+    return { processed: 0, error: String(error) };
   }
 }
 
@@ -231,7 +423,7 @@ export async function processScheduledEmails() {
         
         // Get user's email signature
         const signature = await db.getEmailSignature(scheduledEmail.userId);
-        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+        const signatureHtml = getSignatureHtml(signature);
         
         // Convert plain text to HTML (preserve line breaks and bullet points)
         const { plainTextToHtml } = await import("@shared/emailFormat");
@@ -275,42 +467,44 @@ export async function processScheduledEmails() {
 }
 
 /**
- * Process scheduled follow-up calls (called by cron job)
- * Checks for calls that are due and triggers them via Retell.AI
+ * Process scheduled follow-up calls (called by cron job).
+ * Checks for calls that are due and triggers them via Retell.AI.
  */
 export async function processScheduledFollowUpCalls(retellApiKey: string, retellAgentId: string, senderPhoneNumber: string) {
   try {
     const now = new Date();
-    console.log("[FollowUpScheduler] Processing scheduled follow-up calls at", now);
+    console.log("[FollowUpScheduler] Processing scheduled follow-up calls at", now.toISOString());
 
-    // 1. Get all due follow-up calls
     const dueCalls = await db.getDueFollowUpCalls();
     console.log(`[FollowUpScheduler] Found ${dueCalls.length} due follow-up calls`);
 
     for (const call of dueCalls) {
       try {
-        // 2. Check if any previous call for this campaign lead was answered
+        // Check if any previous call for this campaign lead was answered
         const allCalls = await db.getFollowUpCallsByCampaignLead(call.campaignLeadId);
         const wasAnswered = allCalls.some(
           (c: any) => c.status === "completed" || c.status === "in_progress"
         );
 
         if (wasAnswered) {
-          // Lead already answered - cancel remaining calls
           await db.cancelRemainingFollowUpCalls(call.campaignLeadId);
           console.log(`[FollowUpScheduler] Lead already answered. Cancelled remaining calls for campaignLeadId: ${call.campaignLeadId}`);
           continue;
         }
 
-        // 3. Trigger the Retell.AI call
+        // Normalize phone number for Retell.AI
+        const normalizedPhone = normalizePhoneNumber(call.phoneNumber);
+        const normalizedFromPhone = normalizePhoneNumber(senderPhoneNumber);
+
+        // Trigger the Retell.AI call
         await db.updateFollowUpCall(call.id, { status: "initiated", initiatedAt: new Date() });
 
-        const callResult = await triggerRetellCall(
+        await triggerRetellCall(
           call.campaignLeadId,
-          call.phoneNumber,
+          normalizedPhone,
           retellApiKey,
           retellAgentId,
-          senderPhoneNumber,
+          normalizedFromPhone,
           "email_open"
         );
 
@@ -320,16 +514,19 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
         await db.updateFollowUpCall(call.id, { status: "failed" });
       }
     }
+
+    return { processed: dueCalls.length };
   } catch (error) {
     console.error("[FollowUpScheduler] Error processing scheduled follow-up calls:", error);
+    return { processed: 0, error: String(error) };
   }
 }
 
 /**
- * Trigger immediate follow-up call if email was opened/clicked
- * This is Call #1 in the sequence
+ * Trigger a Retell.AI call when a follow-up email is opened.
+ * This is the primary call trigger mechanism.
  */
-export async function triggerImmediateFollowUpCall(
+export async function triggerCallOnFollowUpOpen(
   campaignLeadId: number,
   leadPhone: string,
   retellApiKey: string,
@@ -338,11 +535,29 @@ export async function triggerImmediateFollowUpCall(
   triggerType: "email_open" | "email_click"
 ) {
   try {
-    // Create a follow-up call record (this is attempt #1 - the initial call)
-    const followUpCall = await db.createFollowUpCall({
+    // Check if any previous call for this campaign lead was answered
+    const allCalls = await db.getFollowUpCallsByCampaignLead(campaignLeadId);
+    const wasAnswered = allCalls.some(
+      (c: any) => c.status === "completed" || c.status === "in_progress"
+    );
+
+    if (wasAnswered) {
+      console.log(`[FollowUpScheduler] Lead already answered a call. Skipping for campaignLeadId: ${campaignLeadId}`);
+      return { success: false, reason: "already_answered" };
+    }
+
+    // Normalize phone numbers
+    const normalizedPhone = normalizePhoneNumber(leadPhone);
+    const normalizedFromPhone = normalizePhoneNumber(senderPhoneNumber);
+
+    console.log(`[FollowUpScheduler] Triggering call on follow-up open - to: ${normalizedPhone}, from: ${normalizedFromPhone}`);
+
+    // Create a follow-up call record
+    const existingCalls = allCalls.length;
+    await db.createFollowUpCall({
       campaignLeadId,
-      attemptNumber: 1,
-      phoneNumber: leadPhone,
+      attemptNumber: existingCalls + 1,
+      phoneNumber: normalizedPhone,
       status: "initiated",
       initiatedAt: new Date(),
     });
@@ -350,19 +565,51 @@ export async function triggerImmediateFollowUpCall(
     // Trigger the Retell.AI call
     const callResult = await triggerRetellCall(
       campaignLeadId,
-      leadPhone,
+      normalizedPhone,
       retellApiKey,
       retellAgentId,
-      senderPhoneNumber,
+      normalizedFromPhone,
       triggerType
     );
 
-    // Schedule the remaining 6 follow-up calls (Day 3, Day 6, Day 12 - 2x each)
-    await scheduleFollowUpCalls(campaignLeadId, leadPhone);
-
-    return { success: true, callId: callResult, followUpCallsScheduled: 6 };
+    return { success: true, callId: callResult };
   } catch (error) {
-    console.error("[FollowUpScheduler] Error triggering immediate follow-up call:", error);
-    throw error;
+    console.error("[FollowUpScheduler] Error triggering call on follow-up open:", error);
+    return { success: false, error: String(error) };
   }
 }
+
+/**
+ * Get the user's signature as HTML.
+ * Prioritizes signaturePlainText (user's actual signature) over signatureHtml (template).
+ */
+function getSignatureHtml(signature: any): string {
+  if (!signature) return '';
+
+  // Use the plain text signature (user's actual signature) and convert to HTML
+  if (signature.signaturePlainText && signature.signaturePlainText.trim()) {
+    const lines = signature.signaturePlainText.split('\n');
+    const htmlLines = lines.map((line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return '<br/>';
+      // Detect URLs and make them clickable
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const withLinks = trimmed.replace(urlRegex, '<a href="$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      // Detect email addresses
+      const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+      const withEmails = withLinks.replace(emailRegex, '<a href="mailto:$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      return `<p style="margin:0;padding:0;line-height:1.4;">${withEmails}</p>`;
+    });
+    return `<br/><br/><div style="font-family:Arial,sans-serif;font-size:13px;color:#555;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:16px;">${htmlLines.join('')}</div>`;
+  }
+
+  // Fallback to signatureHtml if no plain text version
+  if (signature.signatureHtml && signature.signatureHtml.trim()) {
+    return `<br/><br/>${signature.signatureHtml}`;
+  }
+
+  return '';
+}
+
+// Export for use in other modules
+export { getSignatureHtml };
