@@ -13,6 +13,7 @@ type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "cust
 
 interface AIWriteButtonProps {
   onGenerated: (subject: string, body: string) => void;
+  onPromptUsed?: (prompt: string, emailType: string, companyContext?: string) => void;
   leadId?: number; // Optional: for personalized emails to specific lead
   includeVariables?: boolean; // For bulk templates with {{variables}}
   buttonLabel?: string;
@@ -33,6 +34,7 @@ interface ProblemAnalysis {
 
 export function AIWriteButton({
   onGenerated,
+  onPromptUsed,
   leadId,
   includeVariables = false,
   buttonLabel = "AI Write",
@@ -100,6 +102,7 @@ export function AIWriteButton({
       });
 
       onGenerated(result.subject, result.body);
+      onPromptUsed?.(prompt, emailType, companyContext || undefined);
       setLastGenInfo({ generatedBy: result.generatedBy, model: result.model });
       toast.success(
         `Professional email generated! Review and edit as needed.`,

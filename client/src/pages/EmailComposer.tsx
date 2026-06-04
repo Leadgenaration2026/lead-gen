@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
@@ -34,6 +34,7 @@ export default function EmailComposer() {
   const [ctaLink, setCtaLink] = useState("https://calendly.com/nitin-virtualassistant/30min");
   const [showPreview, setShowPreview] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
+  const [lastAIPrompt, setLastAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
 
   // Pre-fill from URL params (template quick-launch)
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function EmailComposer() {
 
   const leadsQuery = trpc.leads.list.useQuery();
   const generateEmailMutation = trpc.email.generateAI.useMutation();
+  const regenerateMutation = trpc.email.generateAITemplate.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
   const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
@@ -305,6 +307,7 @@ export default function EmailComposer() {
               <div className="flex items-center gap-2">
                 <AIWriteButton
                   onGenerated={(s, b) => { setSubject(s); setEmailBody(b); setShowPreview(true); }}
+                  onPromptUsed={(prompt: string, emailType: string, companyContext?: string) => setLastAIPrompt({ prompt, emailType, companyContext })}
                   leadId={selectedLead || undefined}
                   includeVariables={false}
                   buttonLabel="AI Write Email"
@@ -317,7 +320,41 @@ export default function EmailComposer() {
 
               {/* Email Body */}
               <div className="space-y-2">
-                <Label htmlFor="body" className="font-semibold">Email Body</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="body" className="font-semibold">Email Body</Label>
+                  {showPreview && lastAIPrompt && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const result = await regenerateMutation.mutateAsync({
+                            prompt: lastAIPrompt.prompt,
+                            emailType: lastAIPrompt.emailType as any,
+                            companyContext: lastAIPrompt.companyContext || undefined,
+                            leadId: selectedLead || undefined,
+                            includeVariables: false,
+                            useProblemAnalysis: true,
+                          });
+                          setSubject(result.subject);
+                          setEmailBody(result.body);
+                          toast.success("New variation generated!");
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to regenerate");
+                        }
+                      }}
+                      disabled={regenerateMutation.isPending}
+                      className="gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+                    >
+                      {regenerateMutation.isPending ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Regenerating...</>
+                      ) : (
+                        <><RefreshCw className="w-3.5 h-3.5" /> Regenerate Variation</>
+                      )}
+                    </Button>
+                  )}
+                </div>
                 {showPreview ? (
                   <div
                     className="border rounded-lg p-4 min-h-[300px] bg-white text-sm leading-relaxed whitespace-pre-wrap font-sans"
