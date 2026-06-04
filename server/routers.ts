@@ -45,7 +45,7 @@ const updateUserSettingsSchema = z.object({
   smtpPort: z.number().optional(),
   smtpUsername: z.string().optional(),
   smtpPassword: z.string().optional(),
-  senderEmail: z.string().email().optional(),
+  senderEmail: z.union([z.string().email(), z.literal("")]).optional(),
   senderName: z.string().optional(),
 });
 
@@ -450,15 +450,21 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
         // Get user settings for SMTP
         const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.smtpHost || !settings?.senderEmail) {
+        if (!settings?.smtpHost || !settings?.smtpPassword || !settings?.senderEmail) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Please configure SMTP settings first",
+            message: "Please configure SMTP settings first (host, password, and sender email are required). Go to Settings > Email / SMTP.",
           });
         }
 
         // Get campaign leads
         const campaignLeads = await db.getCampaignLeads(campaignId);
+        if (campaignLeads.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No leads assigned to this campaign. Add leads before launching.",
+          });
+        }
         let sentCount = 0;
 
         // Send emails
@@ -530,7 +536,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           }
         }
 
-        // Update campaign status
+        // Update campaign status based on results
+        if (sentCount === 0 && campaignLeads.length > 0) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to send any emails. Please check your SMTP settings (host, port, username, password) and try again.",
+          });
+        }
+
         await db.updateCampaign(campaignId, {
           status: "active",
           launchedAt: new Date(),
@@ -602,7 +615,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
     get: protectedProcedure.query(async ({ ctx }) => {
       const settings = await db.getUserSettings(ctx.user.id);
       if (!settings) {
-        return {
+          return {
           userId: ctx.user.id,
           retellApiKey: "",
           retellAgentId: "",
@@ -613,6 +626,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           smtpPassword: "",
           senderEmail: "",
           senderName: "",
+          hasSmtpPassword: false,
+          hasRetellApiKey: false,
         };
       }
       // Don't return sensitive data to frontend
@@ -622,17 +637,25 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         senderPhoneNumber: settings.senderPhoneNumber,
         smtpHost: settings.smtpHost,
         smtpPort: settings.smtpPort,
+        smtpUsername: settings.smtpUsername,
         senderEmail: settings.senderEmail,
         senderName: settings.senderName,
+        hasSmtpPassword: !!settings.smtpPassword,
+        hasRetellApiKey: !!settings.retellApiKey,
       };
     }),
 
     update: protectedProcedure
       .input(updateUserSettingsSchema)
       .mutation(async ({ input, ctx }) => {
+        // Don't overwrite sensitive fields with empty strings
+        const cleanedInput: Record<string, any> = { ...input };
+        if (!cleanedInput.smtpPassword) delete cleanedInput.smtpPassword;
+        if (!cleanedInput.retellApiKey) delete cleanedInput.retellApiKey;
+        
         await db.upsertUserSettings({
           userId: ctx.user.id,
-          ...input,
+          ...cleanedInput,
         });
         return { success: true };
       }),

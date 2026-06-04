@@ -212,3 +212,7 @@
 - [x] Feature — Show lead count per set on management page
 - [x] Feature — CSV export button on leads page filtered by current lead set
 - [x] Feature — Add navigation link to Lead Sets management page
+
+## Batch 11 — Bug Fixes (SMTP & Campaign)
+- [x] Bug Fix — SMTP settings not saving after entering Gmail credentials
+- [x] Bug Fix — Campaign giving error message when launching

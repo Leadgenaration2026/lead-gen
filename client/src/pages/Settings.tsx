@@ -58,8 +58,10 @@ export default function SettingsPage() {
     try {
       await updateSettingsMutation.mutateAsync(formData);
       toast.success("Settings saved successfully");
-    } catch (error) {
-      toast.error("Failed to save settings");
+      settingsQuery.refetch();
+    } catch (error: any) {
+      const msg = error?.message || "Failed to save settings";
+      toast.error(msg);
     }
   };
 
@@ -153,7 +155,7 @@ export default function SettingsPage() {
                 <Label>API Key</Label>
                 <Input
                   type="password"
-                  placeholder="Your Retell.AI API key"
+                  placeholder={settingsQuery.data?.hasRetellApiKey ? "••••••••  (already saved, leave blank to keep)" : "Your Retell.AI API key"}
                   value={formData.retellApiKey}
                   onChange={(e) => setFormData({ ...formData, retellApiKey: e.target.value })}
                 />
@@ -238,12 +240,12 @@ export default function SettingsPage() {
                 <Label>SMTP Password</Label>
                 <Input
                   type="password"
-                  placeholder="Your SMTP password or app password"
+                  placeholder={settingsQuery.data?.hasSmtpPassword ? "••••••••  (already saved, leave blank to keep)" : "Your SMTP password or app password"}
                   value={formData.smtpPassword}
                   onChange={(e) => setFormData({ ...formData, smtpPassword: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  For Gmail, use an App Password (Settings &gt; Security &gt; App Passwords)
+                  For Gmail, use an App Password (Settings &gt; Security &gt; App Passwords). Leave blank to keep existing password.
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
