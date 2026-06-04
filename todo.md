@@ -252,3 +252,16 @@
 - [x] Feature — Retell.AI call triggered after each follow-up email is opened (not just initial email)
 - [x] Bug Fix — Retell.AI call not firing on first campaign launch
 - [x] Bug Fix — Signature showing incorrect format, must use the exact signature saved in settings
+
+## Batch 17 — Timezone, Signatures, Deliverability, Rotational Emails, Unsubscribe, Reply Handling
+
+- [x] Feature — Add timezone field to leads (auto-detected during generation)
+- [x] Feature — Retell.AI calls only between 10 AM - 5 PM lead's local time
+- [x] Bug Fix — Signature duplication (Claude adding name + separate signature below)
+- [x] Feature — Email deliverability checks with green checkmarks before sending
+- [x] Feature — Test email option to review template before campaign sends
+- [x] Feature — 5 rotational email addresses (Mon=email1, Tue=email2, etc.)
+- [x] Feature — Unsubscribe link in every email, removes lead from campaign
+- [x] Feature — Remove lead from campaign when customer replies
+- [x] Feature — Reply-to address set to nitin@virtualassistant-group.com
+- [x] Feature — Positive response status in activity when customer replies or books

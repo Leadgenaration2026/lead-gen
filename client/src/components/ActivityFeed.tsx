@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Mail, MousePointerClick, Phone, CheckCircle2, ExternalLink, PhoneCall, PhoneOff, PhoneMissed, Calendar, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Mail, MousePointerClick, Phone, CheckCircle2, ExternalLink, PhoneCall, PhoneOff, PhoneMissed, Calendar, Clock, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 
 interface ActivityFeedProps {
   campaignId: number;
@@ -15,6 +17,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
 
   const activityQuery = trpc.campaigns.activity.useQuery(campaignId, {
     enabled: true,
+  });
+
+  const markReplied = trpc.responses.markReplied.useMutation({
+    onSuccess: () => {
+      toast.success("Lead marked as replied \u2014 follow-ups cancelled");
+      activityQuery.refetch();
+    },
+    onError: () => toast.error("Failed to mark as replied"),
   });
 
   // Poll for updates every 5 seconds
@@ -257,6 +267,66 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                             <PhoneOff className="w-3 h-3" />
                             No Call Yet
                           </Badge>
+                        </div>
+                      )}
+                      {/* Response Status */}
+                      {activity.replied && (
+                        <div className="flex items-center gap-2">
+                          <Badge className={`text-xs gap-1 ${
+                            activity.responseStatus === 'positive' 
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : activity.responseStatus === 'negative'
+                              ? 'bg-red-100 text-red-800 border-red-200'
+                              : 'bg-gray-100 text-gray-800 border-gray-200'
+                          }`}>
+                            {activity.responseStatus === 'positive' ? '✅' : activity.responseStatus === 'negative' ? '❌' : '➖'}
+                            {activity.responseStatus === 'positive' ? 'Positive Response' : activity.responseStatus === 'negative' ? 'Negative Response' : 'Neutral Response'}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {formatTime(activity.repliedAt)}
+                          </span>
+                        </div>
+                      )}
+                      {/* Action buttons - Mark as Replied */}
+                      {!activity.replied && !activity.unsubscribed && activity.emailSent && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "positive" });
+                            }}
+                            disabled={markReplied.isPending}
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            Mark Positive Reply
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "negative" });
+                            }}
+                            disabled={markReplied.isPending}
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            Mark Negative
+                          </Button>
+                        </div>
+                      )}
+                      {/* Unsubscribed indicator */}
+                      {activity.unsubscribed && (
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-red-50 text-red-700 border-red-200 text-xs gap-1">
+                            🚫 Unsubscribed
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {formatTime(activity.unsubscribedAt)}
+                          </span>
                         </div>
                       )}
                     </div>

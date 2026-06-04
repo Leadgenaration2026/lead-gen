@@ -1,6 +1,6 @@
 import { eq, and, desc, inArray, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet } from "../drizzle/schema";
+import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -421,13 +421,24 @@ export async function getDueFollowUpEmails() {
 export async function getDueFollowUpCalls() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const { followUpCalls } = await import("../drizzle/schema");
+  const { followUpCalls, campaignLeads, leads } = await import("../drizzle/schema");
   const { lte, and } = await import("drizzle-orm");
-  return db.select().from(followUpCalls)
+  const results = await db.select({
+    id: followUpCalls.id,
+    campaignLeadId: followUpCalls.campaignLeadId,
+    attemptNumber: followUpCalls.attemptNumber,
+    phoneNumber: followUpCalls.phoneNumber,
+    status: followUpCalls.status,
+    scheduledFor: followUpCalls.scheduledFor,
+    leadTimezone: leads.timezone,
+  }).from(followUpCalls)
+    .innerJoin(campaignLeads, eq(followUpCalls.campaignLeadId, campaignLeads.id))
+    .innerJoin(leads, eq(campaignLeads.leadId, leads.id))
     .where(and(
       eq(followUpCalls.status, "scheduled"),
       lte(followUpCalls.scheduledFor, new Date())
     ));
+  return results;
 }
 
 // Cancel all remaining scheduled calls for a campaign lead (when lead answers)
@@ -445,7 +456,7 @@ export async function cancelRemainingFollowUpCalls(campaignLeadId: number) {
 }
 
 // ============ Lead Deduplication ============
-import { scheduledEmails, campaignTemplates } from "../drizzle/schema";
+import { scheduledEmails, campaignTemplates, followUpEmails, followUpCalls } from "../drizzle/schema";
 import type { InsertScheduledEmail } from "../drizzle/schema";
 import type { InsertCampaignTemplate } from "../drizzle/schema";
 
@@ -612,4 +623,103 @@ export async function getLeadsBySetId(leadSetId: number, userId: number) {
   return database.select().from(leads).where(
     and(eq(leads.leadSetId, leadSetId), eq(leads.userId, userId))
   ).orderBy(desc(leads.createdAt));
+}
+
+// ===== Rotational Emails =====
+
+export async function getRotationalEmailForDay(userId: number, dayOfWeek: number) {
+  const database = await getDb();
+  if (!database) return null;
+  const results = await database.select().from(rotationalEmails).where(
+    and(eq(rotationalEmails.userId, userId), eq(rotationalEmails.dayOfWeek, dayOfWeek), eq(rotationalEmails.isActive, true))
+  );
+  return results[0] || null;
+}
+
+export async function getRotationalEmailsByUser(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(rotationalEmails).where(eq(rotationalEmails.userId, userId)).orderBy(rotationalEmails.dayOfWeek);
+}
+
+export async function upsertRotationalEmail(data: Omit<InsertRotationalEmail, "id" | "createdAt" | "updatedAt">) {
+  const database = await getDb();
+  if (!database) return;
+  // Check if one exists for this user+day
+  const existing = await database.select().from(rotationalEmails).where(
+    and(eq(rotationalEmails.userId, data.userId), eq(rotationalEmails.dayOfWeek, data.dayOfWeek))
+  );
+  if (existing.length > 0) {
+    await database.update(rotationalEmails).set({
+      email: data.email,
+      smtpHost: data.smtpHost,
+      smtpPort: data.smtpPort,
+      smtpUsername: data.smtpUsername,
+      smtpPassword: data.smtpPassword,
+      senderName: data.senderName,
+      isActive: data.isActive ?? true,
+    }).where(eq(rotationalEmails.id, existing[0].id));
+  } else {
+    await database.insert(rotationalEmails).values(data as any);
+  }
+}
+
+export async function deleteRotationalEmail(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.delete(rotationalEmails).where(eq(rotationalEmails.id, id));
+}
+
+// ===== Unsubscribe & Reply =====
+
+export async function markLeadUnsubscribed(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignLeads).set({
+    unsubscribed: true,
+    unsubscribedAt: new Date(),
+  } as any).where(eq(campaignLeads.id, campaignLeadId));
+}
+
+export async function markLeadReplied(campaignLeadId: number, responseStatus: string = "positive") {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignLeads).set({
+    replied: true,
+    repliedAt: new Date(),
+    responseStatus,
+  } as any).where(eq(campaignLeads.id, campaignLeadId));
+}
+
+export async function isLeadUnsubscribed(campaignLeadId: number): Promise<boolean> {
+  const database = await getDb();
+  if (!database) return false;
+  const result = await database.select().from(campaignLeads).where(eq(campaignLeads.id, campaignLeadId));
+  return result[0]?.unsubscribed === true;
+}
+
+// Cancel all pending follow-up emails and calls for a campaign lead (on reply/unsubscribe)
+export async function cancelPendingFollowUps(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  
+  // Cancel pending follow-up emails
+  await database.update(followUpEmails).set({
+    status: "failed" as any, // Using "failed" to indicate cancelled
+  }).where(
+    and(
+      eq(followUpEmails.campaignLeadId, campaignLeadId),
+      eq(followUpEmails.status, "scheduled")
+    )
+  );
+  
+  // Cancel pending follow-up calls
+  await database.update(followUpCalls).set({
+    status: "failed" as any,
+  }).where(
+    and(
+      eq(followUpCalls.campaignLeadId, campaignLeadId),
+      eq(followUpCalls.status, "scheduled")
+    )
+  );
 }

@@ -157,9 +157,10 @@ Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - companyName: string
 - ownerName: string  
 - email: string (valid email format)
-- phoneNumber: string (valid phone format)
+- phoneNumber: string (valid phone format with country code, e.g. +1-555-123-4567)
 - website: string (optional, valid URL if provided)
-- industry: string (optional)
+- industry: string (the industry/sector of the business)
+- timezone: string (IANA timezone of the lead's location, e.g. "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London")
 
 Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
@@ -232,6 +233,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               phoneNumber: leadData.phoneNumber || "",
               website: leadData.website,
               industry: leadData.industry,
+              timezone: leadData.timezone || "America/New_York",
               userId: ctx.user.id,
               status: "new",
               leadSetId,
@@ -458,6 +460,23 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           });
         }
 
+        // Run deliverability checks before sending
+        const { runDeliverabilityChecks } = await import("./deliverabilityChecks");
+        const deliverabilityResult = await runDeliverabilityChecks({
+          senderEmail: settings.senderEmail,
+          senderName: settings.senderName || "",
+          subject: campaign.subject || campaign.name,
+          body: campaign.emailTemplate || "",
+          smtpHost: settings.smtpHost,
+        });
+        if (!deliverabilityResult.allPassed) {
+          const failedChecks = deliverabilityResult.checks.filter(c => c.status === "fail");
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Email deliverability checks failed: ${failedChecks.map(c => c.message).join("; ")}. Fix these issues in Settings before launching.`,
+          });
+        }
+
         // Get user's email signature (uses plain text version for correct display)
         const signature = await db.getEmailSignature(ctx.user.id);
         const signatureHtml = getSignatureHtml(signature);
@@ -517,22 +536,42 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             // Convert plain text to HTML if needed, append signature and tracking pixel
             emailBody = plainTextToHtml(emailBody) + signatureHtml + trackingPixel;
 
-            // Send email via SMTP
-            const transporter = nodemailer.createTransport({
+            // Add unsubscribe link
+            const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
+            emailBody += `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+
+            // Get rotational email for today (Mon=1, Tue=2, etc.)
+            const todayDow = new Date().getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+            const mappedDow = todayDow === 0 ? 5 : todayDow > 5 ? 5 : todayDow; // Map weekends to Friday
+            const rotationalEmail = await db.getRotationalEmailForDay(ctx.user.id, mappedDow);
+
+            // Use rotational email SMTP if available, otherwise fall back to settings
+            const smtpConfig = rotationalEmail ? {
+              host: rotationalEmail.smtpHost,
+              port: rotationalEmail.smtpPort,
+              secure: rotationalEmail.smtpPort === 465,
+              auth: { user: rotationalEmail.smtpUsername, pass: rotationalEmail.smtpPassword },
+            } : {
               host: settings.smtpHost || '',
               port: settings.smtpPort || 587,
               secure: (settings.smtpPort || 587) === 465,
-              auth: {
-                user: settings.smtpUsername || '',
-                pass: settings.smtpPassword || '',
-              },
-            } as any);
+              auth: { user: settings.smtpUsername || '', pass: settings.smtpPassword || '' },
+            };
+            const senderEmail = rotationalEmail ? rotationalEmail.email : settings.senderEmail;
+            const senderDisplayName = rotationalEmail ? (rotationalEmail.senderName || settings.senderName || 'Lead Gen') : (settings.senderName || 'Lead Gen');
+
+            // Send email via SMTP
+            const transporter = nodemailer.createTransport(smtpConfig as any);
 
             await transporter.sendMail({
-              from: `${settings.senderName || "Lead Gen"} <${settings.senderEmail}>`,
+              from: `"${senderDisplayName}" <${senderEmail}>`,
               to: lead.email,
+              replyTo: "nitin@virtualassistant-group.com",
               subject: campaign.subject,
               html: emailBody,
+              headers: {
+                'List-Unsubscribe': `<${unsubscribeUrl}>`,
+              },
             });
 
             // Update campaign lead status
@@ -680,6 +719,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             callStatus: latestCall?.status || null,
             callId: latestCall?.retellCallId || null,
             totalCalls: callLogs.length,
+            replied: (cl as any).replied || false,
+            repliedAt: (cl as any).repliedAt || null,
+            responseStatus: (cl as any).responseStatus || null,
+            unsubscribed: (cl as any).unsubscribed || false,
+            unsubscribedAt: (cl as any).unsubscribedAt || null,
             nextFollowUpEmails: pendingFollowUpEmails,
             nextFollowUpCalls: pendingFollowUpCalls,
           });
@@ -1000,6 +1044,30 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
   // AI Email Generation and Individual Sending
   email: router({
+    // Run deliverability checks and return results for UI display
+    checkDeliverability: protectedProcedure
+      .input(z.object({
+        subject: z.string().optional(),
+        body: z.string().optional(),
+      }).optional())
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.smtpHost || !settings?.senderEmail) {
+          return {
+            allPassed: false,
+            checks: [{ name: "SMTP Configuration", status: "fail" as const, message: "SMTP not configured" }],
+          };
+        }
+        const { runDeliverabilityChecks } = await import("./deliverabilityChecks");
+        return runDeliverabilityChecks({
+          senderEmail: settings.senderEmail,
+          senderName: settings.senderName || "",
+          subject: input?.subject || "Test Subject Line",
+          body: input?.body || "Test email body with unsubscribe link",
+          smtpHost: settings.smtpHost,
+        });
+      }),
+
     generateAI: protectedProcedure
       .input(z.object({
         leadId: z.number(),
@@ -1172,13 +1240,15 @@ Respond in this exact JSON format:
       .input(z.object({
         subject: z.string().min(1),
         body: z.string().min(1),
-        testEmail: z.string().email(),
+        testEmail: z.string().email().optional(), // If not provided, sends to user's own email
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
         if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your SMTP settings first in the Settings page." });
         }
+        // Send to user's own email if testEmail not provided
+        const recipientEmail = input.testEmail || settings.senderEmail || settings.smtpUsername;
 
         const transporter = nodemailer.createTransport({
           host: settings.smtpHost,
@@ -1202,7 +1272,8 @@ Respond in this exact JSON format:
 
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
-          to: input.testEmail,
+          to: recipientEmail,
+          replyTo: "nitin@virtualassistant-group.com",
           subject: testSubject,
           html: htmlBody,
         });
@@ -1603,6 +1674,72 @@ Respond in this exact JSON format:
         }
         await db.assignLeadsToSet(input.leadIds, input.leadSetId);
         return { success: true, count: input.leadIds.length };
+      }),
+  }),
+
+  // ============ Rotational Emails Router ============
+  rotationalEmails: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getRotationalEmailsByUser(ctx.user.id);
+    }),
+
+    upsert: protectedProcedure
+      .input(z.object({
+        email: z.string().email(),
+        smtpHost: z.string().min(1),
+        smtpPort: z.number().default(587),
+        smtpUsername: z.string().min(1),
+        smtpPassword: z.string().min(1),
+        senderName: z.string().optional(),
+        dayOfWeek: z.number().min(1).max(5), // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri
+        isActive: z.boolean().default(true),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.upsertRotationalEmail({
+          userId: ctx.user.id,
+          email: input.email,
+          smtpHost: input.smtpHost,
+          smtpPort: input.smtpPort,
+          smtpUsername: input.smtpUsername,
+          smtpPassword: input.smtpPassword,
+          senderName: input.senderName || null,
+          dayOfWeek: input.dayOfWeek,
+          isActive: input.isActive,
+        });
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id }) => {
+        await db.deleteRotationalEmail(id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ Lead Response Management ============
+  responses: router({
+    markReplied: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+        responseStatus: z.enum(["positive", "negative", "neutral"]).default("positive"),
+      }))
+      .mutation(async ({ input }) => {
+        await db.markLeadReplied(input.campaignLeadId, input.responseStatus);
+        // Cancel all pending follow-ups when lead replies
+        await db.cancelPendingFollowUps(input.campaignLeadId);
+        return { success: true };
+      }),
+
+    markUnsubscribed: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.markLeadUnsubscribed(input.campaignLeadId);
+        // Cancel all pending follow-ups when lead unsubscribes
+        await db.cancelPendingFollowUps(input.campaignLeadId);
+        return { success: true };
       }),
   }),
 });

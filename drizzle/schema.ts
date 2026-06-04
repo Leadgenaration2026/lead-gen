@@ -39,6 +39,7 @@ export const leads = mysqlTable("leads", {
   status: mysqlEnum("status", ["new", "contacted", "qualified", "converted", "rejected"]).default("new").notNull(),
   tag: mysqlEnum("tag", ["hot", "warm", "cold", "follow_up", "none"]).default("none").notNull(),
   leadSetId: int("leadSetId"),
+  timezone: varchar("timezone", { length: 50 }).default("America/New_York"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -83,6 +84,11 @@ export const campaignLeads = mysqlTable("campaignLeads", {
   callTriggered: boolean("callTriggered").default(false).notNull(),
   callTriggeredAt: timestamp("callTriggeredAt"),
   retellCallId: varchar("retellCallId", { length: 255 }),
+  unsubscribed: boolean("unsubscribed").default(false).notNull(),
+  unsubscribedAt: timestamp("unsubscribedAt"),
+  replied: boolean("replied").default(false).notNull(),
+  repliedAt: timestamp("repliedAt"),
+  responseStatus: varchar("responseStatus", { length: 50 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -297,3 +303,22 @@ export const leadSets = mysqlTable("leadSets", {
 
 export type LeadSet = typeof leadSets.$inferSelect;
 export type InsertLeadSet = typeof leadSets.$inferInsert;
+
+// Rotational email accounts table - 5 emails used Mon-Fri
+export const rotationalEmails = mysqlTable("rotationalEmails", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  smtpHost: varchar("smtpHost", { length: 255 }).notNull(),
+  smtpPort: int("smtpPort").notNull().default(587),
+  smtpUsername: varchar("smtpUsername", { length: 255 }).notNull(),
+  smtpPassword: varchar("smtpPassword", { length: 255 }).notNull(),
+  senderName: varchar("senderName", { length: 255 }),
+  dayOfWeek: int("dayOfWeek").notNull(), // 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type RotationalEmail = typeof rotationalEmails.$inferSelect;
+export type InsertRotationalEmail = typeof rotationalEmails.$inferInsert;

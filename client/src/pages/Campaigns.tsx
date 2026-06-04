@@ -19,6 +19,7 @@ export default function CampaignsPage() {
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
   const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
+  const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
@@ -247,15 +248,37 @@ export default function CampaignsPage() {
 
                   <div className="flex gap-2">
                     {campaign.status === "draft" && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleLaunchCampaign(campaign.id)}
-                        disabled={launchCampaignMutation.isPending}
-                        className="gap-2"
-                      >
-                        <Play className="w-4 h-4" />
-                        Launch
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              await sendTestEmailMutation.mutateAsync({
+                                subject: campaign.subject || campaign.name,
+                                body: campaign.emailTemplate || "Preview not available",
+                              });
+                              toast.success("Preview email sent to your inbox! Check before launching.");
+                            } catch (error: any) {
+                              toast.error(error?.message || "Failed to send preview email");
+                            }
+                          }}
+                          disabled={sendTestEmailMutation.isPending}
+                          className="gap-2"
+                        >
+                          <Mail className="w-4 h-4" />
+                          {sendTestEmailMutation.isPending ? "Sending..." : "Send Preview"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleLaunchCampaign(campaign.id)}
+                          disabled={launchCampaignMutation.isPending}
+                          className="gap-2"
+                        >
+                          <Play className="w-4 h-4" />
+                          Launch
+                        </Button>
+                      </>
                     )}
                     {campaign.status === "active" && (
                       <Button

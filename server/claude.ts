@@ -71,6 +71,7 @@ export async function generateEmailWithClaude(params: GenerateEmailParams): Prom
 6. LOWERCASE SUBJECT — Subject lines are all lowercase, under 40 characters, curiosity-driven.
 7. PERSONALIZED — Reference something specific about the recipient or their company and their INDUSTRY.
 8. INDUSTRY MENTION — Always reference the lead's industry naturally in the email body to show relevance.
+9. NO SIGN-OFF — Do NOT include any closing like "Best,", "Regards,", "Cheers," or your name at the end. The email signature is appended automatically by the system. End the email with the CTA block and nothing else.
 
 Email Style: ${typeGuidance}
 
@@ -96,7 +97,7 @@ Return ONLY a JSON object with exactly two fields:
 - "body": the email body as PLAIN TEXT (use \\n for line breaks, • for bullet points with emoji icons, **bold** for USPs, NO HTML)
 
 Example format:
-{"subject": "quick thought about your growth", "body": "Hi {{ownerName}},\\n\\nI noticed {{companyName}} is making waves in the {{industry}} space. Most companies at your stage struggle with lead generation — here's how we help:\\n\\n• 🚀 **50+ qualified leads per week** generated on autopilot\\n• 📈 **3x more booked calls** within 30 days\\n• 💰 **Zero long-term contracts** — cancel anytime\\n\\nWe've helped dozens of {{industry}} businesses scale their outreach without hiring extra staff.\\n\\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\\n🗓️ 30 Min Free Consultation: {{ctaLink}}\\n\\nBest,\\nNitin"}`;
+{"subject": "quick thought about your growth", "body": "Hi {{ownerName}},\\n\\nI noticed {{companyName}} is making waves in the {{industry}} space. Most companies at your stage struggle with lead generation — here's how we help:\\n\\n• 🚀 **50+ qualified leads per week** generated on autopilot\\n• 📈 **3x more booked calls** within 30 days\\n• 💰 **Zero long-term contracts** — cancel anytime\\n\\nWe've helped dozens of {{industry}} businesses scale their outreach without hiring extra staff.\\n\\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\\n🗓️ 30 Min Free Consultation: {{ctaLink}}"}`;
 
   const response = await client.messages.create({
     model: modelUsed,
@@ -134,6 +135,9 @@ Example format:
     lines.splice(insertIdx, 0, bullets);
     emailBody = lines.join("\n");
   }
+
+  // Strip any trailing sign-off that Claude might add despite instructions
+  emailBody = emailBody.replace(/\n\n(?:Best|Regards|Cheers|Thanks|Warm regards|Kind regards|Sincerely)[,]?\n[\s\S]*$/, "");
 
   // Ensure CTA link is present with the required format
   const ctaTarget = params.includeVariables ? "{{ctaLink}}" : "https://calendly.com/nitin-virtualassistant/30min";

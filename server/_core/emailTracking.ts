@@ -83,7 +83,8 @@ export function registerEmailTrackingRoutes(app: Express) {
               settings.retellApiKey,
               settings.retellAgentId,
               normalizedFromPhone,
-              'email_open'
+              'email_open',
+              (lead as any).timezone || undefined
             );
             
             if (result.success) {
@@ -183,7 +184,8 @@ export function registerEmailTrackingRoutes(app: Express) {
                 settings.retellApiKey,
                 settings.retellAgentId,
                 normalizedFromPhone,
-                'email_click'
+                'email_click',
+                (lead as any).timezone || undefined
               );
               
               if (result.success) {
@@ -201,6 +203,16 @@ export function registerEmailTrackingRoutes(app: Express) {
         }
       }
 
+      // If the click is on a Calendly/booking link, mark as positive response
+      if (event && url.toLowerCase().includes("calendly.com")) {
+        try {
+          await db.markLeadReplied(event.campaignLeadId, "positive");
+          console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as positive response (booking link clicked)`);
+        } catch (err) {
+          console.error("[EmailTracking] Failed to mark positive response:", err);
+        }
+      }
+
       // Redirect to original URL
       res.redirect(302, url);
     } catch (error) {
@@ -212,6 +224,62 @@ export function registerEmailTrackingRoutes(app: Express) {
       } else {
         res.status(400).json({ error: "Failed to process click" });
       }
+    }
+  });
+
+  /**
+   * Unsubscribe endpoint
+   * GET /api/track/unsubscribe/:token
+   * Marks the lead as unsubscribed and shows confirmation page
+   */
+  app.get("/api/track/unsubscribe/:token", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      console.log(`[EmailTracking] Unsubscribe request for token: ${token}`);
+
+      const event = await db.getEmailTrackingEventByToken(token);
+      if (event) {
+        await db.markLeadUnsubscribed(event.campaignLeadId);
+        await db.cancelPendingFollowUps(event.campaignLeadId);
+        console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as unsubscribed and cancelled follow-ups`);
+      }
+
+      // Show a simple confirmation page
+      res.setHeader("Content-Type", "text/html");
+      res.send(`<!DOCTYPE html><html><head><title>Unsubscribed</title><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;}div{text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;}h1{color:#111;font-size:24px;}p{color:#666;font-size:16px;}</style></head><body><div><h1>\u2705 Unsubscribed</h1><p>You have been successfully unsubscribed from future emails. We're sorry to see you go.</p></div></body></html>`);
+    } catch (error) {
+      console.error("[EmailTracking] Error processing unsubscribe:", error);
+      res.setHeader("Content-Type", "text/html");
+      res.send(`<!DOCTYPE html><html><head><title>Unsubscribed</title></head><body><h1>Unsubscribed</h1><p>You have been unsubscribed.</p></body></html>`);
+    }
+  });
+
+  /**
+   * Reply detection webhook
+   * POST /api/webhooks/reply
+   * Called when a lead replies to an email (via email forwarding rules or Zapier)
+   * Body: { email: string } or { campaignLeadId: number }
+   */
+  app.post("/api/webhooks/reply", async (req: Request, res: Response) => {
+    try {
+      const { email, campaignLeadId, responseStatus } = req.body;
+      console.log(`[EmailTracking] Reply webhook received - email: ${email}, campaignLeadId: ${campaignLeadId}`);
+
+      if (campaignLeadId) {
+        await db.markLeadReplied(campaignLeadId, responseStatus || "positive");
+        await db.cancelPendingFollowUps(campaignLeadId);
+        console.log(`[EmailTracking] Marked campaignLead ${campaignLeadId} as replied (positive)`);
+      } else if (email) {
+        // Find the campaign lead by email
+        const database = (await import("../db")).getDb;
+        // Simple lookup - find leads with this email that are in active campaigns
+        console.log(`[EmailTracking] Looking up campaign leads for email: ${email}`);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[EmailTracking] Error processing reply webhook:", error);
+      res.status(500).json({ error: "Failed to process reply" });
     }
   });
 

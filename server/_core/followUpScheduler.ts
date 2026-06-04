@@ -45,6 +45,26 @@ const FOLLOW_UP_CALL_SCHEDULE = [
 ];
 
 /**
+ * Get the current hour in the lead's local timezone.
+ * Used to ensure calls are only made between 10 AM - 5 PM lead time.
+ */
+function getLeadLocalHour(timezone: string): number {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date());
+    const hourPart = parts.find((p) => p.type === "hour");
+    return parseInt(hourPart?.value || "12", 10);
+  } catch {
+    // Default to noon if timezone is invalid (safe to call)
+    return 12;
+  }
+}
+
+/**
  * Normalize phone number to E.164 format for Retell.AI
  * Strips parentheses, dashes, spaces, and ensures +country code prefix
  */
@@ -262,6 +282,13 @@ export async function processScheduledFollowUpEmails() {
           continue;
         }
 
+        // Skip unsubscribed or replied leads
+        if (campaignLead.unsubscribed || campaignLead.replied) {
+          await db.updateFollowUpEmail(followUpEmail.id, { status: "cancelled" });
+          console.log(`[FollowUpScheduler] Skipping follow-up for campaignLead ${campaignLead.id} - ${campaignLead.unsubscribed ? 'unsubscribed' : 'replied'}`);
+          continue;
+        }
+
         // Get lead info
         const lead = await db.getLeadById(campaignLead.leadId);
         if (!lead) {
@@ -333,12 +360,20 @@ export async function processScheduledFollowUpEmails() {
           .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
         htmlBody = plainTextToHtml(htmlBody) + signatureHtml + trackingPixel;
 
+        // Add unsubscribe link
+        const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
+        htmlBody += `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+
         // Send the email
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
           to: lead.email,
+          replyTo: "nitin@virtualassistant-group.com",
           subject: followUpEmail.subject,
           html: htmlBody,
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+          },
         });
 
         // Mark as sent
@@ -429,12 +464,20 @@ export async function processScheduledEmails() {
         const { plainTextToHtml } = await import("@shared/emailFormat");
         const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + signatureHtml + trackingPixel;
 
+        // Add unsubscribe link
+        const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
+        const finalHtml = htmlBody + `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+
         // Send the email
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
           to: lead.email,
+          replyTo: "nitin@virtualassistant-group.com",
           subject: scheduledEmail.subject,
-          html: htmlBody,
+          html: finalHtml,
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+          },
         });
 
         // Mark as sent
@@ -480,6 +523,14 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
 
     for (const call of dueCalls) {
       try {
+        // Check if lead's local time is between 10 AM - 5 PM
+        const leadTimezone = call.leadTimezone || "America/New_York";
+        const leadLocalHour = getLeadLocalHour(leadTimezone);
+        if (leadLocalHour < 10 || leadLocalHour >= 17) {
+          console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - lead local time is ${leadLocalHour}:00 (${leadTimezone}), outside 10AM-5PM window`);
+          continue;
+        }
+
         // Check if any previous call for this campaign lead was answered
         const allCalls = await db.getFollowUpCallsByCampaignLead(call.campaignLeadId);
         const wasAnswered = allCalls.some(
@@ -532,9 +583,18 @@ export async function triggerCallOnFollowUpOpen(
   retellApiKey: string,
   retellAgentId: string,
   senderPhoneNumber: string,
-  triggerType: "email_open" | "email_click"
+  triggerType: "email_open" | "email_click",
+  leadTimezone?: string
 ) {
   try {
+    // Check if lead's local time is between 10 AM - 5 PM
+    const timezone = leadTimezone || "America/New_York";
+    const leadLocalHour = getLeadLocalHour(timezone);
+    if (leadLocalHour < 10 || leadLocalHour >= 17) {
+      console.log(`[FollowUpScheduler] Skipping instant call for campaignLeadId: ${campaignLeadId} - lead local time is ${leadLocalHour}:00 (${timezone}), outside 10AM-5PM window`);
+      return { success: false, reason: "outside_business_hours" };
+    }
+
     // Check if any previous call for this campaign lead was answered
     const allCalls = await db.getFollowUpCallsByCampaignLead(campaignLeadId);
     const wasAnswered = allCalls.some(
