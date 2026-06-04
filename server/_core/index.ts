@@ -40,6 +40,7 @@ async function startServer() {
   registerEmailTrackingRoutes(app);
 
   // Scheduled email processor endpoint (called by heartbeat cron)
+  // Processes: 1) Scheduled one-off emails, 2) Follow-up emails, 3) Follow-up calls
   app.post("/api/scheduled/process-emails", async (req, res) => {
     try {
       // Authenticate cron request
@@ -49,14 +50,38 @@ async function startServer() {
         return res.status(403).json({ error: "cron-only" });
       }
 
-      const { processScheduledEmails } = await import("./followUpScheduler");
-      const result = await processScheduledEmails();
-      res.json({ ok: true, ...result });
+      const { processScheduledEmails, processScheduledFollowUpEmails, processScheduledFollowUpCalls } = await import("./followUpScheduler");
+      const db = await import("../db");
+
+      // 1. Process one-off scheduled emails
+      const scheduledResult = await processScheduledEmails();
+      console.log(`[Heartbeat] Scheduled emails: ${JSON.stringify(scheduledResult)}`);
+
+      // 2. Process follow-up emails that are due
+      const followUpResult = await processScheduledFollowUpEmails();
+      console.log(`[Heartbeat] Follow-up emails: ${JSON.stringify(followUpResult)}`);
+
+      // 3. Process follow-up calls that are due
+      // Get Retell.AI settings from the owner's settings
+      const ownerSettings = await db.getUserSettings(1); // Owner userId
+      if (ownerSettings?.retellApiKey && ownerSettings?.retellAgentId && ownerSettings?.senderPhoneNumber) {
+        const callsResult = await processScheduledFollowUpCalls(
+          ownerSettings.retellApiKey,
+          ownerSettings.retellAgentId,
+          ownerSettings.senderPhoneNumber
+        );
+        console.log(`[Heartbeat] Follow-up calls: ${JSON.stringify(callsResult)}`);
+        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: callsResult });
+      } else {
+        console.log(`[Heartbeat] Skipping follow-up calls - Retell.AI not configured`);
+        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: { skipped: "retell_not_configured" } });
+      }
     } catch (error: any) {
-      console.error("[ScheduledEmailProcessor] Handler error:", error);
+      console.error("[Heartbeat] Handler error:", error);
       res.status(500).json({
         error: error.message || "Unknown error",
         stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        context: { url: req.url, taskUid: (req as any).user?.taskUid },
         timestamp: new Date().toISOString(),
       });
     }
