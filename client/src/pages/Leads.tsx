@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download } from "lucide-react";
 import { toast } from "sonner";
 
 const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -64,6 +64,8 @@ export default function LeadsPage() {
 
   // Bulk assign dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const bulkDeleteMutation = trpc.leads.bulkDelete.useMutation();
   const [newSetName, setNewSetName] = useState("");
   const [assignToSetId, setAssignToSetId] = useState<string>("");
 
@@ -552,6 +554,46 @@ export default function LeadsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Delete {selectedLeadIds.size} Lead(s)?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. All selected leads and their associated data (emails, calls, campaign links) will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={bulkDeleteMutation.isPending}
+              onClick={async () => {
+                try {
+                  const ids = Array.from(selectedLeadIds);
+                  await bulkDeleteMutation.mutateAsync({ leadIds: ids });
+                  toast.success(`Deleted ${ids.length} lead(s)`);
+                  setSelectedLeadIds(new Set());
+                  setBulkDeleteDialogOpen(false);
+                  leadsQuery.refetch();
+                } catch (error: any) {
+                  toast.error(error?.message || "Failed to delete leads");
+                }
+              }}
+            >
+              {bulkDeleteMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Deleting...</>
+              ) : (
+                `Delete ${selectedLeadIds.size} Lead(s)`
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Action Buttons Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Manual Lead Entry */}
@@ -761,6 +803,15 @@ export default function LeadsPage() {
                 Assign to Set
               </Button>
               <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setBulkDeleteDialogOpen(true)}
+                className="gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete Selected
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedLeadIds(new Set())}
@@ -824,6 +875,46 @@ export default function LeadsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (filteredLeads.length === 0) {
+                    toast.error("No leads to export");
+                    return;
+                  }
+                  const headers = ["Company", "Owner", "Email", "Phone", "Industry", "Tag", "Lead Set"];
+                  const rows = filteredLeads.map((lead: any) => [
+                    lead.companyName || "",
+                    lead.ownerName || "",
+                    lead.email || "",
+                    lead.phone || "",
+                    lead.industry || "",
+                    lead.tag || "",
+                    leadSets.find((s: any) => s.id === lead.leadSetId)?.name || "Unassigned",
+                  ]);
+                  const csvContent = [headers, ...rows]
+                    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+                    .join("\n");
+                  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.href = url;
+                  const setName = filterLeadSet !== "all"
+                    ? (filterLeadSet === "unassigned" ? "unassigned" : leadSets.find((s: any) => s.id === parseInt(filterLeadSet))?.name || "leads")
+                    : "all-leads";
+                  link.download = `${setName}-${new Date().toISOString().slice(0, 10)}.csv`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                  toast.success(`Exported ${filteredLeads.length} leads to CSV`);
+                }}
+                className="gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export CSV
+              </Button>
             </div>
           </div>
         </CardHeader>

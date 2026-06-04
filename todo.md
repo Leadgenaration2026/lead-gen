@@ -201,3 +201,14 @@
 - [x] Feature — Create new lead set from bulk assign dialog
 - [x] Feature — Remove from set option in bulk assign
 - [x] Feature — Lead set name shown as badge in leads table
+
+## Batch 10 — Bulk Delete, Lead Set Management & CSV Export
+- [x] Feature — Bulk delete button in selection action bar with confirmation dialog
+- [x] Feature — Backend bulkDelete procedure for leads
+- [x] Feature — Lead Set management page (/lead-sets) with list of all sets
+- [x] Feature — Rename lead set inline or via dialog
+- [x] Feature — Delete lead set (with option to keep or delete leads)
+- [x] Feature — Merge two lead sets into one
+- [x] Feature — Show lead count per set on management page
+- [x] Feature — CSV export button on leads page filtered by current lead set
+- [x] Feature — Add navigation link to Lead Sets management page

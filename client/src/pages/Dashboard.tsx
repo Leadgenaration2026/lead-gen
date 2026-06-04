@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Plus, Mail, Phone, BarChart3 } from "lucide-react";
+import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus } from "lucide-react";
 import LeadsPage from "./Leads";
 import CampaignsPage from "./Campaigns";
 import SettingsPage from "./Settings";
@@ -179,6 +179,10 @@ function OverviewTab() {
           <Button variant="outline" className="gap-2">
             <Phone className="w-4 h-4" />
             Configure Retell.AI
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => window.location.href = '/lead-sets'}>
+            <FolderPlus className="w-4 h-4" />
+            Manage Lead Sets
           </Button>
         </CardContent>
       </Card>

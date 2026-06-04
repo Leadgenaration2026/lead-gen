@@ -110,6 +110,19 @@ export const appRouter = router({
       return db.deleteLead(leadId);
     }),
 
+    bulkDelete: protectedProcedure
+      .input(z.object({ leadIds: z.array(z.number()).min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        // Verify all leads belong to the user
+        const leads = await Promise.all(input.leadIds.map(id => db.getLeadById(id)));
+        const validIds = leads.filter(l => l && l.userId === ctx.user.id).map(l => l!.id);
+        if (validIds.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No valid leads found" });
+        for (const id of validIds) {
+          await db.deleteLead(id);
+        }
+        return { deleted: validIds.length };
+      }),
+
     addManual: protectedProcedure
       .input(z.object({
         companyName: z.string().min(1),
@@ -1432,6 +1445,30 @@ Respond in this exact JSON format:
         }
         await db.deleteLeadSet(input.id);
         return { success: true };
+      }),
+
+    merge: protectedProcedure
+      .input(z.object({
+        sourceSetId: z.number(),
+        targetSetId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const sourceSet = await db.getLeadSetById(input.sourceSetId);
+        const targetSet = await db.getLeadSetById(input.targetSetId);
+        if (!sourceSet || sourceSet.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Source set not found" });
+        }
+        if (!targetSet || targetSet.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Target set not found" });
+        }
+        // Move all leads from source to target
+        const sourceLeads = await db.getLeadsBySetId(input.sourceSetId, ctx.user.id);
+        if (sourceLeads.length > 0) {
+          await db.assignLeadsToSet(sourceLeads.map(l => l.id), input.targetSetId);
+        }
+        // Delete the source set
+        await db.deleteLeadSet(input.sourceSetId);
+        return { success: true, mergedCount: sourceLeads.length };
       }),
 
     assignLeads: protectedProcedure
