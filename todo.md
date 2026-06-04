@@ -223,3 +223,7 @@
 - [x] UX Fix — Password fields only send data to backend when user actually types something new
 - [x] Feature — "Send Test Email" button appears after SMTP is configured
 - [x] Fix — TypeScript error in sendTestEmail mutation call (to → testEmail field name)
+
+## Batch 13 — Bug Fix (SMTP Password & Retell API Key Not Saving)
+- [x] Bug Fix — SMTP password not being saved when user enters it
+- [x] Bug Fix — Retell.AI API key not being saved when user enters it

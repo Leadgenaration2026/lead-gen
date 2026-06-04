@@ -61,20 +61,47 @@ export default function SettingsPage() {
     }
   }, [signatureQuery.data]);
 
-  const handleSaveSettings = async () => {
+  // Save only Retell.AI fields
+  const handleSaveRetell = async () => {
     try {
-      // Only include password fields if user actually typed something
-      const payload: Record<string, any> = { ...formData };
-      if (!passwordTouched || !payload.smtpPassword) {
-        delete payload.smtpPassword;
-      }
-      if (!retellKeyTouched || !payload.retellApiKey) {
-        delete payload.retellApiKey;
+      const payload: Record<string, any> = {
+        retellAgentId: formData.retellAgentId,
+        senderPhoneNumber: formData.senderPhoneNumber,
+      };
+      // Only include API key if user typed a new one
+      if (retellKeyTouched && formData.retellApiKey) {
+        payload.retellApiKey = formData.retellApiKey;
       }
       
       await updateSettingsMutation.mutateAsync(payload);
-      toast.success("Settings saved successfully!", {
-        description: "Your configuration has been updated.",
+      toast.success("Retell.AI settings saved!", {
+        description: "Your Retell.AI configuration has been updated.",
+      });
+      settingsQuery.refetch();
+    } catch (error: any) {
+      const msg = error?.message || "Failed to save settings";
+      toast.error(msg);
+    }
+  };
+
+  // Save only SMTP/Email fields
+  const handleSaveSmtp = async () => {
+    try {
+      const payload: Record<string, any> = {
+        smtpHost: formData.smtpHost,
+        smtpPort: formData.smtpPort,
+        smtpUsername: formData.smtpUsername,
+        senderEmail: formData.senderEmail,
+        senderName: formData.senderName,
+      };
+      // Only include password if user typed a new one
+      if (passwordTouched && formData.smtpPassword) {
+        payload.smtpPassword = formData.smtpPassword;
+      }
+      
+      await updateSettingsMutation.mutateAsync(payload);
+      toast.success("Email settings saved!", {
+        description: "Your SMTP configuration has been updated.",
       });
       settingsQuery.refetch();
     } catch (error: any) {
@@ -237,7 +264,7 @@ export default function SettingsPage() {
               </div>
               <div className="pt-4">
                 <Button
-                  onClick={handleSaveSettings}
+                  onClick={handleSaveRetell}
                   disabled={updateSettingsMutation.isPending}
                   className="gap-2"
                 >
@@ -306,7 +333,7 @@ export default function SettingsPage() {
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  For Gmail: Go to Google Account → Security → 2-Step Verification → App Passwords to generate one.
+                  For Gmail: Go to Google Account &rarr; Security &rarr; 2-Step Verification &rarr; App Passwords to generate one.
                   {settingsQuery.data?.hasSmtpPassword && " Leave blank to keep your existing password."}
                 </p>
               </div>
@@ -331,7 +358,7 @@ export default function SettingsPage() {
               </div>
               <div className="pt-4 flex gap-3">
                 <Button
-                  onClick={handleSaveSettings}
+                  onClick={handleSaveSmtp}
                   disabled={updateSettingsMutation.isPending}
                   className="gap-2"
                 >

@@ -648,10 +648,16 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
     update: protectedProcedure
       .input(updateUserSettingsSchema)
       .mutation(async ({ input, ctx }) => {
-        // Don't overwrite sensitive fields with empty strings
-        const cleanedInput: Record<string, any> = { ...input };
-        if (!cleanedInput.smtpPassword) delete cleanedInput.smtpPassword;
-        if (!cleanedInput.retellApiKey) delete cleanedInput.retellApiKey;
+        // Only include fields that were explicitly provided (not undefined)
+        // and don't overwrite sensitive fields with empty strings
+        const cleanedInput: Record<string, any> = {};
+        for (const [key, value] of Object.entries(input)) {
+          if (value === undefined) continue; // skip fields not sent by the frontend
+          // Don't overwrite sensitive fields with empty strings
+          if (key === 'smtpPassword' && !value) continue;
+          if (key === 'retellApiKey' && !value) continue;
+          cleanedInput[key] = value;
+        }
         
         await db.upsertUserSettings({
           userId: ctx.user.id,
