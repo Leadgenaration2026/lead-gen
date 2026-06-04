@@ -2,7 +2,9 @@
  * Convert plain text email body to HTML for sending.
  * Handles:
  * - Line breaks → <p> or <br/>
- * - Bullet points (•) → proper <ul><li> list
+ * - Bullet points (•) → proper styled list with emoji icons
+ * - **bold** markers → <strong> tags
+ * - CTA link formatting with button styling
  * - Preserves existing HTML (no-op if already HTML)
  */
 export function plainTextToHtml(text: string): string {
@@ -21,11 +23,13 @@ export function plainTextToHtml(text: string): string {
     if (trimmed.startsWith("•")) {
       // Start a list if not already in one
       if (!inList) {
-        result.push('<ul style="list-style:none;padding-left:0;margin:8px 0;">');
+        result.push('<ul style="list-style:none;padding-left:0;margin:12px 0;">');
         inList = true;
       }
-      const content = trimmed.slice(1).trim();
-      result.push(`<li style="margin-bottom:6px;padding-left:16px;position:relative;"><span style="position:absolute;left:0;">•</span>${content}</li>`);
+      let content = trimmed.slice(1).trim();
+      // Convert **bold** markers to <strong>
+      content = convertBoldMarkers(content);
+      result.push(`<li style="margin-bottom:8px;padding-left:8px;font-size:15px;line-height:1.5;">${content}</li>`);
     } else {
       // Close list if we were in one
       if (inList) {
@@ -35,8 +39,21 @@ export function plainTextToHtml(text: string): string {
 
       if (trimmed === "") {
         result.push("<br/>");
+      } else if (trimmed.startsWith("👉")) {
+        // CTA intro line - style it prominently
+        let content = convertBoldMarkers(trimmed);
+        result.push(`<p style="margin:16px 0 8px 0;font-size:15px;font-weight:600;color:#1a1a1a;">${content}</p>`);
+      } else if (trimmed.startsWith("🗓️") && (trimmed.includes("http") || trimmed.includes("{{ctaLink}}"))) {
+        // CTA booking link line - make it a styled button
+        const linkMatch = trimmed.match(/(https?:\/\/[^\s]+|{{ctaLink}})/);
+        const linkUrl = linkMatch ? linkMatch[1] : "#";
+        const labelText = trimmed.replace(/(https?:\/\/[^\s]+|{{ctaLink}})/, "").replace("🗓️", "").replace(":", "").trim();
+        result.push(`<p style="margin:8px 0 16px 0;">
+          <a href="${linkUrl}" style="display:inline-block;background-color:#2563eb;color:#ffffff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">🗓️ ${labelText || "30 Min Free Consultation"}</a>
+        </p>`);
       } else {
-        result.push(`<p style="margin:0 0 8px 0;">${line}</p>`);
+        let content = convertBoldMarkers(trimmed);
+        result.push(`<p style="margin:0 0 8px 0;font-size:15px;line-height:1.5;color:#333333;">${content}</p>`);
       }
     }
   }
@@ -47,4 +64,11 @@ export function plainTextToHtml(text: string): string {
   }
 
   return result.join("");
+}
+
+/**
+ * Convert **bold** markers to <strong> HTML tags
+ */
+function convertBoldMarkers(text: string): string {
+  return text.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#1a1a1a;">$1</strong>');
 }

@@ -8,8 +8,10 @@ export interface RetellCallResponse {
   agent_id: string;
   to_number: string;
   from_number: string;
+  call_type: string;
+  direction: string;
   status: string;
-  created_at: string;
+  created_at?: string;
 }
 
 /**
@@ -29,16 +31,17 @@ export async function triggerRetellCall(
       return null;
     }
 
-    // Make API call to Retell.AI
+    console.log(`[RetellAI] Creating phone call - to: ${phoneNumber}, from: ${senderPhoneNumber}, agent: ${agentId}`);
+    
+    // Make API call to Retell.AI (v2 endpoint)
     const response = await axios.post<RetellCallResponse>(
-      `${RETELL_API_BASE}/v1/create-phone-call`,
+      `${RETELL_API_BASE}/v2/create-phone-call`,
       {
-        agent_id: agentId,
-        to_number: phoneNumber,
         from_number: senderPhoneNumber,
-        // Optional: Add custom variables or context
-        custom_data: {
-          campaign_lead_id: campaignLeadId,
+        to_number: phoneNumber,
+        override_agent_id: agentId,
+        metadata: {
+          campaign_lead_id: String(campaignLeadId),
           trigger_reason: triggerReason,
         },
       },
@@ -50,6 +53,7 @@ export async function triggerRetellCall(
       }
     );
 
+    console.log(`[RetellAI] Call created successfully:`, JSON.stringify(response.data));
     const callId = response.data.call_id;
 
     // Log the call in database

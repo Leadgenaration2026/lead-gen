@@ -110,54 +110,62 @@ export async function generateProfessionalEmail(
 ): Promise<GeneratedEmail> {
   const weakPoint = weakPoints[0] || "business growth";
 
+  const industry = lead.industry || 'your industry';
+
   const emailPrompts: Record<EmailType, string> = {
-    discovery: `Write a professional discovery email to ${lead.ownerName} at ${lead.companyName}. 
+    discovery: `Write a professional discovery email to ${lead.ownerName} at ${lead.companyName} in the ${industry} industry. 
 Focus on their potential challenge with: "${weakPoint}"
 The email should:
 - Be personalized and conversational
+- Reference their ${industry} industry naturally
 - Ask a thoughtful question about their ${weakPoint}
-- Include 2-3 bullet points about why this matters
-- End with a clear CTA to schedule a 30-minute call
+- Include 2-3 bullet points with emoji icons (🚀, 📈, 💰, ⏱️, ✅, 🎯) and **bold** the key USP phrase
+- MUST end with this exact CTA:
+  "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}"
 - Be under 150 words
 - Sound human, not robotic`,
 
-    value_prop: `Write a professional value proposition email to ${lead.ownerName} at ${lead.companyName}.
+    value_prop: `Write a professional value proposition email to ${lead.ownerName} at ${lead.companyName} in the ${industry} industry.
 Focus on their challenge with: "${weakPoint}"
 The email should:
-- Highlight how we solve their ${weakPoint} challenge
-- Include 2-3 specific benefits with bullet points
+- Highlight how we solve their ${weakPoint} challenge in the ${industry} space
+- Include 2-3 specific benefits with emoji icons (🚀, 📈, 💰, ⏱️, ✅, 🎯) and **bold** the key USP phrase
 - Share a brief success metric or result
-- End with a CTA to schedule a call
+- MUST end with this exact CTA:
+  "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}"
 - Be under 150 words
 - Sound professional and credible`,
 
-    social_proof: `Write a professional case study email to ${lead.ownerName} at ${lead.companyName}.
+    social_proof: `Write a professional case study email to ${lead.ownerName} at ${lead.companyName} in the ${industry} industry.
 Focus on their challenge with: "${weakPoint}"
 The email should:
-- Reference a similar company that solved ${weakPoint}
-- Include 2-3 specific results or metrics
+- Reference a similar ${industry} company that solved ${weakPoint}
+- Include 2-3 specific results with emoji icons (🚀, 📈, 💰, ⏱️, ✅, 🎯) and **bold** the key USP phrase
 - Explain how their situation is similar
-- End with a CTA to discuss their specific situation
+- MUST end with this exact CTA:
+  "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}"
 - Be under 150 words
 - Build confidence through social proof`,
 
-    urgency: `Write a professional time-sensitive email to ${lead.ownerName} at ${lead.companyName}.
+    urgency: `Write a professional time-sensitive email to ${lead.ownerName} at ${lead.companyName} in the ${industry} industry.
 Focus on their challenge with: "${weakPoint}"
 The email should:
 - Create mild urgency without being pushy
-- Explain why acting soon on ${weakPoint} matters
-- Include 2-3 benefits of taking action
-- End with a CTA to schedule a call this week
+- Explain why acting soon on ${weakPoint} matters in the ${industry} space
+- Include 2-3 benefits with emoji icons (🚀, 📈, 💰, ⏱️, ✅, 🎯) and **bold** the key USP phrase
+- MUST end with this exact CTA:
+  "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}"
 - Be under 150 words
 - Sound professional and credible`,
 
-    custom: `Write a professional business email to ${lead.ownerName} at ${lead.companyName}.
+    custom: `Write a professional business email to ${lead.ownerName} at ${lead.companyName} in the ${industry} industry.
 Focus on their challenge with: "${weakPoint}"
 The email should:
-- Be highly personalized
+- Be highly personalized to the ${industry} industry
 - Address their specific ${weakPoint} challenge
-- Include 2-3 key points with bullet format
-- End with a clear CTA
+- Include 2-3 key points with emoji icons (🚀, 📈, 💰, ⏱️, ✅, 🎯) and **bold** the key USP phrase
+- MUST end with this exact CTA:
+  "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}"
 - Be under 150 words
 - Sound professional and human`,
   };
@@ -189,8 +197,14 @@ Write emails that are:
     emailBody = emailBody
       .replace(/{{ownerName}}/g, lead.ownerName)
       .replace(/{{companyName}}/g, lead.companyName)
+      .replace(/{{industry}}/g, industry)
       .replace(/{{ctaLink}}/g, ctaLink)
       .replace(/{{weakPoint}}/g, weakPoint);
+  }
+
+  // Ensure CTA link is present
+  if (typeof emailBody === 'string' && !emailBody.includes('30 Min Free Consultation') && !emailBody.includes('free 30-minute consultation')) {
+    emailBody += `\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaLink}`;
   }
 
   // Add signature

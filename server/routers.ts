@@ -481,7 +481,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             const personalizedTemplate = campaign.emailTemplate
               .replace(/{{companyName}}/g, lead.companyName)
               .replace(/{{ownerName}}/g, lead.ownerName)
-              .replace(/{{email}}/g, lead.email);
+              .replace(/{{email}}/g, lead.email)
+              .replace(/{{industry}}/g, lead.industry || 'your industry')
+              .replace(/{{phoneNumber}}/g, lead.phoneNumber || '');
 
             // Create tracking pixel
             const trackingToken = nanoid();
@@ -503,10 +505,13 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
             const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
             
-            // Replace {{bookingUrl}} with tracked link (if present in template)
-            const ctaUrl = 'https://calendly.com/your-booking-link'; // Default CTA link
+            // Replace CTA links with tracked versions
+            const ctaUrl = 'https://calendly.com/nitin-virtualassistant/30min';
+            const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
             let emailBody = personalizedTemplate
-              .replace(/{{bookingUrl}}/g, `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`);
+              .replace(/{{bookingUrl}}/g, trackedCtaUrl)
+              .replace(/{{ctaLink}}/g, trackedCtaUrl)
+              .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
 
             // Convert plain text to HTML if needed, append signature and tracking pixel
             emailBody = plainTextToHtml(emailBody) + signatureHtml + trackingPixel;
@@ -606,12 +611,40 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           const callLogs = await db.getCallLogsByCampaignLead(cl.id);
           const latestCall = callLogs.length > 0 ? callLogs[callLogs.length - 1] : null;
 
+          // Get follow-up emails schedule (next 7)
+          const followUpEmails = await db.getFollowUpEmailsByCampaignLead(cl.id);
+          const pendingFollowUpEmails = followUpEmails
+            .filter((e: any) => e.status === 'scheduled' || e.status === 'pending')
+            .sort((a: any, b: any) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
+            .slice(0, 7)
+            .map((e: any) => ({
+              sequenceNumber: e.sequenceNumber,
+              emailType: e.emailType,
+              subject: e.subject,
+              scheduledFor: e.scheduledFor,
+              status: e.status,
+            }));
+
+          // Get follow-up calls schedule (next 7)
+          const followUpCalls = await db.getFollowUpCallsByCampaignLead(cl.id);
+          const pendingFollowUpCalls = followUpCalls
+            .filter((c: any) => c.status === 'scheduled' || c.status === 'pending')
+            .sort((a: any, b: any) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
+            .slice(0, 7)
+            .map((c: any) => ({
+              attemptNumber: c.attemptNumber,
+              phoneNumber: c.phoneNumber,
+              scheduledFor: c.scheduledFor,
+              status: c.status,
+            }));
+
           activities.push({
             campaignLeadId: cl.id,
             leadName: lead.ownerName,
             companyName: lead.companyName,
             email: lead.email,
             phoneNumber: lead.phoneNumber,
+            industry: lead.industry || null,
             emailSent: cl.emailSent,
             emailSentAt: cl.emailSentAt,
             emailOpened: cl.emailOpened,
@@ -624,6 +657,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             callStatus: latestCall?.status || null,
             callId: latestCall?.retellCallId || null,
             totalCalls: callLogs.length,
+            nextFollowUpEmails: pendingFollowUpEmails,
+            nextFollowUpCalls: pendingFollowUpCalls,
           });
         }
 

@@ -235,3 +235,13 @@
 - [x] Feature — Activity view shows full lead details (name, email, phone number)
 - [x] Feature — Activity view shows which link was clicked
 - [x] Feature — Activity view shows whether client received a call or not
+
+## Batch 15 — Email Template Enhancement, Retell.AI Fix, Activity Schedule
+- [x] Bug Fix — Retell.AI call not triggering when email is opened
+- [x] Bug Fix — Email signature still not reflecting in sent emails
+- [x] Feature — Email template adds small icons for better presentation
+- [x] Feature — Industry field auto-fills in email template
+- [x] Feature — CTA link added to all emails: "30 Min Free Consultation" with booking link
+- [x] Feature — Bold unique selling points in email body
+- [x] Feature — Activity section shows next 7 follow-up emails with date and time
+- [x] Feature — Activity section shows next 7 scheduled calls with date and time

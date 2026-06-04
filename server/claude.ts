@@ -58,19 +58,34 @@ export async function generateEmailWithClaude(params: GenerateEmailParams): Prom
 
 1. PROFESSIONAL but HUMAN — They sound like a real person wrote them, not a robot. Use conversational language.
 2. CONCISE — Maximum 5-7 sentences total. Every word earns its place.
-3. BULLET POINT FORMAT — Always include 2-4 bullet points using the • character to highlight key benefits or points. This makes the email scannable.
-4. CLEAR CTA — End with ONE clear call-to-action (booking a call).
+3. BULLET POINT FORMAT with ICONS — Always include 2-4 bullet points. Each bullet point MUST start with a relevant emoji icon followed by the text. Make the key benefit/USP text BOLD using **double asterisks**. Examples:
+   • 🚀 **50+ qualified leads per week** generated on autopilot
+   • 📈 **3x more booked calls** within 30 days
+   • 💰 **Zero long-term contracts** — cancel anytime
+   • ⏱️ **Save 20+ hours per week** on manual outreach
+4. CLEAR CTA — ALWAYS end with this exact CTA block:
+   "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:
+   🗓️ 30 Min Free Consultation: [BOOKING_LINK]"
+   Where [BOOKING_LINK] is either {{ctaLink}} (if using variables) or "https://calendly.com/nitin-virtualassistant/30min"
 5. NO FLUFF — No "I hope this email finds you well", no "I wanted to reach out", no generic pleasantries.
 6. LOWERCASE SUBJECT — Subject lines are all lowercase, under 40 characters, curiosity-driven.
-7. PERSONALIZED — Reference something specific about the recipient or their company.
+7. PERSONALIZED — Reference something specific about the recipient or their company and their INDUSTRY.
+8. INDUSTRY MENTION — Always reference the lead's industry naturally in the email body to show relevance.
 
 Email Style: ${typeGuidance}
 
 ${variableInstructions}
 
-FORMAT: Write the email body as PLAIN TEXT. Use line breaks for paragraphs. Use • (bullet character) at the start of lines for bullet points. Do NOT use any HTML tags. Do NOT use markdown formatting. Just plain readable text.
+FORMAT: Write the email body as PLAIN TEXT with these formatting rules:
+- Use line breaks for paragraphs
+- Use • (bullet character) at the start of lines for bullet points
+- Each bullet MUST start with an emoji icon (🚀, 📈, 💰, ⏱️, ✅, 🎯, 📊, 💡, 🔥, ⚡)
+- Wrap key USP phrases in **double asterisks** for bold
+- Do NOT use any HTML tags
+- Do NOT use markdown headers or links
+- Just plain readable text with emoji icons and **bold markers**
 
-IMPORTANT: The email must feel like it was written by a human who genuinely wants to help, not by a marketer trying to sell something.`;
+IMPORTANT: The email must feel like it was written by a human who genuinely wants to help, not by a marketer trying to sell something. Always include the industry context and the CTA booking link at the end.`;
 
   const userPrompt = `Write a cold outreach email based on this description:
 
@@ -78,10 +93,10 @@ IMPORTANT: The email must feel like it was written by a human who genuinely want
 
 Return ONLY a JSON object with exactly two fields:
 - "subject": the email subject line (lowercase, under 40 chars, no quotes)
-- "body": the email body as PLAIN TEXT (use \\n for line breaks, • for bullet points, NO HTML)
+- "body": the email body as PLAIN TEXT (use \\n for line breaks, • for bullet points with emoji icons, **bold** for USPs, NO HTML)
 
 Example format:
-{"subject": "quick thought about your growth", "body": "Hi {{ownerName}},\\n\\nI noticed {{companyName}} is growing fast in {{industry}}. Most companies at your stage struggle with lead generation — here's how we help:\\n\\n• We generate 50+ qualified leads per week on autopilot\\n• Our clients see 3x more booked calls within 30 days\\n• Zero long-term contracts — cancel anytime\\n\\nWould you be open to a quick 15-min chat to see if this fits?\\n\\nBook a time here: {{ctaLink}}\\n\\nBest,\\nNitin"}`;
+{"subject": "quick thought about your growth", "body": "Hi {{ownerName}},\\n\\nI noticed {{companyName}} is making waves in the {{industry}} space. Most companies at your stage struggle with lead generation — here's how we help:\\n\\n• 🚀 **50+ qualified leads per week** generated on autopilot\\n• 📈 **3x more booked calls** within 30 days\\n• 💰 **Zero long-term contracts** — cancel anytime\\n\\nWe've helped dozens of {{industry}} businesses scale their outreach without hiring extra staff.\\n\\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\\n🗓️ 30 Min Free Consultation: {{ctaLink}}\\n\\nBest,\\nNitin"}`;
 
   const response = await client.messages.create({
     model: modelUsed,
@@ -110,20 +125,20 @@ Example format:
   let emailBody = parsed.body || "";
   const subject = parsed.subject || "";
 
-  // Ensure bullet points exist (plain text • bullets)
+  // Ensure bullet points with icons exist
   if (!emailBody.includes("•")) {
     // Insert some bullet points if Claude missed them
     const lines = emailBody.split("\n");
     const insertIdx = Math.min(3, lines.length - 1);
-    const bullets = "\n• Key benefit we deliver\n• Proven results with similar companies\n• No risk to try\n";
+    const bullets = "\n• 🚀 **Key benefit we deliver** for your business\n• 📈 **Proven results** with similar companies\n• 💰 **No risk to try** — cancel anytime\n";
     lines.splice(insertIdx, 0, bullets);
     emailBody = lines.join("\n");
   }
 
-  // Ensure CTA link is present
+  // Ensure CTA link is present with the required format
   const ctaTarget = params.includeVariables ? "{{ctaLink}}" : "https://calendly.com/nitin-virtualassistant/30min";
-  if (!emailBody.includes(ctaTarget) && !emailBody.includes("calendly.com") && !emailBody.includes("{{ctaLink}}")) {
-    emailBody += `\n\nBook a quick chat: ${ctaTarget}`;
+  if (!emailBody.includes("30 Min Free Consultation") && !emailBody.includes("free 30-minute consultation")) {
+    emailBody += `\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaTarget}`;
   }
 
   return {

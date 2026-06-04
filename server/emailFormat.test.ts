@@ -10,8 +10,8 @@ describe("plainTextToHtml", () => {
   it("should convert plain text lines to <p> tags", () => {
     const text = "Hello John,\nI wanted to reach out.";
     const result = plainTextToHtml(text);
-    expect(result).toContain('<p style="margin:0 0 8px 0;">Hello John,</p>');
-    expect(result).toContain('<p style="margin:0 0 8px 0;">I wanted to reach out.</p>');
+    expect(result).toContain("Hello John,</p>");
+    expect(result).toContain("I wanted to reach out.</p>");
   });
 
   it("should convert empty lines to <br/> tags", () => {
@@ -45,7 +45,7 @@ describe("plainTextToHtml", () => {
     const result = plainTextToHtml(text);
     
     // Should have paragraphs
-    expect(result).toContain('<p style="margin:0 0 8px 0;">Hi there,</p>');
+    expect(result).toContain("Hi there,</p>");
     // Should have list
     expect(result).toContain("<ul");
     expect(result).toContain("Fast delivery");
@@ -64,20 +64,42 @@ describe("plainTextToHtml", () => {
     expect(ulOpen).toBeLessThan(firstLi);
   });
 
-  it("should handle a real Claude-generated email", () => {
+  it("should convert **bold** markers to <strong> tags", () => {
+    const text = "• 🚀 **50+ qualified leads** generated on autopilot\n• 📈 **3x more booked calls** within 30 days";
+    const result = plainTextToHtml(text);
+    expect(result).toContain("<strong");
+    expect(result).toContain("50+ qualified leads</strong>");
+    expect(result).toContain("3x more booked calls</strong>");
+  });
+
+  it("should style CTA lines with 👉 emoji as prominent text", () => {
+    const text = "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:";
+    const result = plainTextToHtml(text);
+    expect(result).toContain("font-weight:600");
+    expect(result).toContain("👉");
+  });
+
+  it("should render 🗓️ booking link as a styled button", () => {
+    const text = "🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min";
+    const result = plainTextToHtml(text);
+    expect(result).toContain('<a href="https://calendly.com/nitin-virtualassistant/30min"');
+    expect(result).toContain("background-color");
+    expect(result).toContain("30 Min Free Consultation");
+  });
+
+  it("should handle a full enhanced email with icons, bold, and CTA", () => {
     const text = `Hi Sarah,
 
-I noticed TechFlow is growing fast — congrats on the recent funding round.
+I noticed TechFlow is making waves in the SaaS space. Most companies at your stage struggle with lead generation — here's how we help:
 
-Here's how we've helped similar SaaS companies:
+• 🚀 **50+ qualified leads per week** generated on autopilot
+• 📈 **3x more booked calls** within 30 days
+• 💰 **Zero long-term contracts** — cancel anytime
 
-• Reduced churn by 35% in 90 days for DataPipe
-• Saved $120k/year in support costs for CloudSync
-• Increased NPS from 32 to 67 for MetricHub
+We've helped dozens of SaaS businesses scale their outreach without hiring extra staff.
 
-Would a quick 15-minute call make sense to explore this?
-
-Book a time here: https://calendly.com/nitin-virtualassistant/30min
+👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:
+🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min
 
 Best,
 Nitin`;
@@ -86,7 +108,9 @@ Nitin`;
     // Valid structure
     expect(result).toContain("<ul");
     expect(result).toContain("</ul>");
-    expect(result).toContain("Reduced churn by 35%");
+    expect(result).toContain("<strong");
+    expect(result).toContain("50+ qualified leads per week</strong>");
+    expect(result).toContain("background-color");
     expect(result).toContain("calendly.com");
     // No orphan <li> tags
     const liCount = (result.match(/<li/g) || []).length;
