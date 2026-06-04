@@ -9,6 +9,7 @@ import { invokeLLM } from "./_core/llm";
 import { triggerRetellCall } from "./_core/retellAI";
 import { nanoid } from "nanoid";
 import nodemailer from "nodemailer";
+import { plainTextToHtml } from "@shared/emailFormat";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -436,8 +437,10 @@ Return ONLY valid JSON array, no other text.`;
             
             // Replace {{bookingUrl}} with tracked link (if present in template)
             let emailBody = personalizedTemplate
-              .replace(/{{bookingUrl}}/g, `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent('https://calendly.com/your-booking-link')}`)
-              + trackingPixel;
+              .replace(/{{bookingUrl}}/g, `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent('https://calendly.com/your-booking-link')}`);
+
+            // Convert plain text to HTML if needed
+            emailBody = plainTextToHtml(emailBody) + trackingPixel;
 
             // Send email via SMTP
             const transporter = nodemailer.createTransport({
@@ -960,7 +963,9 @@ Respond in this exact JSON format:
         // Send email
         const baseUrl = process.env.VITE_APP_URL || "";
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
-        const htmlBody = input.body + trackingPixel;
+        
+        // Convert plain text to HTML if needed
+        const htmlBody = plainTextToHtml(input.body) + trackingPixel;
 
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
@@ -1005,7 +1010,8 @@ Respond in this exact JSON format:
         // Add a [TEST] prefix to subject
         const testSubject = `[TEST PREVIEW] ${input.subject}`;
         const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> — This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
-        const htmlBody = testBanner + input.body;
+        // Convert plain text to HTML if needed
+        const htmlBody = testBanner + plainTextToHtml(input.body);
 
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,

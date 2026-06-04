@@ -227,7 +227,10 @@ export async function processScheduledEmails() {
         const trackingToken = createId();
         const baseUrl = process.env.VITE_APP_URL || "";
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
-        const htmlBody = scheduledEmail.emailBody + trackingPixel;
+        
+        // Convert plain text to HTML (preserve line breaks and bullet points)
+        const { plainTextToHtml } = await import("@shared/emailFormat");
+        const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + trackingPixel;
 
         // Send the email
         await transporter.sendMail({

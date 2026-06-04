@@ -19,10 +19,13 @@ interface GenerateEmailParams {
 interface GeneratedEmail {
   subject: string;
   body: string;
+  generatedBy: "claude"; // Always "claude" to confirm source
+  model: string;
 }
 
 export async function generateEmailWithClaude(params: GenerateEmailParams): Promise<GeneratedEmail> {
   const client = getClient();
+  const modelUsed = "claude-sonnet-4-6";
 
   const emailTypeGuidance: Record<string, string> = {
     discovery: "Focus on understanding their challenges. Ask an insightful question about their business. Be curious, not salesy.",
@@ -41,7 +44,7 @@ export async function generateEmailWithClaude(params: GenerateEmailParams): Prom
 - {{industry}} for their industry
 - {{ctaLink}} for the call-to-action booking link
 - {{email}} for their email address`
-    : `CRITICAL: Do NOT use any template variables like {{ownerName}}, {{companyName}}, {{industry}}, {{ctaLink}}, or {{email}}. Write the email as a direct, ready-to-send message addressed generically (e.g., "Hi there" or "Hi [first name]"). Use "https://calendly.com/nitin-virtualassistant/30min" as the actual booking link URL.`;
+    : `CRITICAL: Do NOT use any template variables like {{ownerName}}, {{companyName}}, {{industry}}, {{ctaLink}}, or {{email}}. Write the email as a direct, ready-to-send message addressed generically (e.g., "Hi there" or use the lead's name if provided). Use "https://calendly.com/nitin-virtualassistant/30min" as the actual booking link URL.`;
 
   const leadInfo = params.leadContext
     ? `\n\nLead Information:\n${params.leadContext}`
@@ -55,7 +58,7 @@ export async function generateEmailWithClaude(params: GenerateEmailParams): Prom
 
 1. PROFESSIONAL but HUMAN — They sound like a real person wrote them, not a robot. Use conversational language.
 2. CONCISE — Maximum 5-7 sentences total. Every word earns its place.
-3. BULLET POINT FORMAT — Always include 2-4 bullet points (using HTML <ul><li>) to highlight key benefits or points. This makes the email scannable.
+3. BULLET POINT FORMAT — Always include 2-4 bullet points using the • character to highlight key benefits or points. This makes the email scannable.
 4. CLEAR CTA — End with ONE clear call-to-action (booking a call).
 5. NO FLUFF — No "I hope this email finds you well", no "I wanted to reach out", no generic pleasantries.
 6. LOWERCASE SUBJECT — Subject lines are all lowercase, under 40 characters, curiosity-driven.
@@ -65,7 +68,7 @@ Email Style: ${typeGuidance}
 
 ${variableInstructions}
 
-Format the email body as clean HTML with <p> tags for paragraphs and <ul><li> for bullet points. Keep it simple — no fancy styling, no images, no complex HTML.
+FORMAT: Write the email body as PLAIN TEXT. Use line breaks for paragraphs. Use • (bullet character) at the start of lines for bullet points. Do NOT use any HTML tags. Do NOT use markdown formatting. Just plain readable text.
 
 IMPORTANT: The email must feel like it was written by a human who genuinely wants to help, not by a marketer trying to sell something.`;
 
@@ -75,13 +78,13 @@ IMPORTANT: The email must feel like it was written by a human who genuinely want
 
 Return ONLY a JSON object with exactly two fields:
 - "subject": the email subject line (lowercase, under 40 chars, no quotes)
-- "body": the email body as clean HTML
+- "body": the email body as PLAIN TEXT (use \\n for line breaks, • for bullet points, NO HTML)
 
 Example format:
-{"subject": "quick thought about your growth", "body": "<p>Hi {{ownerName}},</p><p>I noticed...</p><ul><li>Point 1</li><li>Point 2</li><li>Point 3</li></ul><p>Would you be open to a quick 15-min chat?</p><p><a href=\\"{{ctaLink}}\\">Book a time here</a></p><p>Best,<br/>Nitin</p>"}`;
+{"subject": "quick thought about your growth", "body": "Hi {{ownerName}},\\n\\nI noticed {{companyName}} is growing fast in {{industry}}. Most companies at your stage struggle with lead generation — here's how we help:\\n\\n• We generate 50+ qualified leads per week on autopilot\\n• Our clients see 3x more booked calls within 30 days\\n• Zero long-term contracts — cancel anytime\\n\\nWould you be open to a quick 15-min chat to see if this fits?\\n\\nBook a time here: {{ctaLink}}\\n\\nBest,\\nNitin"}`;
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model: modelUsed,
     max_tokens: 1024,
     messages: [
       { role: "user", content: userPrompt },
@@ -107,22 +110,26 @@ Example format:
   let emailBody = parsed.body || "";
   const subject = parsed.subject || "";
 
-  // Ensure bullet points exist
-  if (!emailBody.includes("<li") && !emailBody.includes("<ul")) {
-    emailBody = emailBody.replace(
-      /<\/p>\s*<p/,
-      `</p><ul><li>Key benefit we deliver</li><li>Proven results with similar companies</li><li>No risk to try</li></ul><p`
-    );
+  // Ensure bullet points exist (plain text • bullets)
+  if (!emailBody.includes("•")) {
+    // Insert some bullet points if Claude missed them
+    const lines = emailBody.split("\n");
+    const insertIdx = Math.min(3, lines.length - 1);
+    const bullets = "\n• Key benefit we deliver\n• Proven results with similar companies\n• No risk to try\n";
+    lines.splice(insertIdx, 0, bullets);
+    emailBody = lines.join("\n");
   }
 
   // Ensure CTA link is present
   const ctaTarget = params.includeVariables ? "{{ctaLink}}" : "https://calendly.com/nitin-virtualassistant/30min";
   if (!emailBody.includes(ctaTarget) && !emailBody.includes("calendly.com") && !emailBody.includes("{{ctaLink}}")) {
-    emailBody += `<p><a href="${ctaTarget}">Book a quick chat</a></p>`;
+    emailBody += `\n\nBook a quick chat: ${ctaTarget}`;
   }
 
   return {
     subject,
     body: emailBody,
+    generatedBy: "claude",
+    model: modelUsed,
   };
 }

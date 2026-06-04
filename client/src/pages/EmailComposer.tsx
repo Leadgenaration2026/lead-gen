@@ -320,9 +320,10 @@ export default function EmailComposer() {
                 <Label htmlFor="body" className="font-semibold">Email Body</Label>
                 {showPreview ? (
                   <div
-                    className="border rounded-lg p-4 min-h-[300px] prose prose-sm max-w-none bg-white"
-                    dangerouslySetInnerHTML={{ __html: emailBody }}
-                  />
+                    className="border rounded-lg p-4 min-h-[300px] bg-white text-sm leading-relaxed whitespace-pre-wrap font-sans"
+                  >
+                    {emailBody}
+                  </div>
                 ) : (
                   <Textarea
                     id="body"
