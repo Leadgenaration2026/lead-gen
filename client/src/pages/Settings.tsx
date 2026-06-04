@@ -349,13 +349,22 @@ export default function SettingsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Sender Phone Number</Label>
+                <Label>Sender Phone Number (Retell-Purchased)</Label>
                 <Input
                   placeholder="+1234567890"
                   value={formData.senderPhoneNumber}
                   onChange={(e) => setFormData({ ...formData, senderPhoneNumber: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">E.164 format, e.g. +14155551234</p>
+                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                  <p className="text-xs text-amber-800 font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Important: This MUST be a phone number purchased through your Retell.AI dashboard.
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Personal phone numbers will not work. Go to <a href="https://dashboard.retellai.com" target="_blank" className="underline font-medium">Retell Dashboard</a> → Phone Numbers → Buy a number, then paste it here.
+                  </p>
+                </div>
               </div>
               <div className="pt-4">
                 <Button onClick={handleSaveRetell} disabled={updateSettingsMutation.isPending} className="gap-2">

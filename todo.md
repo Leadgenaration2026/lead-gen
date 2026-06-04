@@ -265,3 +265,16 @@
 - [x] Feature — Remove lead from campaign when customer replies
 - [x] Feature — Reply-to address set to nitin@virtualassistant-group.com
 - [x] Feature — Positive response status in activity when customer replies or books
+
+## Batch 18 — Retell.AI Call Fix & Positive Response Logic
+
+- [x] Bug Fix — Retell.AI calls show as "made" but not received (API accepted calls - issue is Retell dashboard phone config)
+- [x] Fix — Positive response should ONLY be: Calendly booking confirmed OR email reply to nitin@virtualassistant-group.com
+- [x] Fix — Clicking Calendly link alone is NOT a positive response (only actual booking is)
+- [x] Feature — Calendly booking webhook endpoint at /api/webhooks/calendly
+- [x] Feature — Reply detection webhook endpoint at /api/webhooks/reply
+- [x] Feature — Cancel pending follow-ups when lead replies, books, or unsubscribes
+- [x] Feature — Cancel pending follow-ups when Retell call is answered
+- [x] UI — Amber warning box in Settings for Retell phone number (must be Retell-purchased)
+- [x] UI — Relabeled manual response buttons as "Admin Override" with explanatory text
+- [x] Tests — Positive response logic tests (9 tests: Calendly click NOT positive, Calendly booking IS positive, reply IS positive, unsubscribe cancels follow-ups)

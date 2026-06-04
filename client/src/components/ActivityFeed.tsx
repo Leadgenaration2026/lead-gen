@@ -287,35 +287,38 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                           </span>
                         </div>
                       )}
-                      {/* Action buttons - Mark as Replied */}
+                      {/* Action buttons - Manual admin override for response status */}
                       {!activity.replied && !activity.unsubscribed && activity.emailSent && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "positive" });
-                            }}
-                            disabled={markReplied.isPending}
-                          >
-                            <MessageSquare className="w-3 h-3" />
-                            Mark Positive Reply
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "negative" });
-                            }}
-                            disabled={markReplied.isPending}
-                          >
-                            <MessageSquare className="w-3 h-3" />
-                            Mark Negative
-                          </Button>
+                        <div className="flex flex-col gap-1 mt-2">
+                          <p className="text-[10px] text-muted-foreground italic">Manual override (auto-detected via Calendly booking or email reply):</p>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "positive" });
+                              }}
+                              disabled={markReplied.isPending}
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              Mark Positive (Override)
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "negative" });
+                              }}
+                              disabled={markReplied.isPending}
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              Mark Negative
+                            </Button>
+                          </div>
                         </div>
                       )}
                       {/* Unsubscribed indicator */}

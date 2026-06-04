@@ -97,20 +97,22 @@ export async function triggerRetellCall(
 
 /**
  * Handle Retell.AI webhook for call status updates
+ * When a call is "completed" (answered), cancel all pending follow-ups for that lead
  */
 export async function handleRetellWebhook(payload: any) {
   try {
-    const { call_id, status, end_reason } = payload;
+    const { call_id, status, end_reason, call_analysis } = payload;
+    console.log(`[RetellAI] Webhook received - call_id: ${call_id}, status: ${status}, end_reason: ${end_reason}`);
 
     if (!call_id) {
-      console.error("Missing call_id in webhook payload");
+      console.error("[RetellAI] Missing call_id in webhook payload");
       return;
     }
 
     // Find the call log
     const callLog = await db.getCallLogByRetellId(call_id);
     if (!callLog) {
-      console.warn(`Call log not found for call_id: ${call_id}`);
+      console.warn(`[RetellAI] Call log not found for call_id: ${call_id}`);
       return;
     }
 
@@ -119,13 +121,22 @@ export async function handleRetellWebhook(payload: any) {
       status,
     };
 
-    if (status === "completed" || status === "failed") {
+    if (status === "completed" || status === "failed" || status === "ended") {
       updateData.updatedAt = new Date();
     }
 
     await db.updateCallLog(callLog.id, updateData);
+    console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${status}`);
+
+    // If call was answered/completed, cancel remaining follow-ups
+    // Retell uses "ended" with end_reason to indicate call completion
+    if (status === "ended" && end_reason === "agent_hangup" || status === "ended" && end_reason === "customer_hangup") {
+      // Call was answered - this is a positive engagement
+      await db.cancelPendingFollowUps(callLog.campaignLeadId);
+      console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
+    }
   } catch (error) {
-    console.error("Failed to handle Retell webhook:", error);
+    console.error("[RetellAI] Failed to handle webhook:", error);
   }
 }
 

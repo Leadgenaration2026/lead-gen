@@ -203,15 +203,8 @@ export function registerEmailTrackingRoutes(app: Express) {
         }
       }
 
-      // If the click is on a Calendly/booking link, mark as positive response
-      if (event && url.toLowerCase().includes("calendly.com")) {
-        try {
-          await db.markLeadReplied(event.campaignLeadId, "positive");
-          console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as positive response (booking link clicked)`);
-        } catch (err) {
-          console.error("[EmailTracking] Failed to mark positive response:", err);
-        }
-      }
+      // Note: Clicking Calendly link is NOT a positive response.
+      // Positive response only when: (1) actual Calendly booking via webhook, or (2) email reply
 
       // Redirect to original URL
       res.redirect(302, url);
@@ -259,6 +252,7 @@ export function registerEmailTrackingRoutes(app: Express) {
    * POST /api/webhooks/reply
    * Called when a lead replies to an email (via email forwarding rules or Zapier)
    * Body: { email: string } or { campaignLeadId: number }
+   * This is a POSITIVE response — lead replied to nitin@virtualassistant-group.com
    */
   app.post("/api/webhooks/reply", async (req: Request, res: Response) => {
     try {
@@ -268,18 +262,68 @@ export function registerEmailTrackingRoutes(app: Express) {
       if (campaignLeadId) {
         await db.markLeadReplied(campaignLeadId, responseStatus || "positive");
         await db.cancelPendingFollowUps(campaignLeadId);
-        console.log(`[EmailTracking] Marked campaignLead ${campaignLeadId} as replied (positive)`);
+        console.log(`[EmailTracking] Marked campaignLead ${campaignLeadId} as replied (positive) and cancelled follow-ups`);
       } else if (email) {
-        // Find the campaign lead by email
-        const database = (await import("../db")).getDb;
-        // Simple lookup - find leads with this email that are in active campaigns
-        console.log(`[EmailTracking] Looking up campaign leads for email: ${email}`);
+        // Find all active campaign leads with this email
+        const activeCampaignLeads = await db.findCampaignLeadsByEmail(email);
+        for (const cl of activeCampaignLeads) {
+          await db.markLeadReplied(cl.id, responseStatus || "positive");
+          await db.cancelPendingFollowUps(cl.id);
+          console.log(`[EmailTracking] Marked campaignLead ${cl.id} as replied (positive) via email lookup`);
+        }
       }
 
       res.json({ success: true });
     } catch (error) {
       console.error("[EmailTracking] Error processing reply webhook:", error);
       res.status(500).json({ error: "Failed to process reply" });
+    }
+  });
+
+  /**
+   * Calendly booking webhook
+   * POST /api/webhooks/calendly
+   * Called when a lead actually books a meeting on Calendly
+   * This is a POSITIVE response — lead scheduled a consultation
+   * Body: { email: string } or Calendly webhook payload
+   */
+  app.post("/api/webhooks/calendly", async (req: Request, res: Response) => {
+    try {
+      const payload = req.body;
+      console.log(`[EmailTracking] Calendly booking webhook received`);
+
+      // Calendly sends payload.payload.invitee.email for bookings
+      let inviteeEmail: string | undefined;
+
+      // Handle Calendly v2 webhook format
+      if (payload?.payload?.invitee?.email) {
+        inviteeEmail = payload.payload.invitee.email;
+      } else if (payload?.email) {
+        // Simple format: { email: "lead@example.com" }
+        inviteeEmail = payload.email;
+      } else if (payload?.campaignLeadId) {
+        // Direct ID format
+        await db.markLeadReplied(payload.campaignLeadId, "positive");
+        await db.cancelPendingFollowUps(payload.campaignLeadId);
+        console.log(`[EmailTracking] Calendly booking: marked campaignLead ${payload.campaignLeadId} as positive`);
+        return res.json({ success: true });
+      }
+
+      if (inviteeEmail) {
+        const activeCampaignLeads = await db.findCampaignLeadsByEmail(inviteeEmail);
+        for (const cl of activeCampaignLeads) {
+          await db.markLeadReplied(cl.id, "positive");
+          await db.cancelPendingFollowUps(cl.id);
+          console.log(`[EmailTracking] Calendly booking: marked campaignLead ${cl.id} as positive (email: ${inviteeEmail})`);
+        }
+      } else {
+        console.log(`[EmailTracking] Calendly webhook: could not extract invitee email from payload`);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[EmailTracking] Error processing Calendly webhook:", error);
+      res.status(500).json({ error: "Failed to process Calendly booking" });
     }
   });
 

@@ -723,3 +723,32 @@ export async function cancelPendingFollowUps(campaignLeadId: number) {
     )
   );
 }
+
+// Find active campaign leads by email address (for reply/booking detection)
+export async function findCampaignLeadsByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Find leads with this email
+  const matchingLeads = await db.select({ id: leads.id }).from(leads).where(eq(leads.email, email));
+  if (matchingLeads.length === 0) return [];
+  
+  const leadIds = matchingLeads.map(l => l.id);
+  
+  // Find campaign leads that are in active campaigns and haven't already replied
+  const results = await db.select({
+    id: campaignLeads.id,
+    campaignId: campaignLeads.campaignId,
+    leadId: campaignLeads.leadId,
+  }).from(campaignLeads)
+    .innerJoin(campaigns, eq(campaignLeads.campaignId, campaigns.id))
+    .where(
+      and(
+        inArray(campaignLeads.leadId, leadIds),
+        eq(campaigns.status, "active"),
+        eq(campaignLeads.replied, false)
+      )
+    );
+  
+  return results;
+}
