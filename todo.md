@@ -290,3 +290,15 @@
 - [x] Feature — Webhook URL display with copy-to-clipboard for easy setup
 - [x] Feature — Update Calendly and reply webhook handlers to log events to new table
 - [x] Tests — Webhook event logging and retrieval tests (155 total tests passing)
+
+## Batch 20 — HMAC Webhook Signature Verification
+
+- [x] Feature — Create HMAC signature verification utility for webhooks
+- [x] Feature — Add Calendly webhook signing secret to user settings (DB + UI)
+- [x] Feature — Add Retell webhook signing secret to user settings (DB + UI)
+- [x] Feature — Verify Calendly webhook signature (Calendly-Webhook-Signature header, SHA-256)
+- [x] Feature — Verify Retell webhook signature (x-retell-signature header, SHA-256)
+- [x] Feature — Log verification failures as "failed" webhook events with error details
+- [x] Feature — Settings UI section for entering/updating webhook signing secrets
+- [x] Feature — Show verification status (verified/unverified) in webhook event log
+- [x] Tests — HMAC verification logic tests (valid signature, invalid signature, missing secret bypass)

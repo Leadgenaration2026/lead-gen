@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink } from "lucide-react";
+import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink, Shield, KeyRound, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -708,6 +708,156 @@ export default function SettingsPage() {
   );
 }
 
+// ============ Webhook Signing Secrets Card ============
+
+function WebhookSigningSecretsCard() {
+  const settingsQuery = trpc.settings.get.useQuery();
+  const updateMutation = trpc.settings.update.useMutation({
+    onSuccess: () => {
+      toast.success("Webhook signing secret saved successfully");
+      settingsQuery.refetch();
+    },
+    onError: () => toast.error("Failed to save webhook signing secret"),
+  });
+
+  const [calendlySecret, setCalendlySecret] = useState("");
+  const [retellSecret, setRetellSecret] = useState("");
+  const [showCalendly, setShowCalendly] = useState(false);
+  const [showRetell, setShowRetell] = useState(false);
+  const [calendlyTouched, setCalendlyTouched] = useState(false);
+  const [retellTouched, setRetellTouched] = useState(false);
+
+  const handleSaveCalendly = () => {
+    if (!calendlySecret.trim()) return;
+    updateMutation.mutate({ calendlyWebhookSecret: calendlySecret });
+    setCalendlyTouched(false);
+    setCalendlySecret("");
+  };
+
+  const handleSaveRetell = () => {
+    if (!retellSecret.trim()) return;
+    updateMutation.mutate({ retellWebhookSecret: retellSecret });
+    setRetellTouched(false);
+    setRetellSecret("");
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Shield className="w-5 h-5" />
+          Webhook Signature Verification (HMAC)
+        </CardTitle>
+        <CardDescription>
+          Add signing secrets to verify that incoming webhooks are authentic and haven't been tampered with.
+          When configured, unsigned or incorrectly signed requests will be rejected with 401.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Calendly Signing Key */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <KeyRound className="w-3.5 h-3.5 text-blue-600" />
+            Calendly Webhook Signing Key
+            {settingsQuery.data?.hasCalendlyWebhookSecret && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                <ShieldCheck className="w-3 h-3" /> Configured
+              </span>
+            )}
+          </Label>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                type={showCalendly ? "text" : "password"}
+                value={calendlySecret}
+                onChange={(e) => { setCalendlySecret(e.target.value); setCalendlyTouched(true); }}
+                placeholder={settingsQuery.data?.hasCalendlyWebhookSecret ? "••••••••••• (already set)" : "Paste your Calendly signing key"}
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCalendly(!showCalendly)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showCalendly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleSaveCalendly}
+              disabled={!calendlyTouched || !calendlySecret.trim() || updateMutation.isPending}
+            >
+              {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Find this in Calendly → Integrations → API & Webhooks → Copy the signing key shown when creating the webhook subscription.
+            Header: <code className="bg-muted px-1 rounded">Calendly-Webhook-Signature</code> (format: <code className="bg-muted px-1 rounded">t=timestamp,v1=hmac</code>)
+          </p>
+        </div>
+
+        {/* Retell Signing Key */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+            Retell.AI Webhook Signing Key
+            {settingsQuery.data?.hasRetellWebhookSecret && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                <ShieldCheck className="w-3 h-3" /> Configured
+              </span>
+            )}
+          </Label>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                type={showRetell ? "text" : "password"}
+                value={retellSecret}
+                onChange={(e) => { setRetellSecret(e.target.value); setRetellTouched(true); }}
+                placeholder={settingsQuery.data?.hasRetellWebhookSecret ? "••••••••••• (already set)" : "Paste your Retell API key (webhook badge)"}
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowRetell(!showRetell)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showRetell ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleSaveRetell}
+              disabled={!retellTouched || !retellSecret.trim() || updateMutation.isPending}
+            >
+              {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            In Retell Dashboard → API Keys, use the key with the <strong>webhook badge</strong> next to it.
+            Header: <code className="bg-muted px-1 rounded">x-retell-signature</code> (HMAC-SHA256 hex digest)
+          </p>
+        </div>
+
+        {/* Security Info */}
+        <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+          <div className="flex items-start gap-2">
+            <Shield className="w-4 h-4 text-blue-600 mt-0.5" />
+            <div className="text-xs text-blue-800">
+              <p className="font-medium mb-1">How HMAC Verification Works</p>
+              <p>
+                When a signing secret is configured, every incoming webhook is verified by computing an HMAC-SHA256
+                signature from the raw request body and comparing it to the signature in the request header.
+                If they don't match, the request is rejected with a 401 error and logged as "failed" in the event log below.
+                If no secret is configured, webhooks are accepted without verification (bypass mode).
+              </p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ============ Webhook Status Panel Component ============
 
 function WebhookStatusPanel() {
@@ -923,6 +1073,9 @@ function WebhookStatusPanel() {
         </CardContent>
       </Card>
 
+      {/* Webhook Signing Secrets */}
+      <WebhookSigningSecretsCard />
+
       {/* Recent Events Log */}
       <Card>
         <CardHeader>
@@ -975,6 +1128,18 @@ function WebhookStatusPanel() {
                       }`}>
                         {event.status}
                       </span>
+                      {event.signatureVerified && (
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          event.signatureVerified === "verified" ? "bg-blue-100 text-blue-700" :
+                          event.signatureVerified === "unverified" ? "bg-red-100 text-red-700" :
+                          "bg-gray-50 text-gray-500"
+                        }`}>
+                          {event.signatureVerified === "verified" ? <Shield className="w-2.5 h-2.5" /> :
+                           event.signatureVerified === "unverified" ? <XCircle className="w-2.5 h-2.5" /> :
+                           null}
+                          {event.signatureVerified}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {event.sourceEmail ? `From: ${event.sourceEmail}` : "No source email"}

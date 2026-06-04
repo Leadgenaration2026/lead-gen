@@ -48,6 +48,8 @@ const updateUserSettingsSchema = z.object({
   smtpPassword: z.string().optional(),
   senderEmail: z.union([z.string().email(), z.literal("")]).optional(),
   senderName: z.string().optional(),
+  calendlyWebhookSecret: z.string().optional(),
+  retellWebhookSecret: z.string().optional(),
 });
 
 export const appRouter = router({
@@ -751,6 +753,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           senderName: "",
           hasSmtpPassword: false,
           hasRetellApiKey: false,
+          hasCalendlyWebhookSecret: false,
+          hasRetellWebhookSecret: false,
         };
       }
       // Don't return sensitive data to frontend
@@ -765,6 +769,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         senderName: settings.senderName,
         hasSmtpPassword: !!settings.smtpPassword,
         hasRetellApiKey: !!settings.retellApiKey,
+        hasCalendlyWebhookSecret: !!settings.calendlyWebhookSecret,
+        hasRetellWebhookSecret: !!settings.retellWebhookSecret,
       };
     }),
 
@@ -779,6 +785,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           // Don't overwrite sensitive fields with empty strings
           if (key === 'smtpPassword' && !value) continue;
           if (key === 'retellApiKey' && !value) continue;
+          if (key === 'calendlyWebhookSecret' && !value) continue;
+          if (key === 'retellWebhookSecret' && !value) continue;
           cleanedInput[key] = value;
         }
         

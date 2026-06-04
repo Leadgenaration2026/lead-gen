@@ -143,6 +143,8 @@ export const userSettings = mysqlTable("userSettings", {
   smtpPassword: varchar("smtpPassword", { length: 255 }),
   senderEmail: varchar("senderEmail", { length: 320 }),
   senderName: varchar("senderName", { length: 255 }),
+  calendlyWebhookSecret: varchar("calendlyWebhookSecret", { length: 255 }), // Calendly signing key for HMAC verification
+  retellWebhookSecret: varchar("retellWebhookSecret", { length: 255 }), // Retell API key used for webhook signature verification
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -333,6 +335,7 @@ export const webhookEvents = mysqlTable("webhookEvents", {
   campaignLeadId: int("campaignLeadId"), // Related campaign lead if found
   payload: json("payload"), // Raw webhook payload for debugging
   errorMessage: text("errorMessage"), // Error details if failed
+  signatureVerified: mysqlEnum("signatureVerified", ["verified", "unverified", "bypassed"]).default("bypassed"), // HMAC verification status
   ipAddress: varchar("ipAddress", { length: 45 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

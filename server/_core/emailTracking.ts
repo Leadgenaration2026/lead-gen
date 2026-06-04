@@ -1,6 +1,7 @@
 import { Express, Request, Response } from "express";
 import * as db from "../db";
 import { triggerCallOnFollowUpOpen, normalizePhoneNumber } from "./followUpScheduler";
+import { verifyCalendlySignature, verifyRetellSignature, getWebhookSecrets } from "./webhookVerification";
 
 // 1x1 transparent GIF pixel
 const PIXEL_GIF = Buffer.from([
@@ -319,6 +320,31 @@ export function registerEmailTrackingRoutes(app: Express) {
       const payload = req.body;
       console.log(`[EmailTracking] Calendly booking webhook received`);
 
+      // HMAC Signature Verification
+      const { calendlySecret } = await getWebhookSecrets();
+      if (calendlySecret) {
+        const rawBody = (req as any).rawBody || JSON.stringify(payload);
+        const sigHeader = req.headers["calendly-webhook-signature"] as string | undefined;
+        const verification = verifyCalendlySignature(rawBody, sigHeader, calendlySecret);
+        if (!verification.verified) {
+          console.warn(`[EmailTracking] Calendly webhook signature verification FAILED: ${verification.error}`);
+          await db.createWebhookEvent({
+            userId: 1,
+            webhookType: "calendly_booking",
+            status: "failed",
+            signatureVerified: "unverified",
+            payload,
+            errorMessage: `Signature verification failed: ${verification.error}`,
+            ipAddress: req.ip || req.socket.remoteAddress || undefined,
+          });
+          return res.status(401).json({ error: "Invalid webhook signature" });
+        }
+        console.log(`[EmailTracking] Calendly webhook signature verified successfully`);
+      }
+
+      // Determine signature verification status for event logging
+      const calendlyVerificationStatus = calendlySecret ? "verified" : "bypassed";
+
       // Calendly sends payload.payload.invitee.email for bookings
       let inviteeEmail: string | undefined;
       let loggedCampaignLeadId: number | undefined;
@@ -341,6 +367,7 @@ export function registerEmailTrackingRoutes(app: Express) {
           userId: 1,
           webhookType: "calendly_booking",
           status: "success",
+          signatureVerified: calendlyVerificationStatus as any,
           campaignLeadId: loggedCampaignLeadId,
           payload,
           ipAddress: req.ip || req.socket.remoteAddress || undefined,
@@ -365,6 +392,7 @@ export function registerEmailTrackingRoutes(app: Express) {
         userId: 1,
         webhookType: "calendly_booking",
         status: inviteeEmail ? "success" : "ignored",
+        signatureVerified: calendlyVerificationStatus as any,
         sourceEmail: inviteeEmail,
         campaignLeadId: loggedCampaignLeadId,
         payload,
@@ -397,6 +425,31 @@ export function registerEmailTrackingRoutes(app: Express) {
   app.post("/api/webhooks/retell", async (req: Request, res: Response) => {
     try {
       const payload = req.body;
+
+      // HMAC Signature Verification
+      const { retellSecret } = await getWebhookSecrets();
+      if (retellSecret) {
+        const rawBody = (req as any).rawBody || JSON.stringify(payload);
+        const sigHeader = req.headers["x-retell-signature"] as string | undefined;
+        const verification = verifyRetellSignature(rawBody, sigHeader, retellSecret);
+        if (!verification.verified) {
+          console.warn(`[EmailTracking] Retell webhook signature verification FAILED: ${verification.error}`);
+          await db.createWebhookEvent({
+            userId: 1,
+            webhookType: "retell_call",
+            status: "failed",
+            signatureVerified: "unverified",
+            payload,
+            errorMessage: `Signature verification failed: ${verification.error}`,
+            ipAddress: req.ip || req.socket.remoteAddress || undefined,
+          });
+          return res.status(401).json({ error: "Invalid webhook signature" });
+        }
+        console.log(`[EmailTracking] Retell webhook signature verified successfully`);
+      }
+
+      const retellVerificationStatus = retellSecret ? "verified" : "bypassed";
+
       const { handleRetellWebhook } = await import("./retellAI");
       await handleRetellWebhook(payload);
 
@@ -405,6 +458,7 @@ export function registerEmailTrackingRoutes(app: Express) {
         userId: 1,
         webhookType: "retell_call",
         status: "success",
+        signatureVerified: retellVerificationStatus as any,
         payload,
         ipAddress: req.ip || req.socket.remoteAddress || undefined,
       });
