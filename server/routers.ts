@@ -34,6 +34,7 @@ const createCampaignSchema = z.object({
 const generateLeadsSchema = z.object({
   instruction: z.string().min(10),
   count: z.number().min(1).max(100),
+  leadSetName: z.string().optional(), // Optional: assign generated leads to a named set
 });
 
 const updateUserSettingsSchema = z.object({
@@ -190,6 +191,22 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           });
         }
 
+        // If leadSetName is provided, create or find the lead set
+        let leadSetId: number | null = null;
+        if (input.leadSetName && input.leadSetName.trim()) {
+          const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
+          const existing = existingSets.find(s => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+          if (existing) {
+            leadSetId = existing.id;
+          } else {
+            leadSetId = await db.createLeadSet({
+              userId: ctx.user.id,
+              name: input.leadSetName.trim(),
+              description: `Auto-created from AI generation: ${input.instruction.slice(0, 100)}`,
+            });
+          }
+        }
+
         // Create leads in database
         const createdLeads = [];
         for (const leadData of leadsData) {
@@ -203,6 +220,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               industry: leadData.industry,
               userId: ctx.user.id,
               status: "new",
+              leadSetId,
             });
             createdLeads.push(result);
           } catch (e) {
@@ -229,8 +247,24 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           industry: z.string().optional(),
           tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
         })),
+        leadSetName: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        // Resolve lead set
+        let leadSetId: number | null = null;
+        if (input.leadSetName && input.leadSetName.trim()) {
+          const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
+          const existing = existingSets.find(s => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+          if (existing) {
+            leadSetId = existing.id;
+          } else {
+            leadSetId = await db.createLeadSet({
+              userId: ctx.user.id,
+              name: input.leadSetName.trim(),
+              description: `Auto-created from CSV import`,
+            });
+          }
+        }
         const createdLeads = [];
         const errors: string[] = [];
         for (let i = 0; i < input.leads.length; i++) {
@@ -245,6 +279,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               industry: leadData.industry,
               userId: ctx.user.id,
               status: "new",
+              leadSetId,
             });
             // Update tag if provided
             if (leadData.tag && leadData.tag !== "none" && result) {
@@ -1352,6 +1387,69 @@ Respond in this exact JSON format:
         .sort((a, b) => b.openRate - a.openRate || b.usageCount - a.usageCount)
         .slice(0, 10);
     }),
+  }),
+
+  // ============ Lead Sets ============
+  leadSets: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getLeadSetsByUserId(ctx.user.id);
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createLeadSet({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description || null,
+        });
+        return { id };
+      }),
+
+    rename: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const set = await db.getLeadSetById(input.id);
+        if (!set || set.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lead set not found" });
+        }
+        await db.updateLeadSet(input.id, { name: input.name });
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const set = await db.getLeadSetById(input.id);
+        if (!set || set.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lead set not found" });
+        }
+        await db.deleteLeadSet(input.id);
+        return { success: true };
+      }),
+
+    assignLeads: protectedProcedure
+      .input(z.object({
+        leadIds: z.array(z.number()).min(1),
+        leadSetId: z.number().nullable(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify the lead set belongs to the user (if not null)
+        if (input.leadSetId !== null) {
+          const set = await db.getLeadSetById(input.leadSetId);
+          if (!set || set.userId !== ctx.user.id) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lead set not found" });
+          }
+        }
+        await db.assignLeadsToSet(input.leadIds, input.leadSetId);
+        return { success: true, count: input.leadIds.length };
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

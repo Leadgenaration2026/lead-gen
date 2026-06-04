@@ -186,3 +186,18 @@
 - [x] Bug Fix — Lead generation giving error message and not generating leads
 - [x] Bug Fix — Campaign launch not working (not getting launched)
 - [x] Feature — Add delete option for campaigns
+
+## Batch 9 — Lead Selection & Lead Sets
+- [x] Feature — Add checkbox/tick selection to each lead row in the leads list
+- [x] Feature — Add "Select All" checkbox in the leads table header
+- [x] Feature — Create leadSets DB table (id, name, description, userId, createdAt)
+- [x] Feature — Add leadSetId column to leads table for grouping
+- [x] Feature — Backend CRUD procedures for lead sets (create, list, delete, rename)
+- [x] Feature — Assign leads to a lead set (bulk action from selection)
+- [x] Feature — Filter leads by lead set in the leads page
+- [x] Feature — Allow setting a lead set name when generating leads via AI
+- [x] Feature — Allow setting a lead set name when importing CSV leads
+- [x] Feature — Bulk action bar appears when leads are selected (Assign to Set)
+- [x] Feature — Create new lead set from bulk assign dialog
+- [x] Feature — Remove from set option in bulk assign
+- [x] Feature — Lead set name shown as badge in leads table

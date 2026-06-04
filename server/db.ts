@@ -1,6 +1,6 @@
 import { eq, and, desc, inArray, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings } from "../drizzle/schema";
+import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -550,4 +550,53 @@ export async function upsertLeadByEmail(data: InsertLead) {
   // Insert new
   const result = await database.insert(leads).values({ ...data, email: emailLower });
   return result[0].insertId;
+}
+
+// ============ Lead Sets ============
+export async function createLeadSet(data: Omit<InsertLeadSet, "id" | "createdAt" | "updatedAt">) {
+  const database = await getDb();
+  if (!database) return null;
+  const result = await database.insert(leadSets).values(data);
+  return result[0].insertId;
+}
+
+export async function getLeadSetsByUserId(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(leadSets).where(eq(leadSets.userId, userId)).orderBy(desc(leadSets.createdAt));
+}
+
+export async function getLeadSetById(id: number) {
+  const database = await getDb();
+  if (!database) return null;
+  const result = await database.select().from(leadSets).where(eq(leadSets.id, id));
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function updateLeadSet(id: number, data: Partial<InsertLeadSet>) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(leadSets).set({ ...data, updatedAt: new Date() }).where(eq(leadSets.id, id));
+}
+
+export async function deleteLeadSet(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  // Remove the leadSetId from leads that belong to this set
+  await database.update(leads).set({ leadSetId: null }).where(eq(leads.leadSetId, id));
+  await database.delete(leadSets).where(eq(leadSets.id, id));
+}
+
+export async function assignLeadsToSet(leadIds: number[], leadSetId: number | null) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(leads).set({ leadSetId }).where(inArray(leads.id, leadIds));
+}
+
+export async function getLeadsBySetId(leadSetId: number, userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  return database.select().from(leads).where(
+    and(eq(leads.leadSetId, leadSetId), eq(leads.userId, userId))
+  ).orderBy(desc(leads.createdAt));
 }

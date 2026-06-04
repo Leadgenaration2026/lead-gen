@@ -38,6 +38,7 @@ export const leads = mysqlTable("leads", {
   customData: json("customData"), // For storing additional lead attributes
   status: mysqlEnum("status", ["new", "contacted", "qualified", "converted", "rejected"]).default("new").notNull(),
   tag: mysqlEnum("tag", ["hot", "warm", "cold", "follow_up", "none"]).default("none").notNull(),
+  leadSetId: int("leadSetId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -283,3 +284,16 @@ export const campaignTemplates = mysqlTable("campaignTemplates", {
 
 export type CampaignTemplate = typeof campaignTemplates.$inferSelect;
 export type InsertCampaignTemplate = typeof campaignTemplates.$inferInsert;
+
+// Lead sets table - groups leads under named sets
+export const leadSets = mysqlTable("leadSets", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LeadSet = typeof leadSets.$inferSelect;
+export type InsertLeadSet = typeof leadSets.$inferInsert;

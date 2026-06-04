@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import Papa from "papaparse";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,8 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers } from "lucide-react";
 import { toast } from "sonner";
 
 const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -31,11 +32,15 @@ export default function LeadsPage() {
   const csvImportOverwriteMutation = trpc.leads.csvImportOverwrite.useMutation();
   const updateTagMutation = trpc.leads.updateTag.useMutation();
   const dedupCheckMutation = trpc.dedup.check.useMutation();
+  const leadSetsQuery = trpc.leadSets.list.useQuery();
+  const createLeadSetMutation = trpc.leadSets.create.useMutation();
+  const assignLeadsMutation = trpc.leadSets.assignLeads.useMutation();
 
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [filterTag, setFilterTag] = useState<string>("all");
+  const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
@@ -49,6 +54,18 @@ export default function LeadsPage() {
     industry: "",
     companySize: "",
   });
+
+  // Lead set name for AI generation and CSV import
+  const [generateLeadSetName, setGenerateLeadSetName] = useState("");
+  const [csvLeadSetName, setCsvLeadSetName] = useState("");
+
+  // Checkbox selection state
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
+
+  // Bulk assign dialog
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [newSetName, setNewSetName] = useState("");
+  const [assignToSetId, setAssignToSetId] = useState<string>("");
 
   // Duplicate warning dialog state
   const [dupDialogOpen, setDupDialogOpen] = useState(false);
@@ -66,10 +83,16 @@ export default function LeadsPage() {
     }
     setIsGenerating(true);
     try {
-      await generateLeadsMutation.mutateAsync({ instruction, count });
+      await generateLeadsMutation.mutateAsync({
+        instruction,
+        count,
+        leadSetName: generateLeadSetName.trim() || undefined,
+      });
       toast.success(`Generated ${count} leads successfully`);
       setInstruction("");
+      setGenerateLeadSetName("");
       leadsQuery.refetch();
+      leadSetsQuery.refetch();
     } catch (error) {
       toast.error("Failed to generate leads");
     } finally {
@@ -81,6 +104,11 @@ export default function LeadsPage() {
     try {
       await deleteLeadMutation.mutateAsync(leadId);
       toast.success("Lead deleted");
+      setSelectedLeadIds(prev => {
+        const next = new Set(prev);
+        next.delete(leadId);
+        return next;
+      });
       leadsQuery.refetch();
     } catch (error) {
       toast.error("Failed to delete lead");
@@ -93,10 +121,8 @@ export default function LeadsPage() {
       return;
     }
     try {
-      // Check for duplicates first
       const dedupResult = await dedupCheckMutation.mutateAsync({ emails: [manualLead.email] });
       if (dedupResult.duplicates.length > 0) {
-        // Show duplicate warning dialog
         setDupDialogData({
           mode: "manual",
           duplicateEmails: dedupResult.duplicates,
@@ -106,7 +132,6 @@ export default function LeadsPage() {
         setDupDialogOpen(true);
         return;
       }
-      // No duplicates — proceed directly
       await addLeadMutation.mutateAsync({
         companyName: manualLead.companyName,
         ownerName: manualLead.ownerName,
@@ -123,7 +148,6 @@ export default function LeadsPage() {
     }
   };
 
-  // Handle "Skip Duplicates" action — for manual, just close; for CSV, import only unique
   const handleDupSkip = async () => {
     if (!dupDialogData) return;
     if (dupDialogData.mode === "manual") {
@@ -132,7 +156,6 @@ export default function LeadsPage() {
       setDupDialogData(null);
       return;
     }
-    // CSV mode — import only unique leads
     if (dupDialogData.uniqueLeads.length === 0) {
       toast.error("All leads are duplicates — nothing to import");
       setDupDialogOpen(false);
@@ -140,7 +163,10 @@ export default function LeadsPage() {
       return;
     }
     try {
-      const result = await csvImportMutation.mutateAsync({ leads: dupDialogData.uniqueLeads });
+      const result = await csvImportMutation.mutateAsync({
+        leads: dupDialogData.uniqueLeads,
+        leadSetName: csvLeadSetName.trim() || undefined,
+      });
       toast.success(`Imported ${result.imported} leads (${dupDialogData.duplicateEmails.length} duplicates skipped)`);
       if (result.errors.length > 0) {
         toast.warning(`${result.errors.length} rows had errors`);
@@ -148,7 +174,9 @@ export default function LeadsPage() {
       setCsvDialogOpen(false);
       setCsvPreview([]);
       setCsvFileName("");
+      setCsvLeadSetName("");
       leadsQuery.refetch();
+      leadSetsQuery.refetch();
     } catch (error) {
       toast.error("Failed to import leads");
     }
@@ -156,7 +184,6 @@ export default function LeadsPage() {
     setDupDialogData(null);
   };
 
-  // Handle "Overwrite Existing" action — upsert leads (update existing by email)
   const handleDupOverwrite = async () => {
     if (!dupDialogData) return;
     if (dupDialogData.mode === "manual") {
@@ -177,7 +204,6 @@ export default function LeadsPage() {
         toast.error("Failed to overwrite lead");
       }
     } else {
-      // CSV mode — upsert all leads (update existing, insert new)
       try {
         const result = await csvImportOverwriteMutation.mutateAsync({ leads: dupDialogData.allLeads });
         toast.success(`Imported ${result.imported} leads (duplicates overwritten)`);
@@ -187,7 +213,9 @@ export default function LeadsPage() {
         setCsvDialogOpen(false);
         setCsvPreview([]);
         setCsvFileName("");
+        setCsvLeadSetName("");
         leadsQuery.refetch();
+        leadSetsQuery.refetch();
       } catch (error) {
         toast.error("Failed to import leads");
       }
@@ -206,7 +234,7 @@ export default function LeadsPage() {
     }
   };
 
-  // CSV file handling with robust PapaParse
+  // CSV file handling
   const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -227,8 +255,6 @@ export default function LeadsPage() {
 
         results.data.forEach((record: any, idx: number) => {
           const row: any = {};
-
-          // Map flexible header names to our fields
           for (const [key, val] of Object.entries(record)) {
             const header = (key as string).toLowerCase();
             const value = ((val as string) || "").trim();
@@ -248,20 +274,17 @@ export default function LeadsPage() {
             }
           }
 
-          // Fallback: positional mapping if headers didn't match
           const values = Object.values(record).map((v) => ((v as string) || "").trim());
           if (!row.companyName && values[0]) row.companyName = values[0];
           if (!row.ownerName && values[1]) row.ownerName = values[1];
           if (!row.email && values[2]) row.email = values[2];
           if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
 
-          // Validate required fields
           if (!row.companyName || !row.ownerName || !row.email || !row.phoneNumber) {
             errors.push(`Row ${idx + 2}: Missing required fields`);
             return;
           }
 
-          // Basic email validation
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
             errors.push(`Row ${idx + 2}: Invalid email "${row.email}"`);
             return;
@@ -288,14 +311,12 @@ export default function LeadsPage() {
       },
     });
 
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleCSVImport = async () => {
     if (csvPreview.length === 0) return;
     try {
-      // Check for duplicates before importing
       const emails = csvPreview.map((r: any) => r.email).filter(Boolean);
       const dedupResult = await dedupCheckMutation.mutateAsync({ emails });
       const dupSet = new Set(dedupResult.duplicates);
@@ -303,7 +324,6 @@ export default function LeadsPage() {
       const dupCount = csvPreview.length - uniqueLeads.length;
 
       if (dupCount > 0) {
-        // Show duplicate warning dialog with Skip/Overwrite options
         setDupDialogData({
           mode: "csv",
           duplicateEmails: dedupResult.duplicates,
@@ -314,8 +334,10 @@ export default function LeadsPage() {
         return;
       }
 
-      // No duplicates — import directly
-      const result = await csvImportMutation.mutateAsync({ leads: csvPreview });
+      const result = await csvImportMutation.mutateAsync({
+        leads: csvPreview,
+        leadSetName: csvLeadSetName.trim() || undefined,
+      });
       toast.success(`Successfully imported ${result.imported} leads`);
       if (result.errors.length > 0) {
         toast.warning(`${result.errors.length} rows had errors`);
@@ -323,22 +345,91 @@ export default function LeadsPage() {
       setCsvDialogOpen(false);
       setCsvPreview([]);
       setCsvFileName("");
+      setCsvLeadSetName("");
       leadsQuery.refetch();
+      leadSetsQuery.refetch();
     } catch (error) {
       toast.error("Failed to import CSV leads");
     }
   };
 
+  // Selection handlers
+  const handleToggleSelect = (leadId: number) => {
+    setSelectedLeadIds(prev => {
+      const next = new Set(prev);
+      if (next.has(leadId)) {
+        next.delete(leadId);
+      } else {
+        next.add(leadId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedLeadIds.size === filteredLeads.length) {
+      setSelectedLeadIds(new Set());
+    } else {
+      setSelectedLeadIds(new Set(filteredLeads.map((l: any) => l.id)));
+    }
+  };
+
+  const handleBulkAssign = async () => {
+    if (selectedLeadIds.size === 0) return;
+
+    let targetSetId: number | null = null;
+
+    if (assignToSetId === "new" && newSetName.trim()) {
+      try {
+        const result = await createLeadSetMutation.mutateAsync({ name: newSetName.trim() });
+        targetSetId = result.id as number;
+      } catch (error) {
+        toast.error("Failed to create lead set");
+        return;
+      }
+    } else if (assignToSetId === "remove") {
+      targetSetId = null;
+    } else if (assignToSetId && assignToSetId !== "new") {
+      targetSetId = parseInt(assignToSetId);
+    } else {
+      toast.error("Please select a lead set");
+      return;
+    }
+
+    try {
+      await assignLeadsMutation.mutateAsync({
+        leadIds: Array.from(selectedLeadIds),
+        leadSetId: targetSetId,
+      });
+      toast.success(`${selectedLeadIds.size} lead(s) assigned to set`);
+      setSelectedLeadIds(new Set());
+      setAssignDialogOpen(false);
+      setNewSetName("");
+      setAssignToSetId("");
+      leadsQuery.refetch();
+      leadSetsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to assign leads");
+    }
+  };
+
   // Filter leads
-  const filteredLeads = (leadsQuery.data || []).filter((lead: any) => {
-    const matchesTag = filterTag === "all" || lead.tag === filterTag;
-    const matchesSearch =
-      !searchQuery ||
-      lead.companyName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.ownerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesTag && matchesSearch;
-  });
+  const filteredLeads = useMemo(() => {
+    return (leadsQuery.data || []).filter((lead: any) => {
+      const matchesTag = filterTag === "all" || lead.tag === filterTag;
+      const matchesSearch =
+        !searchQuery ||
+        lead.companyName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.ownerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSet =
+        filterLeadSet === "all" ||
+        (filterLeadSet === "unassigned" ? !lead.leadSetId : lead.leadSetId === parseInt(filterLeadSet));
+      return matchesTag && matchesSearch && matchesSet;
+    });
+  }, [leadsQuery.data, filterTag, searchQuery, filterLeadSet]);
+
+  const leadSets = leadSetsQuery.data || [];
 
   return (
     <div className="space-y-6">
@@ -400,6 +491,66 @@ export default function LeadsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk Assign to Lead Set Dialog */}
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderPlus className="w-5 h-5" />
+              Assign to Lead Set
+            </DialogTitle>
+            <DialogDescription>
+              Assign {selectedLeadIds.size} selected lead(s) to a lead set
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Choose Lead Set</label>
+              <Select value={assignToSetId} onValueChange={setAssignToSetId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select a lead set..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">
+                    <span className="flex items-center gap-2"><FolderPlus className="w-3.5 h-3.5" /> Create New Set</span>
+                  </SelectItem>
+                  <SelectItem value="remove">
+                    <span className="flex items-center gap-2 text-muted-foreground">Remove from set</span>
+                  </SelectItem>
+                  {leadSets.map((set: any) => (
+                    <SelectItem key={set.id} value={String(set.id)}>
+                      {set.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {assignToSetId === "new" && (
+              <div>
+                <label className="text-sm font-medium">New Set Name</label>
+                <Input
+                  placeholder="e.g., SaaS Companies Q1"
+                  value={newSetName}
+                  onChange={(e) => setNewSetName(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            )}
+            <Button
+              onClick={handleBulkAssign}
+              disabled={assignLeadsMutation.isPending || createLeadSetMutation.isPending}
+              className="w-full"
+            >
+              {(assignLeadsMutation.isPending || createLeadSetMutation.isPending) ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
+              ) : (
+                `Assign ${selectedLeadIds.size} Lead(s)`
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Action Buttons Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -485,10 +636,27 @@ export default function LeadsPage() {
                     <label className="text-sm font-medium">Your Instructions</label>
                     <Textarea placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..." value={instruction} onChange={(e) => setInstruction(e.target.value)} className="mt-1 min-h-24" />
                   </div>
-                  <div>
-                    <label className="text-sm font-medium">Number of Leads</label>
-                    <Input type="number" min="1" max="100" value={count} onChange={(e) => setCount(parseInt(e.target.value) || 10)} className="mt-1" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium">Number of Leads</label>
+                      <Input type="number" min="1" max="100" value={count} onChange={(e) => setCount(parseInt(e.target.value) || 10)} className="mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Lead Set Name</label>
+                      <Input
+                        placeholder="e.g., SaaS Q1 Batch"
+                        value={generateLeadSetName}
+                        onChange={(e) => setGenerateLeadSetName(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
+                  {generateLeadSetName && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" />
+                      Generated leads will be added to set: <span className="font-medium">{generateLeadSetName}</span>
+                    </p>
+                  )}
                   <Button onClick={handleGenerateLeads} disabled={isGenerating} className="w-full gap-2">
                     {isGenerating ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating...</>) : (<><Wand2 className="w-4 h-4" />Generate Leads</>)}
                   </Button>
@@ -511,6 +679,24 @@ export default function LeadsPage() {
               {csvFileName} — {csvPreview.length} leads found. Review before importing.
             </DialogDescription>
           </DialogHeader>
+          {/* Lead Set Name for CSV Import */}
+          <div className="border rounded-lg p-3 bg-muted/30">
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5" />
+              Assign to Lead Set (optional)
+            </label>
+            <Input
+              placeholder="e.g., Imported Leads June 2026"
+              value={csvLeadSetName}
+              onChange={(e) => setCsvLeadSetName(e.target.value)}
+              className="mt-1.5"
+            />
+            {csvLeadSetName && (
+              <p className="text-xs text-muted-foreground mt-1">
+                All imported leads will be assigned to: <span className="font-medium">{csvLeadSetName}</span>
+              </p>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -549,13 +735,42 @@ export default function LeadsPage() {
             )}
           </div>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" onClick={() => { setCsvDialogOpen(false); setCsvPreview([]); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setCsvDialogOpen(false); setCsvPreview([]); setCsvLeadSetName(""); }}>Cancel</Button>
             <Button onClick={handleCSVImport} disabled={csvImportMutation.isPending || dedupCheckMutation.isPending} className="gap-2">
               {(csvImportMutation.isPending || dedupCheckMutation.isPending) ? (<><Loader2 className="w-4 h-4 animate-spin" />Checking...</>) : (<><Upload className="w-4 h-4" />Import {csvPreview.length} Leads</>)}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Selection Action Bar */}
+      {selectedLeadIds.size > 0 && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="py-3 flex items-center justify-between">
+            <span className="text-sm font-medium">
+              {selectedLeadIds.size} lead(s) selected
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssignDialogOpen(true)}
+                className="gap-1.5"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                Assign to Set
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedLeadIds(new Set())}
+              >
+                Clear Selection
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Leads List with Filters */}
       <Card>
@@ -565,7 +780,7 @@ export default function LeadsPage() {
               <CardTitle>Your Leads ({filteredLeads.length})</CardTitle>
               <CardDescription>Manage, tag, and organize your leads</CardDescription>
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
               <div className="relative">
                 <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48" />
@@ -594,6 +809,21 @@ export default function LeadsPage() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={filterLeadSet} onValueChange={setFilterLeadSet}>
+                <SelectTrigger className="w-40">
+                  <Layers className="w-3.5 h-3.5 mr-1.5" />
+                  <SelectValue placeholder="Filter by set" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sets</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {leadSets.map((set: any) => (
+                    <SelectItem key={set.id} value={String(set.id)}>
+                      {set.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -607,10 +837,18 @@ export default function LeadsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={selectedLeadIds.size === filteredLeads.length && filteredLeads.length > 0}
+                        onCheckedChange={handleSelectAll}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Owner</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -618,11 +856,27 @@ export default function LeadsPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredLeads.map((lead: any) => (
-                    <TableRow key={lead.id} className="group">
+                    <TableRow key={lead.id} className={`group ${selectedLeadIds.has(lead.id) ? "bg-primary/5" : ""}`}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedLeadIds.has(lead.id)}
+                          onCheckedChange={() => handleToggleSelect(lead.id)}
+                          aria-label={`Select ${lead.companyName}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{lead.companyName}</TableCell>
                       <TableCell>{lead.ownerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                       <TableCell className="text-sm">{lead.phoneNumber}</TableCell>
+                      <TableCell>
+                        {lead.leadSetId ? (
+                          <Badge variant="outline" className="text-xs">
+                            {leadSets.find((s: any) => s.id === lead.leadSetId)?.name || "Set"}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={
                           lead.status === "new" ? "secondary" :
@@ -681,7 +935,7 @@ export default function LeadsPage() {
             <div className="text-center py-12">
               <Plus className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground">
-                {searchQuery || filterTag !== "all"
+                {searchQuery || filterTag !== "all" || filterLeadSet !== "all"
                   ? "No leads match your filters"
                   : "No leads yet. Add manually, import CSV, or generate with AI!"}
               </p>
