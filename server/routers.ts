@@ -96,13 +96,17 @@ export const appRouter = router({
         website: z.string().optional(),
         industry: z.string().optional(),
         customData: z.any().optional(),
+        status: z.enum(["new", "contacted", "qualified", "converted", "rejected"]).optional(),
+        tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
+        timezone: z.string().optional(),
       }) }))
       .mutation(async ({ input, ctx }) => {
         const lead = await db.getLeadById(input.id);
         if (!lead || lead.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND" });
         }
-        return db.updateLead(input.id, input.data);
+        await db.updateLead(input.id, input.data);
+        return db.getLeadById(input.id);
       }),
 
     delete: protectedProcedure.input(z.number()).mutation(async ({ input: leadId, ctx }) => {
@@ -385,6 +389,126 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
       .mutation(async ({ input, ctx }) => {
         await db.updateLead(input.leadId, { tag: input.tag });
         return { success: true };
+      }),
+
+    // Analyze industry/company problems for a lead
+    analyzeProblems: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        additionalContext: z.string().optional(), // Optional extra context about the company
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        // Check if we already have analysis
+        const existing = await db.getLeadWeakPoints(lead.id);
+        if (existing && existing.weakPoints) {
+          return {
+            weakPoints: existing.weakPoints as string[],
+            analysis: existing.analysis || "",
+            suggestedEmailTypes: existing.suggestedEmailTypes as string[] || [],
+            cached: true,
+          };
+        }
+
+        // Run deep analysis with Claude
+        const { generateEmailWithClaude } = await import("./claude");
+        const analysisResponse = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: `You are a senior business consultant and industry analyst. Your job is to deeply analyze a company and its industry to identify the REAL problems that business owners face daily. Be specific, not generic. Think about operational challenges, market pressures, technology gaps, staffing issues, customer acquisition problems, and competitive threats.
+
+Return a JSON object with:
+- "painPoints": array of 5-7 specific, detailed pain points (each 1-2 sentences)
+- "industryTrends": array of 3-4 current industry trends creating pressure
+- "competitiveThreats": array of 2-3 competitive challenges they face
+- "analysis": a 2-3 paragraph detailed analysis of their situation
+- "suggestedApproach": which email approach would resonate most ("discovery", "value_prop", "social_proof", "urgency")
+
+Be SPECIFIC to their industry and company size. Avoid generic advice.`,
+            },
+            {
+              role: "user",
+              content: `Analyze this company and identify their key business problems:
+
+Company: ${lead.companyName}
+Owner: ${lead.ownerName}
+Industry: ${lead.industry || "Unknown"}
+Website: ${lead.website || "Not provided"}
+${input.additionalContext ? `Additional Context: ${input.additionalContext}` : ""}
+
+Identify specific, actionable pain points that a virtual assistant / lead generation / business automation service could help solve.`,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "problem_analysis",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  painPoints: { type: "array", items: { type: "string" } },
+                  industryTrends: { type: "array", items: { type: "string" } },
+                  competitiveThreats: { type: "array", items: { type: "string" } },
+                  analysis: { type: "string" },
+                  suggestedApproach: { type: "string" },
+                },
+                required: ["painPoints", "industryTrends", "competitiveThreats", "analysis", "suggestedApproach"],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const content = typeof analysisResponse.choices[0]?.message?.content === 'string'
+          ? analysisResponse.choices[0].message.content : "{}";
+        const parsed = JSON.parse(content);
+
+        // Save to database
+        const allWeakPoints = [
+          ...(parsed.painPoints || []),
+          ...(parsed.industryTrends || []).map((t: string) => `[Trend] ${t}`),
+          ...(parsed.competitiveThreats || []).map((t: string) => `[Competitive] ${t}`),
+        ];
+
+        await db.upsertLeadWeakPoints(
+          lead.id,
+          allWeakPoints,
+          parsed.analysis || "",
+          [parsed.suggestedApproach || "discovery"]
+        );
+
+        return {
+          weakPoints: allWeakPoints,
+          analysis: parsed.analysis || "",
+          painPoints: parsed.painPoints || [],
+          industryTrends: parsed.industryTrends || [],
+          competitiveThreats: parsed.competitiveThreats || [],
+          suggestedApproach: parsed.suggestedApproach || "discovery",
+          cached: false,
+        };
+      }),
+
+    // Get existing problem analysis for a lead
+    getProblems: protectedProcedure
+      .input(z.number())
+      .query(async ({ input: leadId, ctx }) => {
+        const lead = await db.getLeadById(leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const weakPoints = await db.getLeadWeakPoints(leadId);
+        if (!weakPoints) return null;
+        return {
+          weakPoints: weakPoints.weakPoints as string[],
+          analysis: weakPoints.analysis || "",
+          suggestedEmailTypes: weakPoints.suggestedEmailTypes as string[] || [],
+        };
       }),
   }),
 
@@ -1289,8 +1413,8 @@ Respond in this exact JSON format:
         return { success: true };
       }),
 
-    // AI Write: Generate professional, human-sounding, bullet-point email template
-    // Works for both manual emails (with optional lead context) and bulk campaign templates
+    // AI Write: Generate professional, human-sounding email with problem analysis
+    // Format: Services intro → Industry pain points → Solutions with case studies → CTA
     generateAITemplate: protectedProcedure
       .input(z.object({
         prompt: z.string().min(5), // User's description of what they want to say
@@ -1298,13 +1422,29 @@ Respond in this exact JSON format:
         companyContext: z.string().optional(), // Optional company/industry context for personalization
         leadId: z.number().optional(), // Optional: if provided, personalizes for specific lead
         includeVariables: z.boolean().optional(), // If true, uses {{variables}} for bulk templates
+        useProblemAnalysis: z.boolean().optional(), // If true, fetches and uses stored problem analysis
       }))
       .mutation(async ({ input, ctx }) => {
         let leadContext = "";
+        let problemAnalysis: { painPoints: string[]; industryTrends?: string[]; competitiveThreats?: string[] } | undefined;
+
         if (input.leadId) {
           const lead = await db.getLeadById(input.leadId);
           if (lead && lead.userId === ctx.user.id) {
-            leadContext = `Name: ${lead.ownerName}, Company: ${lead.companyName}, Industry: ${lead.industry || "Not specified"}, Email: ${lead.email}`;
+            leadContext = `Name: ${lead.ownerName}, Company: ${lead.companyName}, Industry: ${lead.industry || "Not specified"}, Email: ${lead.email}, Website: ${lead.website || "Not provided"}`;
+
+            // Fetch problem analysis if available
+            if (input.useProblemAnalysis !== false) {
+              const weakPoints = await db.getLeadWeakPoints(lead.id);
+              if (weakPoints && weakPoints.weakPoints) {
+                const allPoints = weakPoints.weakPoints as string[];
+                problemAnalysis = {
+                  painPoints: allPoints.filter((p: string) => !p.startsWith("[Trend]") && !p.startsWith("[Competitive]")),
+                  industryTrends: allPoints.filter((p: string) => p.startsWith("[Trend]")).map((p: string) => p.replace("[Trend] ", "")),
+                  competitiveThreats: allPoints.filter((p: string) => p.startsWith("[Competitive]")).map((p: string) => p.replace("[Competitive] ", "")),
+                };
+              }
+            }
           }
         }
 
@@ -1316,6 +1456,7 @@ Respond in this exact JSON format:
           companyContext: input.companyContext || undefined,
           leadContext: leadContext || undefined,
           includeVariables: input.includeVariables || false,
+          problemAnalysis,
         });
 
         return result;

@@ -302,3 +302,17 @@
 - [x] Feature — Settings UI section for entering/updating webhook signing secrets
 - [x] Feature — Show verification status (verified/unverified) in webhook event log
 - [x] Tests — HMAC verification logic tests (valid signature, invalid signature, missing secret bypass)
+
+## Batch 21 — Lead Editing, Problem Analysis & Email Revamp
+
+- [x] Feature — Add lead editing (update name, email, phone, company, industry, website, notes)
+- [x] Feature — Backend tRPC procedure for updating lead fields
+- [x] Feature — Edit lead modal/dialog in the Leads page UI
+- [x] Feature — Industry/company problem analysis using AI (identify pain points before email)
+- [x] Feature — Store problem analysis results in leadWeakPoints table
+- [x] Feature — Show "Analyze Problems" step in campaign email flow
+- [x] Feature — Revamp email generation prompt to produce professional format: services intro → industry pain points → solutions with case studies → CTA
+- [x] Feature — Ensure unique, varied emails (not repetitive templates) by including company-specific context
+- [x] Feature — Human-sounding tone with conversational professional language
+- [x] Tests — Lead editing tests
+- [x] Tests — Problem analysis and email generation format tests

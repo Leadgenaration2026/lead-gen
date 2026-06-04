@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = {
@@ -77,6 +78,60 @@ export default function LeadsPage() {
     allLeads: any[];
     uniqueLeads: any[];
   } | null>(null);
+
+  // Edit lead state
+  const [editingLead, setEditingLead] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({
+    companyName: "",
+    ownerName: "",
+    email: "",
+    phoneNumber: "",
+    website: "",
+    industry: "",
+    timezone: "",
+  });
+  const updateLeadMutation = trpc.leads.update.useMutation({
+    onSuccess: () => {
+      toast.success("Lead updated successfully");
+      setEditingLead(null);
+      leadsQuery.refetch();
+    },
+    onError: () => toast.error("Failed to update lead"),
+  });
+
+  // Sync edit form when editingLead changes
+  const prevEditingLeadId = useRef<number | null>(null);
+  if (editingLead && editingLead.id !== prevEditingLeadId.current) {
+    prevEditingLeadId.current = editingLead.id;
+    setEditForm({
+      companyName: editingLead.companyName || "",
+      ownerName: editingLead.ownerName || "",
+      email: editingLead.email || "",
+      phoneNumber: editingLead.phoneNumber || "",
+      website: editingLead.website || "",
+      industry: editingLead.industry || "",
+      timezone: editingLead.timezone || "America/New_York",
+    });
+  }
+  if (!editingLead && prevEditingLeadId.current !== null) {
+    prevEditingLeadId.current = null;
+  }
+
+  const handleSaveEditLead = () => {
+    if (!editingLead) return;
+    updateLeadMutation.mutate({
+      id: editingLead.id,
+      data: {
+        companyName: editForm.companyName || undefined,
+        ownerName: editForm.ownerName || undefined,
+        email: editForm.email || undefined,
+        phoneNumber: editForm.phoneNumber || undefined,
+        website: editForm.website || undefined,
+        industry: editForm.industry || undefined,
+        timezone: editForm.timezone || undefined,
+      },
+    });
+  };
 
   const handleGenerateLeads = async () => {
     if (!instruction.trim()) {
@@ -1013,9 +1068,14 @@ export default function LeadsPage() {
                         </Select>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteLead(lead.id)} disabled={deleteLeadMutation.isPending}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => setEditingLead(lead)}>
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteLead(lead.id)} disabled={deleteLeadMutation.isPending}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1053,6 +1113,92 @@ export default function LeadsPage() {
           </div>
         </CardContent>
       </Card>
+      {/* Edit Lead Dialog */}
+      <Dialog open={!!editingLead} onOpenChange={(open) => { if (!open) setEditingLead(null); }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Edit Lead
+            </DialogTitle>
+            <DialogDescription>
+              Update the lead's contact information and details.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Company Name</Label>
+                <Input
+                  value={editForm.companyName}
+                  onChange={(e) => setEditForm(f => ({ ...f, companyName: e.target.value }))}
+                  placeholder="Company name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Owner Name</Label>
+                <Input
+                  value={editForm.ownerName}
+                  onChange={(e) => setEditForm(f => ({ ...f, ownerName: e.target.value }))}
+                  placeholder="Owner name"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Email</Label>
+                <Input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Phone Number</Label>
+                <Input
+                  value={editForm.phoneNumber}
+                  onChange={(e) => setEditForm(f => ({ ...f, phoneNumber: e.target.value }))}
+                  placeholder="+1234567890"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Website</Label>
+                <Input
+                  value={editForm.website}
+                  onChange={(e) => setEditForm(f => ({ ...f, website: e.target.value }))}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Industry</Label>
+                <Input
+                  value={editForm.industry}
+                  onChange={(e) => setEditForm(f => ({ ...f, industry: e.target.value }))}
+                  placeholder="Technology, Healthcare, etc."
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Timezone</Label>
+              <Input
+                value={editForm.timezone}
+                onChange={(e) => setEditForm(f => ({ ...f, timezone: e.target.value }))}
+                placeholder="America/New_York"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setEditingLead(null)}>Cancel</Button>
+            <Button onClick={handleSaveEditLead} disabled={updateLeadMutation.isPending}>
+              {updateLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
