@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Save, Phone, Mail, PenTool } from "lucide-react";
+import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
   const settingsQuery = trpc.settings.get.useQuery();
   const updateSettingsMutation = trpc.settings.update.useMutation();
+  const testSmtpMutation = trpc.email.sendTestEmail.useMutation();
   const signatureQuery = trpc.signature.get.useQuery();
   const updateSignatureMutation = trpc.signature.update.useMutation();
 
@@ -26,6 +27,10 @@ export default function SettingsPage() {
     senderEmail: "",
     senderName: "",
   });
+
+  // Track whether user has typed into password fields
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [retellKeyTouched, setRetellKeyTouched] = useState(false);
 
   const [signatureHtml, setSignatureHtml] = useState("");
   const [signaturePlainText, setSignaturePlainText] = useState("");
@@ -44,6 +49,8 @@ export default function SettingsPage() {
         senderEmail: settingsQuery.data.senderEmail || "",
         senderName: settingsQuery.data.senderName || "",
       });
+      setPasswordTouched(false);
+      setRetellKeyTouched(false);
     }
   }, [settingsQuery.data]);
 
@@ -56,12 +63,45 @@ export default function SettingsPage() {
 
   const handleSaveSettings = async () => {
     try {
-      await updateSettingsMutation.mutateAsync(formData);
-      toast.success("Settings saved successfully");
+      // Only include password fields if user actually typed something
+      const payload: Record<string, any> = { ...formData };
+      if (!passwordTouched || !payload.smtpPassword) {
+        delete payload.smtpPassword;
+      }
+      if (!retellKeyTouched || !payload.retellApiKey) {
+        delete payload.retellApiKey;
+      }
+      
+      await updateSettingsMutation.mutateAsync(payload);
+      toast.success("Settings saved successfully!", {
+        description: "Your configuration has been updated.",
+      });
       settingsQuery.refetch();
     } catch (error: any) {
       const msg = error?.message || "Failed to save settings";
       toast.error(msg);
+    }
+  };
+
+  const handleTestSmtp = async () => {
+    if (!formData.senderEmail) {
+      toast.error("Please enter a sender email address first");
+      return;
+    }
+    try {
+      await testSmtpMutation.mutateAsync({
+        testEmail: formData.senderEmail,
+        subject: "Test Email from Lead Gen System",
+        body: "This is a test email to verify your SMTP settings are working correctly.\n\nIf you received this email, your SMTP configuration is correct!",
+      });
+      toast.success("Test email sent!", {
+        description: `Check ${formData.senderEmail} for the test email.`,
+      });
+    } catch (error: any) {
+      const msg = error?.message || "Failed to send test email";
+      toast.error("SMTP test failed", {
+        description: msg,
+      });
     }
   };
 
@@ -152,12 +192,22 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>API Key</Label>
+                <Label className="flex items-center gap-2">
+                  API Key
+                  {settingsQuery.data?.hasRetellApiKey && (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                </Label>
                 <Input
                   type="password"
-                  placeholder={settingsQuery.data?.hasRetellApiKey ? "••••••••  (already saved, leave blank to keep)" : "Your Retell.AI API key"}
+                  placeholder={settingsQuery.data?.hasRetellApiKey ? "••••••••  (leave blank to keep current)" : "Enter your Retell.AI API key"}
                   value={formData.retellApiKey}
-                  onChange={(e) => setFormData({ ...formData, retellApiKey: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, retellApiKey: e.target.value });
+                    setRetellKeyTouched(true);
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
                   Get your API key from your Retell.AI dashboard at retellai.com
@@ -205,7 +255,8 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Email Configuration (SMTP)</CardTitle>
               <CardDescription>
-                Configure your SMTP settings for sending personalized emails
+                Configure your SMTP settings for sending personalized emails.
+                For Gmail, use smtp.gmail.com with port 587 and an App Password.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -237,15 +288,26 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>SMTP Password</Label>
+                <Label className="flex items-center gap-2">
+                  SMTP Password
+                  {settingsQuery.data?.hasSmtpPassword && (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                </Label>
                 <Input
                   type="password"
-                  placeholder={settingsQuery.data?.hasSmtpPassword ? "••••••••  (already saved, leave blank to keep)" : "Your SMTP password or app password"}
+                  placeholder={settingsQuery.data?.hasSmtpPassword ? "••••••••  (leave blank to keep current)" : "Enter your SMTP password or app password"}
                   value={formData.smtpPassword}
-                  onChange={(e) => setFormData({ ...formData, smtpPassword: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, smtpPassword: e.target.value });
+                    setPasswordTouched(true);
+                  }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  For Gmail, use an App Password (Settings &gt; Security &gt; App Passwords). Leave blank to keep existing password.
+                  For Gmail: Go to Google Account → Security → 2-Step Verification → App Passwords to generate one.
+                  {settingsQuery.data?.hasSmtpPassword && " Leave blank to keep your existing password."}
                 </p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -267,7 +329,7 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
-              <div className="pt-4">
+              <div className="pt-4 flex gap-3">
                 <Button
                   onClick={handleSaveSettings}
                   disabled={updateSettingsMutation.isPending}
@@ -276,7 +338,23 @@ export default function SettingsPage() {
                   {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Email Settings
                 </Button>
+                {settingsQuery.data?.hasSmtpPassword && formData.smtpHost && (
+                  <Button
+                    variant="outline"
+                    onClick={handleTestSmtp}
+                    disabled={testSmtpMutation.isPending}
+                    className="gap-2"
+                  >
+                    {testSmtpMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Send Test Email
+                  </Button>
+                )}
               </div>
+              {settingsQuery.data?.hasSmtpPassword && formData.smtpHost && (
+                <p className="text-xs text-muted-foreground">
+                  Click "Send Test Email" to verify your SMTP settings work. A test email will be sent to your sender email address.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -216,3 +216,10 @@
 ## Batch 11 — Bug Fixes (SMTP & Campaign)
 - [x] Bug Fix — SMTP settings not saving after entering Gmail credentials
 - [x] Bug Fix — Campaign giving error message when launching
+
+## Batch 12 — SMTP Password UX & Test Email
+- [x] UX Fix — SMTP password field no longer overwrites saved password when left blank
+- [x] UX Fix — Green "Saved" badge next to SMTP Password and Retell API Key when credentials exist
+- [x] UX Fix — Password fields only send data to backend when user actually types something new
+- [x] Feature — "Send Test Email" button appears after SMTP is configured
+- [x] Fix — TypeScript error in sendTestEmail mutation call (to → testEmail field name)
