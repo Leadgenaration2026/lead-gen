@@ -21,39 +21,58 @@ export function registerEmailTrackingRoutes(app: Express) {
   app.get("/api/track/pixel/:token", async (req: Request, res: Response) => {
     try {
       const { token } = req.params;
+      console.log(`[EmailTracking] Pixel request received for token: ${token}`);
 
       // Get the tracking event
       const event = await db.getEmailTrackingEventByToken(token);
       if (!event) {
-        // Still return pixel even if token not found (for privacy)
+        console.log(`[EmailTracking] Token not found: ${token}`);
         res.setHeader("Content-Type", "image/gif");
         res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         return res.send(PIXEL_GIF);
       }
 
+      // Log the open event with metadata
+      await db.createEmailTrackingEvent({
+        campaignLeadId: event.campaignLeadId,
+        eventType: "open",
+        trackingToken: `open_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        userAgent: req.get("user-agent"),
+        ipAddress: req.ip || req.socket.remoteAddress || undefined,
+      });
+
       // Update campaign lead to mark as opened
       const campaignLead = await db.getCampaignLeadById(event.campaignLeadId);
-      if (campaignLead && !campaignLead.emailOpened) {
-        await db.updateCampaignLead(event.campaignLeadId, {
-          emailOpened: true,
-          emailOpenedAt: new Date(),
-        });
-
-        // Update campaign open count
-        const campaign = await db.getCampaignById(campaignLead.campaignId);
-        if (campaign) {
-          await db.updateCampaign(campaignLead.campaignId, {
-            openCount: (campaign.openCount || 0) + 1,
+      if (campaignLead) {
+        // Always update the open status (even if already opened, to track re-opens)
+        if (!campaignLead.emailOpened) {
+          await db.updateCampaignLead(event.campaignLeadId, {
+            emailOpened: true,
+            emailOpenedAt: new Date(),
           });
+          console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as opened`);
+
+          // Update campaign open count
+          const campaign = await db.getCampaignById(campaignLead.campaignId);
+          if (campaign) {
+            await db.updateCampaign(campaignLead.campaignId, {
+              openCount: (campaign.openCount || 0) + 1,
+            });
+            console.log(`[EmailTracking] Updated campaign ${campaign.id} openCount to ${(campaign.openCount || 0) + 1}`);
+          }
         }
 
-        // Trigger Retell.AI call on email open
+        // Trigger Retell.AI call on email open (only once)
         if (!campaignLead.callTriggered) {
           try {
+            const campaign = await db.getCampaignById(campaignLead.campaignId);
             const lead = await db.getLeadById(campaignLead.leadId);
-            const settings = await db.getUserSettings(campaign.userId);
+            const settings = campaign ? await db.getUserSettings(campaign.userId) : null;
+            
+            console.log(`[EmailTracking] Retell check - lead: ${!!lead}, apiKey: ${!!settings?.retellApiKey}, agentId: ${!!settings?.retellAgentId}, phone: ${!!settings?.senderPhoneNumber}`);
             
             if (lead && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
+              console.log(`[EmailTracking] Triggering Retell.AI call to ${lead.phoneNumber}`);
               await triggerRetellCall(
                 campaignLead.id,
                 lead.phoneNumber,
@@ -62,9 +81,12 @@ export function registerEmailTrackingRoutes(app: Express) {
                 settings.senderPhoneNumber,
                 'email_open'
               );
+              console.log(`[EmailTracking] Retell.AI call triggered successfully`);
+            } else {
+              console.log(`[EmailTracking] Retell.AI call NOT triggered - missing configuration`);
             }
           } catch (error) {
-            console.error("Failed to trigger Retell call on open:", error);
+            console.error("[EmailTracking] Failed to trigger Retell call on open:", error);
           }
         }
       }
@@ -74,7 +96,7 @@ export function registerEmailTrackingRoutes(app: Express) {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.send(PIXEL_GIF);
     } catch (error) {
-      console.error("Error tracking pixel:", error);
+      console.error("[EmailTracking] Error tracking pixel:", error);
       // Still return pixel on error
       res.setHeader("Content-Type", "image/gif");
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -91,6 +113,7 @@ export function registerEmailTrackingRoutes(app: Express) {
     try {
       const { token } = req.params;
       const { url } = req.query;
+      console.log(`[EmailTracking] Click request received for token: ${token}, url: ${url}`);
 
       if (!url || typeof url !== "string") {
         return res.status(400).json({ error: "Missing or invalid url parameter" });
@@ -111,27 +134,34 @@ export function registerEmailTrackingRoutes(app: Express) {
 
         // Update campaign lead to mark as clicked
         const campaignLead = await db.getCampaignLeadById(event.campaignLeadId);
-        if (campaignLead && !campaignLead.emailClicked) {
-          await db.updateCampaignLead(event.campaignLeadId, {
-            emailClicked: true,
-            emailClickedAt: new Date(),
-          });
-
-          // Update campaign click count
-          const campaign = await db.getCampaignById(campaignLead.campaignId);
-          if (campaign) {
-            await db.updateCampaign(campaignLead.campaignId, {
-              clickCount: (campaign.clickCount || 0) + 1,
+        if (campaignLead) {
+          if (!campaignLead.emailClicked) {
+            await db.updateCampaignLead(event.campaignLeadId, {
+              emailClicked: true,
+              emailClickedAt: new Date(),
             });
+            console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as clicked`);
+
+            // Update campaign click count
+            const campaign = await db.getCampaignById(campaignLead.campaignId);
+            if (campaign) {
+              await db.updateCampaign(campaignLead.campaignId, {
+                clickCount: (campaign.clickCount || 0) + 1,
+              });
+            }
           }
 
-          // Trigger Retell.AI call on email click
+          // Trigger Retell.AI call on email click (only once)
           if (!campaignLead.callTriggered) {
             try {
+              const campaign = await db.getCampaignById(campaignLead.campaignId);
               const lead = await db.getLeadById(campaignLead.leadId);
-              const settings = await db.getUserSettings(campaign.userId);
+              const settings = campaign ? await db.getUserSettings(campaign.userId) : null;
+              
+              console.log(`[EmailTracking] Click Retell check - lead: ${!!lead}, apiKey: ${!!settings?.retellApiKey}, agentId: ${!!settings?.retellAgentId}, phone: ${!!settings?.senderPhoneNumber}`);
               
               if (lead && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
+                console.log(`[EmailTracking] Triggering Retell.AI call on click to ${lead.phoneNumber}`);
                 await triggerRetellCall(
                   campaignLead.id,
                   lead.phoneNumber,
@@ -140,9 +170,10 @@ export function registerEmailTrackingRoutes(app: Express) {
                   settings.senderPhoneNumber,
                   'email_click'
                 );
+                console.log(`[EmailTracking] Retell.AI call triggered successfully on click`);
               }
             } catch (error) {
-              console.error("Failed to trigger Retell call on click:", error);
+              console.error("[EmailTracking] Failed to trigger Retell call on click:", error);
             }
           }
         }
@@ -151,7 +182,7 @@ export function registerEmailTrackingRoutes(app: Express) {
       // Redirect to original URL
       res.redirect(302, url);
     } catch (error) {
-      console.error("Error tracking click:", error);
+      console.error("[EmailTracking] Error tracking click:", error);
       // Redirect anyway on error
       const url = req.query.url;
       if (url && typeof url === "string") {

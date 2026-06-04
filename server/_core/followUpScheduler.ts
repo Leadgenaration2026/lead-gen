@@ -225,12 +225,17 @@ export async function processScheduledEmails() {
         // Create tracking token
         const { nanoid: createId } = await import("nanoid");
         const trackingToken = createId();
-        const baseUrl = process.env.VITE_APP_URL || "";
+        // Use the deployed domain for tracking URLs
+        const baseUrl = process.env.SITE_URL || `https://${process.env.DOMAIN || 'leadgenoutreach-gkqazghm.manus.space'}`;
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
+        
+        // Get user's email signature
+        const signature = await db.getEmailSignature(scheduledEmail.userId);
+        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
         
         // Convert plain text to HTML (preserve line breaks and bullet points)
         const { plainTextToHtml } = await import("@shared/emailFormat");
-        const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + trackingPixel;
+        const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + signatureHtml + trackingPixel;
 
         // Send the email
         await transporter.sendMail({

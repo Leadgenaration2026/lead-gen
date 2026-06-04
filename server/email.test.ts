@@ -21,7 +21,11 @@ function createAuthContext(): { ctx: TrpcContext } {
     user,
     req: {
       protocol: "https",
-      headers: {},
+      headers: { host: "localhost:3000" },
+      get: (name: string) => {
+        if (name === 'host') return 'localhost:3000';
+        return undefined;
+      },
     } as TrpcContext["req"],
     res: {
       clearCookie: () => {},

@@ -457,6 +457,10 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           });
         }
 
+        // Get user's email signature
+        const signature = await db.getEmailSignature(ctx.user.id);
+        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+
         // Get campaign leads
         const campaignLeads = await db.getCampaignLeads(campaignId);
         if (campaignLeads.length === 0) {
@@ -495,16 +499,17 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               trackingToken: clickTrackingToken,
             });
 
-            // Add tracking pixel to email
-            const baseUrl = process.env.VITE_FRONTEND_FORGE_API_URL || 'http://localhost:3000';
-            const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" />`;
+            // Determine the base URL for tracking (use request origin or deployed domain)
+            const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
+            const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
             
             // Replace {{bookingUrl}} with tracked link (if present in template)
+            const ctaUrl = 'https://calendly.com/your-booking-link'; // Default CTA link
             let emailBody = personalizedTemplate
-              .replace(/{{bookingUrl}}/g, `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent('https://calendly.com/your-booking-link')}`);
+              .replace(/{{bookingUrl}}/g, `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`);
 
-            // Convert plain text to HTML if needed
-            emailBody = plainTextToHtml(emailBody) + trackingPixel;
+            // Convert plain text to HTML if needed, append signature and tracking pixel
+            emailBody = plainTextToHtml(emailBody) + signatureHtml + trackingPixel;
 
             // Send email via SMTP
             const transporter = nodemailer.createTransport({
@@ -592,17 +597,33 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           const lead = await db.getLeadById(cl.leadId);
           if (!lead) continue;
 
+          // Get tracking events for this campaign lead (to find clicked URLs)
+          const trackingEvents = await db.getEmailTrackingEventsByCampaignLead(cl.id);
+          const clickEvents = trackingEvents.filter(e => e.eventType === 'click' && e.clickUrl);
+          const clickedUrls = clickEvents.map(e => e.clickUrl).filter(Boolean);
+
+          // Get call logs for this campaign lead
+          const callLogs = await db.getCallLogsByCampaignLead(cl.id);
+          const latestCall = callLogs.length > 0 ? callLogs[callLogs.length - 1] : null;
+
           activities.push({
+            campaignLeadId: cl.id,
             leadName: lead.ownerName,
             companyName: lead.companyName,
+            email: lead.email,
+            phoneNumber: lead.phoneNumber,
             emailSent: cl.emailSent,
             emailSentAt: cl.emailSentAt,
             emailOpened: cl.emailOpened,
             emailOpenedAt: cl.emailOpenedAt,
             emailClicked: cl.emailClicked,
             emailClickedAt: cl.emailClickedAt,
+            clickedUrls,
             callTriggered: cl.callTriggered,
             callTriggeredAt: cl.callTriggeredAt,
+            callStatus: latestCall?.status || null,
+            callId: latestCall?.retellCallId || null,
+            totalCalls: callLogs.length,
           });
         }
 
@@ -1059,12 +1080,16 @@ Respond in this exact JSON format:
         // Create tracking token
         const trackingToken = nanoid();
 
-        // Send email
-        const baseUrl = process.env.VITE_APP_URL || "";
+        // Get user's email signature
+        const signature = await db.getEmailSignature(ctx.user.id);
+        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+
+        // Use request origin for tracking URL
+        const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
         
-        // Convert plain text to HTML if needed
-        const htmlBody = plainTextToHtml(input.body) + trackingPixel;
+        // Convert plain text to HTML if needed, append signature
+        const htmlBody = plainTextToHtml(input.body) + signatureHtml + trackingPixel;
 
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
@@ -1106,11 +1131,15 @@ Respond in this exact JSON format:
           },
         });
 
+        // Get user's email signature
+        const signature = await db.getEmailSignature(ctx.user.id);
+        const signatureHtml = signature?.signatureHtml ? `<br/><br/>${signature.signatureHtml}` : '';
+
         // Add a [TEST] prefix to subject
         const testSubject = `[TEST PREVIEW] ${input.subject}`;
-        const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> — This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
-        // Convert plain text to HTML if needed
-        const htmlBody = testBanner + plainTextToHtml(input.body);
+        const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> \u2014 This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
+        // Convert plain text to HTML if needed, append signature
+        const htmlBody = testBanner + plainTextToHtml(input.body) + signatureHtml;
 
         await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,

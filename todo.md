@@ -227,3 +227,11 @@
 ## Batch 13 — Bug Fix (SMTP Password & Retell API Key Not Saving)
 - [x] Bug Fix — SMTP password not being saved when user enters it
 - [x] Bug Fix — Retell.AI API key not being saved when user enters it
+
+## Batch 14 — Email Signature, Activity Tracking, Retell.AI Calls, Activity Detail View
+- [x] Bug Fix — Email signature not being appended to outgoing emails
+- [x] Bug Fix — Activity graph not updating when emails are opened/clicked
+- [x] Bug Fix — Retell.AI calls not triggering on email open/click events
+- [x] Feature — Activity view shows full lead details (name, email, phone number)
+- [x] Feature — Activity view shows which link was clicked
+- [x] Feature — Activity view shows whether client received a call or not
