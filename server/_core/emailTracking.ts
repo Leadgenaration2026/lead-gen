@@ -259,9 +259,12 @@ export function registerEmailTrackingRoutes(app: Express) {
       const { email, campaignLeadId, responseStatus } = req.body;
       console.log(`[EmailTracking] Reply webhook received - email: ${email}, campaignLeadId: ${campaignLeadId}`);
 
+      let loggedCampaignLeadId: number | undefined;
+
       if (campaignLeadId) {
         await db.markLeadReplied(campaignLeadId, responseStatus || "positive");
         await db.cancelPendingFollowUps(campaignLeadId);
+        loggedCampaignLeadId = campaignLeadId;
         console.log(`[EmailTracking] Marked campaignLead ${campaignLeadId} as replied (positive) and cancelled follow-ups`);
       } else if (email) {
         // Find all active campaign leads with this email
@@ -269,13 +272,37 @@ export function registerEmailTrackingRoutes(app: Express) {
         for (const cl of activeCampaignLeads) {
           await db.markLeadReplied(cl.id, responseStatus || "positive");
           await db.cancelPendingFollowUps(cl.id);
+          loggedCampaignLeadId = cl.id;
           console.log(`[EmailTracking] Marked campaignLead ${cl.id} as replied (positive) via email lookup`);
         }
       }
 
+      // Log webhook event for monitoring
+      await db.createWebhookEvent({
+        userId: 1, // Default owner
+        webhookType: "email_reply",
+        status: "success",
+        sourceEmail: email || undefined,
+        campaignLeadId: loggedCampaignLeadId,
+        payload: req.body,
+        ipAddress: req.ip || req.socket.remoteAddress || undefined,
+      });
+
       res.json({ success: true });
     } catch (error) {
       console.error("[EmailTracking] Error processing reply webhook:", error);
+      // Log failed event
+      try {
+        await db.createWebhookEvent({
+          userId: 1,
+          webhookType: "email_reply",
+          status: "failed",
+          sourceEmail: req.body?.email,
+          payload: req.body,
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          ipAddress: req.ip || req.socket.remoteAddress || undefined,
+        });
+      } catch (_) {}
       res.status(500).json({ error: "Failed to process reply" });
     }
   });
@@ -294,6 +321,7 @@ export function registerEmailTrackingRoutes(app: Express) {
 
       // Calendly sends payload.payload.invitee.email for bookings
       let inviteeEmail: string | undefined;
+      let loggedCampaignLeadId: number | undefined;
 
       // Handle Calendly v2 webhook format
       if (payload?.payload?.invitee?.email) {
@@ -305,7 +333,18 @@ export function registerEmailTrackingRoutes(app: Express) {
         // Direct ID format
         await db.markLeadReplied(payload.campaignLeadId, "positive");
         await db.cancelPendingFollowUps(payload.campaignLeadId);
+        loggedCampaignLeadId = payload.campaignLeadId;
         console.log(`[EmailTracking] Calendly booking: marked campaignLead ${payload.campaignLeadId} as positive`);
+
+        // Log webhook event
+        await db.createWebhookEvent({
+          userId: 1,
+          webhookType: "calendly_booking",
+          status: "success",
+          campaignLeadId: loggedCampaignLeadId,
+          payload,
+          ipAddress: req.ip || req.socket.remoteAddress || undefined,
+        });
         return res.json({ success: true });
       }
 
@@ -314,15 +353,38 @@ export function registerEmailTrackingRoutes(app: Express) {
         for (const cl of activeCampaignLeads) {
           await db.markLeadReplied(cl.id, "positive");
           await db.cancelPendingFollowUps(cl.id);
+          loggedCampaignLeadId = cl.id;
           console.log(`[EmailTracking] Calendly booking: marked campaignLead ${cl.id} as positive (email: ${inviteeEmail})`);
         }
       } else {
         console.log(`[EmailTracking] Calendly webhook: could not extract invitee email from payload`);
       }
 
+      // Log webhook event for monitoring
+      await db.createWebhookEvent({
+        userId: 1,
+        webhookType: "calendly_booking",
+        status: inviteeEmail ? "success" : "ignored",
+        sourceEmail: inviteeEmail,
+        campaignLeadId: loggedCampaignLeadId,
+        payload,
+        ipAddress: req.ip || req.socket.remoteAddress || undefined,
+      });
+
       res.json({ success: true });
     } catch (error) {
       console.error("[EmailTracking] Error processing Calendly webhook:", error);
+      // Log failed event
+      try {
+        await db.createWebhookEvent({
+          userId: 1,
+          webhookType: "calendly_booking",
+          status: "failed",
+          payload: req.body,
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          ipAddress: req.ip || req.socket.remoteAddress || undefined,
+        });
+      } catch (_) {}
       res.status(500).json({ error: "Failed to process Calendly booking" });
     }
   });
@@ -337,9 +399,30 @@ export function registerEmailTrackingRoutes(app: Express) {
       const payload = req.body;
       const { handleRetellWebhook } = await import("./retellAI");
       await handleRetellWebhook(payload);
+
+      // Log webhook event for monitoring
+      await db.createWebhookEvent({
+        userId: 1,
+        webhookType: "retell_call",
+        status: "success",
+        payload,
+        ipAddress: req.ip || req.socket.remoteAddress || undefined,
+      });
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error handling Retell webhook:", error);
+      // Log failed event
+      try {
+        await db.createWebhookEvent({
+          userId: 1,
+          webhookType: "retell_call",
+          status: "failed",
+          payload: req.body,
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          ipAddress: req.ip || req.socket.remoteAddress || undefined,
+        });
+      } catch (_) {}
       res.status(500).json({ error: "Failed to process webhook" });
     }
   });

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -310,6 +310,10 @@ export default function SettingsPage() {
           <TabsTrigger value="signature" className="flex items-center gap-1 text-xs">
             <PenTool className="w-3.5 h-3.5" />
             Signature
+          </TabsTrigger>
+          <TabsTrigger value="webhooks" className="flex items-center gap-1 text-xs">
+            <Webhook className="w-3.5 h-3.5" />
+            Webhooks
           </TabsTrigger>
         </TabsList>
 
@@ -694,7 +698,313 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Webhooks Tab */}
+        <TabsContent value="webhooks" className="mt-6 space-y-6">
+          <WebhookStatusPanel />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// ============ Webhook Status Panel Component ============
+
+function WebhookStatusPanel() {
+  const statsQuery = trpc.webhooks.stats.useQuery();
+  const eventsQuery = trpc.webhooks.list.useQuery({ limit: 20 });
+  const sendTestMutation = trpc.webhooks.sendTest.useMutation({
+    onSuccess: () => {
+      toast.success("Test webhook event logged successfully");
+      statsQuery.refetch();
+      eventsQuery.refetch();
+    },
+    onError: () => toast.error("Failed to send test event"),
+  });
+
+  const deployedDomain = "leadgenoutreach-gkqazghm.manus.space";
+  const calendlyUrl = `https://${deployedDomain}/api/webhooks/calendly`;
+  const replyUrl = `https://${deployedDomain}/api/webhooks/reply`;
+  const retellUrl = `https://${deployedDomain}/api/webhooks/retell`;
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} URL copied to clipboard`);
+  };
+
+  const formatRelativeTime = (date: Date | string | null) => {
+    if (!date) return "Never";
+    const d = new Date(date);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString();
+  };
+
+  const getStatusColor = (lastEvent: Date | string | null) => {
+    if (!lastEvent) return "bg-gray-100 border-gray-200 text-gray-600";
+    const d = new Date(lastEvent);
+    const diffMs = Date.now() - d.getTime();
+    const diffDays = diffMs / 86400000;
+    if (diffDays < 1) return "bg-green-50 border-green-200 text-green-700";
+    if (diffDays < 7) return "bg-yellow-50 border-yellow-200 text-yellow-700";
+    return "bg-red-50 border-red-200 text-red-700";
+  };
+
+  const getStatusDot = (lastEvent: Date | string | null) => {
+    if (!lastEvent) return "bg-gray-400";
+    const d = new Date(lastEvent);
+    const diffMs = Date.now() - d.getTime();
+    const diffDays = diffMs / 86400000;
+    if (diffDays < 1) return "bg-green-500";
+    if (diffDays < 7) return "bg-yellow-500";
+    return "bg-red-500";
+  };
+
+  return (
+    <>
+      {/* Integration Status Cards */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="w-5 h-5" />
+            Webhook Integration Status
+          </CardTitle>
+          <CardDescription>
+            Monitor incoming webhook events from Calendly, email replies, and Retell.AI call updates.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Calendly Status */}
+            <div className={`p-4 rounded-lg border-2 ${getStatusColor(statsQuery.data?.calendlyLast ?? null)}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${getStatusDot(statsQuery.data?.calendlyLast ?? null)}`} />
+                  <span className="font-medium text-sm">Calendly Bookings</span>
+                </div>
+                <Zap className="w-4 h-4 opacity-50" />
+              </div>
+              <p className="text-2xl font-bold">{statsQuery.data?.calendlyTotal || 0}</p>
+              <p className="text-xs mt-1 opacity-75">
+                Last event: {formatRelativeTime(statsQuery.data?.calendlyLast || null)}
+              </p>
+            </div>
+
+            {/* Email Reply Status */}
+            <div className={`p-4 rounded-lg border-2 ${getStatusColor(statsQuery.data?.replyLast ?? null)}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${getStatusDot(statsQuery.data?.replyLast ?? null)}`} />
+                  <span className="font-medium text-sm">Email Replies</span>
+                </div>
+                <Mail className="w-4 h-4 opacity-50" />
+              </div>
+              <p className="text-2xl font-bold">{statsQuery.data?.replyTotal || 0}</p>
+              <p className="text-xs mt-1 opacity-75">
+                Last event: {formatRelativeTime(statsQuery.data?.replyLast || null)}
+              </p>
+            </div>
+
+            {/* Retell Call Status */}
+            <div className={`p-4 rounded-lg border-2 ${getStatusColor(statsQuery.data?.retellLast ?? null)}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2.5 h-2.5 rounded-full ${getStatusDot(statsQuery.data?.retellLast ?? null)}`} />
+                  <span className="font-medium text-sm">Retell.AI Calls</span>
+                </div>
+                <Phone className="w-4 h-4 opacity-50" />
+              </div>
+              <p className="text-2xl font-bold">{statsQuery.data?.retellTotal || 0}</p>
+              <p className="text-xs mt-1 opacity-75">
+                Last event: {formatRelativeTime(statsQuery.data?.retellLast || null)}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Webhook URLs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Webhook className="w-5 h-5" />
+            Webhook Endpoints
+          </CardTitle>
+          <CardDescription>
+            Configure these URLs in your external services to receive events.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Calendly URL */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-blue-600" />
+              Calendly Booking Webhook
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input value={calendlyUrl} readOnly className="font-mono text-xs bg-muted" />
+              <Button variant="outline" size="sm" onClick={() => copyToClipboard(calendlyUrl, "Calendly")}>
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Add this URL in Calendly → Integrations → Webhooks → Subscribe to event: <code className="bg-muted px-1 rounded">invitee.created</code>
+            </p>
+          </div>
+
+          {/* Reply URL */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Mail className="w-3.5 h-3.5 text-green-600" />
+              Email Reply Webhook
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input value={replyUrl} readOnly className="font-mono text-xs bg-muted" />
+              <Button variant="outline" size="sm" onClick={() => copyToClipboard(replyUrl, "Reply")}>
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Set up via Zapier/Make: when email arrives at nitin@virtualassistant-group.com, POST <code className="bg-muted px-1 rounded">{'{"email": "sender@example.com"}'}</code>
+            </p>
+          </div>
+
+          {/* Retell URL */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Phone className="w-3.5 h-3.5 text-purple-600" />
+              Retell.AI Call Status Webhook
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input value={retellUrl} readOnly className="font-mono text-xs bg-muted" />
+              <Button variant="outline" size="sm" onClick={() => copyToClipboard(retellUrl, "Retell")}>
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Add this URL in Retell.AI Dashboard → Agent Settings → Webhook URL for call status updates
+            </p>
+          </div>
+
+          {/* Test buttons */}
+          <div className="pt-4 border-t">
+            <p className="text-sm font-medium mb-3">Test Connectivity</p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendTestMutation.mutate({ type: "calendly_booking" })}
+                disabled={sendTestMutation.isPending}
+                className="gap-1"
+              >
+                {sendTestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                Test Calendly
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendTestMutation.mutate({ type: "email_reply" })}
+                disabled={sendTestMutation.isPending}
+                className="gap-1"
+              >
+                {sendTestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
+                Test Reply
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Recent Events Log */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            Recent Webhook Events
+          </CardTitle>
+          <CardDescription>
+            Last 20 incoming webhook events across all integrations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {eventsQuery.isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : !eventsQuery.data || eventsQuery.data.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Webhook className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No webhook events received yet.</p>
+              <p className="text-xs mt-1">Events will appear here once your integrations are configured.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {eventsQuery.data.map((event: any) => (
+                <div key={event.id} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+                  {/* Type icon */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    event.webhookType === "calendly_booking" ? "bg-blue-100 text-blue-600" :
+                    event.webhookType === "email_reply" ? "bg-green-100 text-green-600" :
+                    "bg-purple-100 text-purple-600"
+                  }`}>
+                    {event.webhookType === "calendly_booking" ? <Zap className="w-4 h-4" /> :
+                     event.webhookType === "email_reply" ? <Mail className="w-4 h-4" /> :
+                     <Phone className="w-4 h-4" />}
+                  </div>
+
+                  {/* Event details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">
+                        {event.webhookType === "calendly_booking" ? "Calendly Booking" :
+                         event.webhookType === "email_reply" ? "Email Reply" :
+                         "Retell Call Update"}
+                      </span>
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                        event.status === "success" ? "bg-green-100 text-green-700" :
+                        event.status === "failed" ? "bg-red-100 text-red-700" :
+                        "bg-gray-100 text-gray-700"
+                      }`}>
+                        {event.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {event.sourceEmail ? `From: ${event.sourceEmail}` : "No source email"}
+                      {event.errorMessage && ` — ${event.errorMessage}`}
+                    </p>
+                  </div>
+
+                  {/* Timestamp */}
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">
+                    {new Date(event.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Refresh button */}
+          <div className="pt-4 border-t mt-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { statsQuery.refetch(); eventsQuery.refetch(); }}
+              className="gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Refresh
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </>
   );
 }

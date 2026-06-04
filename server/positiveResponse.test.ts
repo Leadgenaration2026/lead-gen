@@ -16,6 +16,9 @@ vi.mock("./db", () => ({
   markLeadUnsubscribed: vi.fn(),
   cancelPendingFollowUps: vi.fn(),
   findCampaignLeadsByEmail: vi.fn(),
+  createWebhookEvent: vi.fn().mockResolvedValue(1),
+  getWebhookEvents: vi.fn().mockResolvedValue([]),
+  getWebhookStats: vi.fn().mockResolvedValue({ calendlyTotal: 0, replyTotal: 0, retellTotal: 0, calendlyLast: null, replyLast: null, retellLast: null }),
 }));
 
 // Mock followUpScheduler

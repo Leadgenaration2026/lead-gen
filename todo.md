@@ -278,3 +278,15 @@
 - [x] UI — Amber warning box in Settings for Retell phone number (must be Retell-purchased)
 - [x] UI — Relabeled manual response buttons as "Admin Override" with explanatory text
 - [x] Tests — Positive response logic tests (9 tests: Calendly click NOT positive, Calendly booking IS positive, reply IS positive, unsubscribe cancels follow-ups)
+
+## Batch 19 — Webhook Integration Status Page
+
+- [x] Feature — Create webhookEvents database table (id, type, source, payload, status, email, campaignLeadId, createdAt)
+- [x] Feature — DB helpers for logging and querying webhook events
+- [x] Feature — tRPC procedures for listing webhook events and getting webhook stats
+- [x] Feature — New "Webhooks" tab in Settings page showing integration status
+- [x] Feature — Webhook event log table with type, source email, status, timestamp
+- [x] Feature — Status indicators showing last successful event time for each webhook type
+- [x] Feature — Webhook URL display with copy-to-clipboard for easy setup
+- [x] Feature — Update Calendly and reply webhook handlers to log events to new table
+- [x] Tests — Webhook event logging and retrieval tests (155 total tests passing)

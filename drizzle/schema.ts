@@ -322,3 +322,20 @@ export const rotationalEmails = mysqlTable("rotationalEmails", {
 
 export type RotationalEmail = typeof rotationalEmails.$inferSelect;
 export type InsertRotationalEmail = typeof rotationalEmails.$inferInsert;
+
+// Webhook events table - logs all incoming webhook events for monitoring
+export const webhookEvents = mysqlTable("webhookEvents", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  webhookType: mysqlEnum("webhookType", ["calendly_booking", "email_reply", "retell_call"]).notNull(),
+  status: mysqlEnum("status", ["success", "failed", "ignored"]).default("success").notNull(),
+  sourceEmail: varchar("sourceEmail", { length: 320 }), // Email of the person who triggered the event
+  campaignLeadId: int("campaignLeadId"), // Related campaign lead if found
+  payload: json("payload"), // Raw webhook payload for debugging
+  errorMessage: text("errorMessage"), // Error details if failed
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type InsertWebhookEvent = typeof webhookEvents.$inferInsert;

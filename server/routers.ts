@@ -1742,5 +1742,39 @@ Respond in this exact JSON format:
         return { success: true };
       }),
   }),
+
+  webhooks: router({
+    // Get recent webhook events
+    list: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(100).default(50) }).optional())
+      .query(async ({ ctx, input }) => {
+        const userId = ctx.user!.id;
+        return db.getWebhookEvents(userId, input?.limit || 50);
+      }),
+
+    // Get webhook stats (counts + last event times)
+    stats: protectedProcedure
+      .query(async ({ ctx }) => {
+        const userId = ctx.user!.id;
+        return db.getWebhookStats(userId);
+      }),
+
+    // Send a test webhook event (for verifying connectivity)
+    sendTest: protectedProcedure
+      .input(z.object({
+        type: z.enum(["calendly_booking", "email_reply"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user!.id;
+        await db.createWebhookEvent({
+          userId,
+          webhookType: input.type,
+          status: "success",
+          sourceEmail: "test@example.com",
+          payload: { test: true, triggeredAt: new Date().toISOString() },
+        });
+        return { success: true };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;

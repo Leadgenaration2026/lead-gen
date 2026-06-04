@@ -1,6 +1,6 @@
-import { eq, and, desc, inArray, lte } from "drizzle-orm";
+import { eq, and, desc, inArray, lte, count, sql, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail } from "../drizzle/schema";
+import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -751,4 +751,61 @@ export async function findCampaignLeadsByEmail(email: string) {
     );
   
   return results;
+}
+
+// ============ Webhook Events ============
+
+export async function createWebhookEvent(data: InsertWebhookEvent) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(webhookEvents).values(data);
+  return result[0].insertId;
+}
+
+export async function getWebhookEvents(userId: number, limit: number = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(webhookEvents)
+    .where(eq(webhookEvents.userId, userId))
+    .orderBy(desc(webhookEvents.createdAt))
+    .limit(limit);
+}
+
+export async function getWebhookStats(userId: number) {
+  const db = await getDb();
+  if (!db) return { calendlyTotal: 0, replyTotal: 0, retellTotal: 0, calendlyLast: null, replyLast: null, retellLast: null };
+
+  // Get counts by type
+  const counts = await db.select({
+    webhookType: webhookEvents.webhookType,
+    total: count(),
+  }).from(webhookEvents)
+    .where(and(eq(webhookEvents.userId, userId), eq(webhookEvents.status, "success")))
+    .groupBy(webhookEvents.webhookType);
+
+  // Get last successful event for each type
+  const lastCalendly = await db.select().from(webhookEvents)
+    .where(and(eq(webhookEvents.userId, userId), eq(webhookEvents.webhookType, "calendly_booking"), eq(webhookEvents.status, "success")))
+    .orderBy(desc(webhookEvents.createdAt)).limit(1);
+
+  const lastReply = await db.select().from(webhookEvents)
+    .where(and(eq(webhookEvents.userId, userId), eq(webhookEvents.webhookType, "email_reply"), eq(webhookEvents.status, "success")))
+    .orderBy(desc(webhookEvents.createdAt)).limit(1);
+
+  const lastRetell = await db.select().from(webhookEvents)
+    .where(and(eq(webhookEvents.userId, userId), eq(webhookEvents.webhookType, "retell_call"), eq(webhookEvents.status, "success")))
+    .orderBy(desc(webhookEvents.createdAt)).limit(1);
+
+  const calendlyCount = counts.find(c => c.webhookType === "calendly_booking")?.total || 0;
+  const replyCount = counts.find(c => c.webhookType === "email_reply")?.total || 0;
+  const retellCount = counts.find(c => c.webhookType === "retell_call")?.total || 0;
+
+  return {
+    calendlyTotal: calendlyCount,
+    replyTotal: replyCount,
+    retellTotal: retellCount,
+    calendlyLast: lastCalendly[0]?.createdAt || null,
+    replyLast: lastReply[0]?.createdAt || null,
+    retellLast: lastRetell[0]?.createdAt || null,
+  };
 }
