@@ -181,3 +181,8 @@
 - [x] Claude Output — Ensure sent emails preserve plain text formatting (newlines → <br> in HTML emails)
 - [x] Claude Output — Refactored to shared plainTextToHtml utility with proper <ul><li> wrapping
 - [x] Claude Output — Added comprehensive tests for email format conversion (8 tests)
+
+## Batch 8 — Bug Fixes
+- [x] Bug Fix — Lead generation giving error message and not generating leads
+- [x] Bug Fix — Campaign launch not working (not getting launched)
+- [x] Feature — Add delete option for campaigns

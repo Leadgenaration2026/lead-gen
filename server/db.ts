@@ -125,7 +125,8 @@ export async function deleteLead(id: number) {
 export async function createCampaign(data: InsertCampaign) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(campaigns).values(data);
+  const result = await db.insert(campaigns).values(data);
+  return result[0].insertId;
 }
 
 export async function getCampaignsByUserId(userId: number) {
@@ -145,6 +146,29 @@ export async function updateCampaign(id: number, data: Partial<InsertCampaign>) 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.update(campaigns).set({ ...data, updatedAt: new Date() }).where(eq(campaigns.id, id));
+}
+
+export async function deleteCampaign(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Get all campaign lead IDs for cascading
+  const cLeads = await db.select({ id: campaignLeads.id }).from(campaignLeads).where(eq(campaignLeads.campaignId, id));
+  const cLeadIds = cLeads.map(cl => cl.id);
+  
+  if (cLeadIds.length > 0) {
+    // Delete dependent records for each campaign lead
+    const { followUpEmails, followUpCalls } = await import("../drizzle/schema");
+    for (const clId of cLeadIds) {
+      await db.delete(emailTrackingEvents).where(eq(emailTrackingEvents.campaignLeadId, clId));
+      await db.delete(callLogs).where(eq(callLogs.campaignLeadId, clId));
+      await db.delete(followUpEmails).where(eq(followUpEmails.campaignLeadId, clId));
+      await db.delete(followUpCalls).where(eq(followUpCalls.campaignLeadId, clId));
+    }
+    // Delete campaign leads
+    await db.delete(campaignLeads).where(eq(campaignLeads.campaignId, id));
+  }
+  // Delete the campaign
+  await db.delete(campaigns).where(eq(campaigns.id, id));
 }
 
 // Campaign lead queries

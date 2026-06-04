@@ -146,37 +146,47 @@ Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - website: string (optional, valid URL if provided)
 - industry: string (optional)
 
-Return ONLY valid JSON array, no other text.`;
+Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
         const response = await invokeLLM({
           messages: [
             {
               role: "system",
-              content: "You are a lead generation expert. Generate realistic business leads with accurate contact information.",
+              content: "You are a lead generation expert. Generate realistic business leads with accurate contact information. Always respond with raw JSON only - no markdown formatting, no code fences, no explanatory text.",
             },
             {
               role: "user",
               content: prompt,
             },
           ],
+          response_format: { type: "json_object" },
         }) as any;
 
         let leadsData;
         try {
-          const content = response.choices[0]?.message.content;
+          let content = response.choices[0]?.message?.content;
+          // Handle array content (some models return content as array)
+          if (Array.isArray(content)) {
+            content = content.map((c: any) => typeof c === 'string' ? c : c.text || '').join('');
+          }
           if (!content) throw new Error("No response from LLM");
-          leadsData = JSON.parse(content);
-        } catch (error) {
+          // Strip markdown code fences if present
+          content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+          const parsed = JSON.parse(content);
+          // Handle both {leads: [...]} and [...] formats
+          leadsData = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || Object.values(parsed)[0]);
+        } catch (error: any) {
+          console.error("Lead generation parse error:", error.message, "Raw response:", JSON.stringify(response.choices?.[0]?.message?.content)?.slice(0, 500));
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to parse AI-generated leads",
+            message: "Failed to parse AI-generated leads. Please try again.",
           });
         }
 
         if (!Array.isArray(leadsData)) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: "AI response was not an array",
+            message: "AI response was not an array of leads. Please try again.",
           });
         }
 
@@ -343,7 +353,7 @@ Return ONLY valid JSON array, no other text.`;
       .input(createCampaignSchema)
       .mutation(async ({ input, ctx }) => {
         // Create campaign
-        const result = await db.createCampaign({
+        const campaignId = await db.createCampaign({
           userId: ctx.user.id,
           name: input.name,
           description: input.description,
@@ -355,11 +365,11 @@ Return ONLY valid JSON array, no other text.`;
         });
 
         // Add leads to campaign
-        if (input.leadIds.length > 0 && result && typeof result === 'object' && 'insertId' in result) {
-          await db.addLeadsToCampaign((result as any).insertId as number, input.leadIds);
+        if (input.leadIds.length > 0 && campaignId) {
+          await db.addLeadsToCampaign(campaignId, input.leadIds);
         }
 
-        return result;
+        return { success: true, campaignId };
       }),
 
     update: protectedProcedure
@@ -491,6 +501,18 @@ Return ONLY valid JSON array, no other text.`;
           throw new TRPCError({ code: "NOT_FOUND" });
         }
         return db.updateCampaign(campaignId, { status: "paused" });
+      }),
+
+    // Delete campaign
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: campaignId, ctx }) => {
+        const campaign = await db.getCampaignById(campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await db.deleteCampaign(campaignId);
+        return { success: true };
       }),
 
     // Get activity feed for campaign

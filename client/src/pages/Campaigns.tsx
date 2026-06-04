@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Mail, Play, Pause } from "lucide-react";
+import { Loader2, Plus, Mail, Play, Pause, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { LeadPicker } from "@/components/LeadPicker";
@@ -18,6 +18,7 @@ export default function CampaignsPage() {
   const createCampaignMutation = trpc.campaigns.create.useMutation();
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
+  const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
@@ -64,8 +65,9 @@ export default function CampaignsPage() {
       await launchCampaignMutation.mutateAsync(campaignId);
       toast.success("Campaign launched successfully");
       campaignsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to launch campaign");
+    } catch (error: any) {
+      const msg = error?.message || "Failed to launch campaign";
+      toast.error(msg);
     }
   };
 
@@ -76,6 +78,17 @@ export default function CampaignsPage() {
       campaignsQuery.refetch();
     } catch (error) {
       toast.error("Failed to pause campaign");
+    }
+  };
+
+  const handleDeleteCampaign = async (campaignId: number) => {
+    if (!confirm("Are you sure you want to delete this campaign? This action cannot be undone.")) return;
+    try {
+      await deleteCampaignMutation.mutateAsync(campaignId);
+      toast.success("Campaign deleted");
+      campaignsQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete campaign");
     }
   };
 
@@ -262,6 +275,15 @@ export default function CampaignsPage() {
                       onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}
                     >
                       {selectedCampaignId === campaign.id ? "Hide" : "View"} Activity
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleDeleteCampaign(campaign.id)}
+                      disabled={deleteCampaignMutation.isPending}
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                   {selectedCampaignId === campaign.id && (
