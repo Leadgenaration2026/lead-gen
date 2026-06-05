@@ -444,10 +444,8 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        {/* Rotational Emails Tab */}
-        <TabsContent value="rotational" className="mt-6 space-y-4">
+          {/* Rotational Email Accounts Section */}
           <Card>
             <CardHeader>
               <CardTitle>Rotational Email Addresses (Mon-Fri)</CardTitle>

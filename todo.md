@@ -355,3 +355,9 @@
 - [x] Feature — When no senderAccountId, fall back to primary SMTP settings
 - [x] Fix — Seamless.ai tab in Settings now properly shows API key configuration content
 - [x] Fix — Settings tabs consolidated: SMTP + Rotational merged into "Email Accounts" tab (6 tabs total)
+
+## Batch 27 — Verify SMTP + Rotational Merge on Disk
+- [x] Verified SMTP and Rotational content merged into single "Email Accounts" tab on disk
+- [x] Verified Seamless.ai TabsContent exists with API key configuration
+- [x] Verified 6 matching triggers and TabsContent values (integrations, email, seamless, deliverability, signature, webhooks)
+- [x] All 181 tests passing, zero TypeScript errors
