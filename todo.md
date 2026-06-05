@@ -367,3 +367,12 @@
 - [x] Bug — Seamless.ai API settings page not visible/accessible
 - [x] Bug — Lead generation does not have option to choose between AI or Seamless.ai API source
 - [x] Bug — Single individual email does not show campaign creation option in the UI
+## Batch 30 — Email Personalization & Sender Selection Fixes
+- [x] Fix — AI email generation now uses lead's first name in greeting (personalised opening)
+- [x] Fix — AI prompt researches industry-specific problems and references company/website
+- [x] Fix — Industry name is always included in the generated email (never left blank)
+- [x] Fix — Sender account dropdown added to single email composer (choose which email to send from)
+- [x] Fix — Single lead email now has optional campaign tracking toggle (not auto-created)
+- [x] Fix — sendIndividual backend accepts createCampaign boolean flag
+- [x] Fix — Campaign only created when user explicitly enables "Campaign Tracking" toggle
+- [x] Fix — All 179 tests passing, zero TypeScript errors

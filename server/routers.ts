@@ -1228,39 +1228,65 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const settings = await db.getUserSettings(ctx.user.id);
         const ctaLink = input.ctaLink || "https://calendly.com/nitin-virtualassistant/30min";
 
+        // Fetch stored problem analysis for this lead (if available)
+        let problemContext = "";
+        try {
+          const weakPoints = await db.getLeadWeakPoints(lead.id);
+          if (weakPoints && weakPoints.weakPoints) {
+            const wp = weakPoints.weakPoints as any;
+            const painPoints = Array.isArray(wp) ? wp : (wp.painPoints || wp.problems || []);
+            if (painPoints.length > 0) {
+              problemContext = `\n\nRESEARCHED PROBLEMS & PAIN POINTS for this lead's industry/business:\n${painPoints.map((p: any) => `- ${typeof p === 'string' ? p : p.title || p.description || JSON.stringify(p)}`).join('\n')}`;
+              if (weakPoints.analysis) {
+                problemContext += `\nAnalysis: ${weakPoints.analysis}`;
+              }
+            }
+          }
+        } catch (e) {
+          // No problem analysis available - continue without it
+        }
+
+        // Extract first name from ownerName
+        const firstName = lead.ownerName?.split(' ')[0] || lead.ownerName || 'there';
+
         const emailTypePrompts: Record<string, string> = {
-          discovery: "Write a discovery email to understand their business challenges and pain points. Ask an insightful question.",
-          value_prop: "Write a value proposition email highlighting how our services solve their specific problems. Be specific about benefits.",
-          social_proof: "Write a social proof email sharing relevant case studies, testimonials, or success stories from similar companies.",
-          urgency: "Write an urgency email with a time-sensitive offer or limited availability. Create FOMO without being pushy.",
+          discovery: "Write a discovery email to understand their business challenges and pain points. Ask an insightful question about their specific industry.",
+          value_prop: "Write a value proposition email highlighting how our services solve their specific problems. Reference their industry challenges.",
+          social_proof: "Write a social proof email sharing relevant case studies, testimonials, or success stories from companies in their industry.",
+          urgency: "Write an urgency email with a time-sensitive offer or limited availability. Reference industry-specific timing.",
           custom: "Write a professional outreach email based on the specific instructions provided.",
         };
 
-        const prompt = `You are a professional email copywriter. Generate a cold outreach email.
+        const prompt = `You are a professional email copywriter specializing in personalized cold outreach. Generate a cold outreach email.
 
 Lead Information:
-- Name: ${lead.ownerName}
+- First Name: ${lead.ownerName?.split(' ')[0] || 'there'}
+- Full Name: ${lead.ownerName || 'Business Owner'}
 - Company: ${lead.companyName}
-- Industry: ${lead.industry || "Not specified"}
+- Industry: ${lead.industry || 'business services'}
+- Website: ${lead.website || 'Not available'}
 - Email: ${lead.email}
 
 Email Type: ${input.emailType}
 Guidance: ${emailTypePrompts[input.emailType]}
-
 ${input.instructions ? `Additional Instructions from sender: ${input.instructions}` : ""}
-
 CTA Link (for booking a meeting): ${ctaLink}
 
-RULES:
-1. Subject line MUST be under 50 characters, conversational, lowercase, NO spam words (free, urgent, limited, act now, click here)
-2. Subject line should look like a personal email from a colleague, NOT marketing
-3. Email MUST be under 150 words
-4. Include 2-3 bullet points highlighting key benefits
-5. End with a clear CTA: "Schedule a quick chat: ${ctaLink}"
-6. Tone: Professional but warm, like a helpful peer, NOT salesy
-7. Do NOT use exclamation marks excessively
-8. First line must be personalized to their company/industry
-9. Do NOT include any signature - it will be appended separately
+CRITICAL RULES:
+1. ALWAYS address the recipient by their first name "${lead.ownerName?.split(' ')[0] || 'there'}" in the opening line
+2. Subject line MUST be under 50 characters, conversational, lowercase, NO spam words (free, urgent, limited, act now, click here)
+3. Subject line should look like a personal email from a colleague, NOT marketing
+4. Email MUST be under 150 words
+5. Include 2-3 bullet points highlighting key benefits SPECIFIC to their industry (${lead.industry || 'their business'})
+6. End with a clear CTA: "Schedule a quick chat: ${ctaLink}"
+7. Tone: Professional but warm, like a helpful peer, NOT salesy
+8. Do NOT use exclamation marks excessively
+9. First line must reference their company (${lead.companyName}) or industry-specific challenges
+10. Do NOT include any signature - it will be appended separately
+11. Research and mention 1-2 specific pain points common in the ${lead.industry || 'business services'} industry
+12. If website is available, reference something relevant about their business
+13. Make the email feel like you've done your homework on their company
+14. NEVER leave industry as "Not specified" - use the actual industry value or infer from company name
 
 Respond in this exact JSON format:
 {
@@ -1328,6 +1354,7 @@ Respond in this exact JSON format:
         subject: z.string().min(1),
         body: z.string().min(1),
         senderAccountId: z.number().optional(),
+        createCampaign: z.boolean().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const lead = await db.getLeadById(input.leadId);
@@ -1401,38 +1428,36 @@ Respond in this exact JSON format:
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
         }
 
-        // Create a mini campaign record for tracking this single email
+        // Create a campaign record for tracking (only if user opted in)
         let campaignId: number | undefined;
-        try {
-          campaignId = await db.createCampaign({
-            userId: ctx.user.id,
-            name: `Single Email to ${lead.ownerName || lead.companyName}`,
-            subject: input.subject,
-            emailTemplate: input.body,
-            status: "completed",
-            totalLeads: 1,
-            sentCount: 1,
-          });
-          // Add lead to campaign and mark as sent
-          await db.addLeadsToCampaign(campaignId, [lead.id]);
-          const campaignLeadsList = await db.getCampaignLeads(campaignId);
-          if (campaignLeadsList.length > 0) {
-            await db.updateCampaignLead(campaignLeadsList[0].id, {
-              emailSent: true,
-              emailSentAt: new Date(),
+        if (input.createCampaign) {
+          try {
+            campaignId = await db.createCampaign({
+              userId: ctx.user.id,
+              name: `Single Email to ${lead.ownerName || lead.companyName}`,
+              subject: input.subject,
+              emailTemplate: input.body,
+              status: "completed",
+              totalLeads: 1,
+              sentCount: 1,
             });
-            // Store tracking token for pixel tracking
-            await db.createEmailTrackingEvent({
-              campaignLeadId: campaignLeadsList[0].id,
-              trackingToken,
-              eventType: "open",
-            });
+            await db.addLeadsToCampaign(campaignId, [lead.id]);
+            const campaignLeadsList = await db.getCampaignLeads(campaignId);
+            if (campaignLeadsList.length > 0) {
+              await db.updateCampaignLead(campaignLeadsList[0].id, {
+                emailSent: true,
+                emailSentAt: new Date(),
+              });
+              await db.createEmailTrackingEvent({
+                campaignLeadId: campaignLeadsList[0].id,
+                trackingToken,
+                eventType: "open",
+              });
+            }
+          } catch (e) {
+            console.error('Campaign tracking failed:', e);
           }
-        } catch (e) {
-          // Campaign tracking is optional - don't fail the send
-          console.error('Campaign tracking failed:', e);
         }
-        // Update lead status
         await db.updateLead(lead.id, { status: "contacted" });
         return { success: true, trackingToken, campaignId };
       }),

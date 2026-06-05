@@ -33,7 +33,7 @@ vi.mock('./db', async (importOriginal) => {
 
 vi.mock('./_core/llm', () => ({
   invokeLLM: vi.fn().mockResolvedValue({
-    choices: [{ message: { content: '<p>Hi John,</p><p>I noticed Acme Corp is growing fast.</p><ul><li>Save time</li></ul><p><a href="https://calendly.com/nitin-virtualassistant/30min">Chat</a></p>' } }],
+    choices: [{ message: { content: JSON.stringify({ subject: "quick question about acme", body: "<p>Hi John,</p><p>I noticed Acme Corp is growing fast in the SaaS space.</p><ul><li>Save time with automation</li><li>Get measurable results within 30 days</li></ul><p><a href=\"https://calendly.com/nitin-virtualassistant/30min\">Schedule a quick chat</a></p>" }) } }],
   }),
 }));
 
@@ -44,6 +44,7 @@ vi.mock('nodemailer', () => ({
 function createTestContext(): TrpcContext {
   return {
     user: { id: 1, openId: 'test-user', name: 'Test User', email: 'test@example.com', role: 'admin' },
+    req: { protocol: 'https', get: vi.fn().mockReturnValue('localhost:3000') },
     setCookie: vi.fn(),
     clearCookie: vi.fn(),
   } as unknown as TrpcContext;

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users } from "lucide-react";
@@ -46,6 +47,7 @@ export default function EmailComposer() {
   const [testEmail, setTestEmail] = useState("");
   const [showTestEmailInput, setShowTestEmailInput] = useState(false);
   const [selectedSenderAccount, setSelectedSenderAccount] = useState<string>("primary");
+  const [createCampaignOnSend, setCreateCampaignOnSend] = useState(false);
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -85,6 +87,7 @@ export default function EmailComposer() {
   const leadsQuery = trpc.leads.list.useQuery();
   const leadSetsQuery = trpc.leadSets.list.useQuery();
   const campaignsQuery = trpc.campaigns.list.useQuery();
+  const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
 
   // Mutations - Single
   const generateEmailMutation = trpc.email.generateAI.useMutation();
@@ -138,8 +141,19 @@ export default function EmailComposer() {
       return;
     }
     try {
-      await sendEmailMutation.mutateAsync({ leadId: selectedLead, subject, body: emailBody, senderAccountId: selectedSenderAccount !== "primary" ? Number(selectedSenderAccount) : undefined });
-      toast.success("Email sent successfully!");
+      const result = await sendEmailMutation.mutateAsync({
+        leadId: selectedLead,
+        subject,
+        body: emailBody,
+        senderAccountId: selectedSenderAccount !== "primary" ? Number(selectedSenderAccount) : undefined,
+        createCampaign: createCampaignOnSend,
+      });
+      if (result.campaignId) {
+        toast.success("Email sent & campaign created! Track opens/clicks in Campaigns.", { duration: 5000 });
+        campaignsQuery.refetch();
+      } else {
+        toast.success("Email sent successfully!");
+      }
       setSubject("");
       setEmailBody("");
       setInstructions("");
@@ -471,6 +485,37 @@ export default function EmailComposer() {
                     )}
                   </div>
 
+                  {/* Send From & Campaign Options */}
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Send From</Label>
+                      <Select value={selectedSenderAccount} onValueChange={setSelectedSenderAccount}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select sender account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="primary">Primary SMTP Account</SelectItem>
+                          {rotationalEmailsQuery.data?.map((account: any) => (
+                            <SelectItem key={account.id} value={String(account.id)}>
+                              {account.senderName ? `${account.senderName} (${account.email})` : account.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Campaign Tracking</Label>
+                      <div className="flex items-center gap-3 h-10">
+                        <Switch
+                          checked={createCampaignOnSend}
+                          onCheckedChange={setCreateCampaignOnSend}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {createCampaignOnSend ? "Will create campaign for tracking" : "Send without campaign tracking"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                   {/* Action Buttons */}
                   <div className="flex flex-col gap-3 pt-2">
                     <div className="flex gap-3">
