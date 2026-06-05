@@ -290,7 +290,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="integrations" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="integrations" className="flex items-center gap-1 text-xs">
             <Phone className="w-3.5 h-3.5" />
             Retell.AI
@@ -298,6 +298,10 @@ export default function SettingsPage() {
           <TabsTrigger value="email" className="flex items-center gap-1 text-xs">
             <Mail className="w-3.5 h-3.5" />
             SMTP
+          </TabsTrigger>
+          <TabsTrigger value="seamless" className="flex items-center gap-1 text-xs">
+            <Zap className="w-3.5 h-3.5" />
+            Seamless.ai
           </TabsTrigger>
           <TabsTrigger value="rotational" className="flex items-center gap-1 text-xs">
             <RotateCcw className="w-3.5 h-3.5" />

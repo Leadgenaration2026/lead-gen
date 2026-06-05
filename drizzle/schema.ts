@@ -40,6 +40,9 @@ export const leads = mysqlTable("leads", {
   tag: mysqlEnum("tag", ["hot", "warm", "cold", "follow_up", "none"]).default("none").notNull(),
   leadSetId: int("leadSetId"),
   timezone: varchar("timezone", { length: 50 }).default("America/New_York"),
+  linkedinUrl: varchar("linkedinUrl", { length: 500 }),
+  instagramUrl: varchar("instagramUrl", { length: 500 }),
+  country: varchar("country", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -145,6 +148,7 @@ export const userSettings = mysqlTable("userSettings", {
   senderName: varchar("senderName", { length: 255 }),
   calendlyWebhookSecret: varchar("calendlyWebhookSecret", { length: 255 }), // Calendly signing key for HMAC verification
   retellWebhookSecret: varchar("retellWebhookSecret", { length: 255 }), // Retell API key used for webhook signature verification
+  seamlessApiKey: varchar("seamlessApiKey", { length: 500 }), // Seamless.ai API key for lead generation
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

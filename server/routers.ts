@@ -36,6 +36,8 @@ const generateLeadsSchema = z.object({
   instruction: z.string().min(10),
   count: z.number().min(1).max(100),
   leadSetName: z.string().optional(), // Optional: assign generated leads to a named set
+  country: z.string().optional(), // Optional: filter leads by country
+  source: z.enum(["ai", "seamless"]).default("ai"), // Lead generation source
 });
 
 const updateUserSettingsSchema = z.object({
@@ -50,6 +52,7 @@ const updateUserSettingsSchema = z.object({
   senderName: z.string().optional(),
   calendlyWebhookSecret: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
+  seamlessApiKey: z.string().optional(),
 });
 
 export const appRouter = router({
@@ -98,6 +101,9 @@ export const appRouter = router({
         customData: z.any().optional(),
         status: z.enum(["new", "contacted", "qualified", "converted", "rejected"]).optional(),
         tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
+        linkedinUrl: z.string().optional(),
+        instagramUrl: z.string().optional(),
+        country: z.string().optional(),
         timezone: z.string().optional(),
       }) }))
       .mutation(async ({ input, ctx }) => {
@@ -153,11 +159,117 @@ export const appRouter = router({
         });
       }),
 
-    // AI-powered lead generation from natural language
+    // AI-powered lead generation from natural language or Seamless.ai
     generate: protectedProcedure
       .input(generateLeadsSchema)
       .mutation(async ({ input, ctx }) => {
-        const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"
+        // Seamless.ai source - use real API data
+        if (input.source === "seamless") {
+          const settings = await db.getUserSettings(ctx.user.id);
+          if (!settings?.seamlessApiKey) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Seamless.ai API key not configured. Please add it in Settings → Integrations.",
+            });
+          }
+          
+          const { searchAndResearchContacts } = await import("./seamlessAi");
+          
+          // Parse the instruction to extract search filters
+          const filtersPrompt = `Extract search filters from this lead generation request: "${input.instruction}"
+
+Return a JSON object with these optional fields:
+- companyName: string (specific company name if mentioned)
+- companyDomain: string (company website domain if mentioned)
+- jobTitle: string (specific job titles to search for)
+- department: string (e.g. Engineering, Sales, Marketing, Finance, HR, Operations)
+- seniority: string (e.g. C-Suite, VP, Director, Manager)
+- industry: string (industry/sector)
+- companySize: string (e.g. "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000")
+
+Only include fields that are clearly implied by the instruction. Return ONLY valid JSON.`;
+
+          const filterResponse = await invokeLLM({
+            messages: [
+              { role: "system", content: "You extract structured search filters from natural language. Return only JSON." },
+              { role: "user", content: filtersPrompt },
+            ],
+            response_format: { type: "json_object" },
+          }) as any;
+
+          let filters: any = {};
+          try {
+            let content = filterResponse.choices[0]?.message?.content;
+            if (Array.isArray(content)) content = content.map((c: any) => typeof c === 'string' ? c : c.text || '').join('');
+            content = content?.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+            filters = JSON.parse(content || '{}');
+          } catch { filters = {}; }
+
+          // Add country filter
+          if (input.country) filters.contactCountry = input.country;
+          filters.limit = Math.min(input.count, 25); // Seamless limits to 25 per page
+
+          try {
+            const contacts = await searchAndResearchContacts(settings.seamlessApiKey, filters);
+            
+            // Create or find lead set
+            let leadSetId: number | null = null;
+            if (input.leadSetName && input.leadSetName.trim()) {
+              const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
+              const existing = existingSets.find(s => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+              if (existing) {
+                leadSetId = existing.id;
+              } else {
+                leadSetId = await db.createLeadSet({
+                  userId: ctx.user.id,
+                  name: input.leadSetName.trim(),
+                  description: `Generated from Seamless.ai: ${input.instruction.slice(0, 100)}`,
+                });
+              }
+            }
+
+            // Create leads from Seamless.ai results
+            const createdLeads = [];
+            for (const contact of contacts.slice(0, input.count)) {
+              try {
+                const result = await db.createLead({
+                  companyName: contact.company || "Unknown",
+                  ownerName: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || "Unknown",
+                  email: contact.email || "",
+                  phoneNumber: contact.phone || "",
+                  website: "",
+                  industry: filters.industry || "",
+                  timezone: "America/New_York",
+                  linkedinUrl: contact.lIProfileUrl || null,
+                  instagramUrl: null,
+                  country: input.country || contact.contactLocation?.country || null,
+                  userId: ctx.user.id,
+                  status: "new",
+                  leadSetId,
+                });
+                createdLeads.push(result);
+              } catch (e) {
+                console.error("Failed to create Seamless lead:", e);
+              }
+            }
+
+            return {
+              success: true,
+              count: createdLeads.length,
+              leads: contacts.slice(0, input.count),
+              source: "seamless",
+            };
+          } catch (error: any) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Seamless.ai error: ${error.message}`,
+            });
+          }
+        }
+
+        // AI source - use LLM to generate leads
+        const countryFilter = input.country ? `\nIMPORTANT: ALL leads MUST be from ${input.country}. Use phone numbers, email domains, and timezones appropriate for ${input.country}.` : '';
+        const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryFilter}
         
 Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - companyName: string
@@ -167,6 +279,8 @@ Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - website: string (optional, valid URL if provided)
 - industry: string (the industry/sector of the business)
 - timezone: string (IANA timezone of the lead's location, e.g. "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London")
+- linkedinUrl: string (optional, LinkedIn profile URL of the owner)
+- instagramUrl: string (optional, Instagram profile URL of the business)
 
 Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
@@ -240,6 +354,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               website: leadData.website,
               industry: leadData.industry,
               timezone: leadData.timezone || "America/New_York",
+              linkedinUrl: leadData.linkedinUrl || null,
+              instagramUrl: leadData.instagramUrl || null,
+              country: input.country || null,
               userId: ctx.user.id,
               status: "new",
               leadSetId,

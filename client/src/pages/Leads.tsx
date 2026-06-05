@@ -58,6 +58,8 @@ export default function LeadsPage() {
 
   // Lead set name for AI generation and CSV import
   const [generateLeadSetName, setGenerateLeadSetName] = useState("");
+  const [generateCountry, setGenerateCountry] = useState("");
+  const [generateSource, setGenerateSource] = useState<"ai" | "seamless">("ai");
   const [csvLeadSetName, setCsvLeadSetName] = useState("");
 
   // Checkbox selection state
@@ -89,6 +91,9 @@ export default function LeadsPage() {
     website: "",
     industry: "",
     timezone: "",
+    linkedinUrl: "",
+    instagramUrl: "",
+    country: "",
   });
   const updateLeadMutation = trpc.leads.update.useMutation({
     onSuccess: () => {
@@ -111,6 +116,9 @@ export default function LeadsPage() {
       website: editingLead.website || "",
       industry: editingLead.industry || "",
       timezone: editingLead.timezone || "America/New_York",
+      linkedinUrl: editingLead.linkedinUrl || "",
+      instagramUrl: editingLead.instagramUrl || "",
+      country: editingLead.country || "",
     });
   }
   if (!editingLead && prevEditingLeadId.current !== null) {
@@ -129,6 +137,9 @@ export default function LeadsPage() {
         website: editForm.website || undefined,
         industry: editForm.industry || undefined,
         timezone: editForm.timezone || undefined,
+        linkedinUrl: editForm.linkedinUrl || undefined,
+        instagramUrl: editForm.instagramUrl || undefined,
+        country: editForm.country || undefined,
       },
     });
   };
@@ -144,6 +155,8 @@ export default function LeadsPage() {
         instruction,
         count,
         leadSetName: generateLeadSetName.trim() || undefined,
+        country: (generateCountry && generateCountry !== "any") ? generateCountry : undefined,
+        source: generateSource,
       });
       toast.success(`Generated ${count} leads successfully`);
       setInstruction("");
@@ -733,7 +746,7 @@ export default function LeadsPage() {
                     <label className="text-sm font-medium">Your Instructions</label>
                     <Textarea placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..." value={instruction} onChange={(e) => setInstruction(e.target.value)} className="mt-1 min-h-24" />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-sm font-medium">Number of Leads</label>
                       <Input type="number" min="1" max="100" value={count} onChange={(e) => setCount(parseInt(e.target.value) || 10)} className="mt-1" />
@@ -746,6 +759,44 @@ export default function LeadsPage() {
                         onChange={(e) => setGenerateLeadSetName(e.target.value)}
                         className="mt-1"
                       />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Lead Source</label>
+                      <Select value={generateSource} onValueChange={(v) => setGenerateSource(v as "ai" | "seamless")}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select source" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ai">AI Generated (Simulated)</SelectItem>
+                          <SelectItem value="seamless">Seamless.ai (Real Data)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Country</label>
+                      <Select value={generateCountry} onValueChange={setGenerateCountry}>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="All Countries" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">All Countries</SelectItem>
+                          <SelectItem value="United States">United States</SelectItem>
+                          <SelectItem value="United Kingdom">United Kingdom</SelectItem>
+                          <SelectItem value="Canada">Canada</SelectItem>
+                          <SelectItem value="Australia">Australia</SelectItem>
+                          <SelectItem value="India">India</SelectItem>
+                          <SelectItem value="Germany">Germany</SelectItem>
+                          <SelectItem value="France">France</SelectItem>
+                          <SelectItem value="Singapore">Singapore</SelectItem>
+                          <SelectItem value="UAE">UAE</SelectItem>
+                          <SelectItem value="Netherlands">Netherlands</SelectItem>
+                          <SelectItem value="Japan">Japan</SelectItem>
+                          <SelectItem value="Brazil">Brazil</SelectItem>
+                          <SelectItem value="South Africa">South Africa</SelectItem>
+                          <SelectItem value="New Zealand">New Zealand</SelectItem>
+                          <SelectItem value="Ireland">Ireland</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   {generateLeadSetName && (
@@ -1181,13 +1232,41 @@ export default function LeadsPage() {
                 />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Timezone</Label>
-              <Input
-                value={editForm.timezone}
-                onChange={(e) => setEditForm(f => ({ ...f, timezone: e.target.value }))}
-                placeholder="America/New_York"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Timezone</Label>
+                <Input
+                  value={editForm.timezone}
+                  onChange={(e) => setEditForm(f => ({ ...f, timezone: e.target.value }))}
+                  placeholder="America/New_York"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Country</Label>
+                <Input
+                  value={editForm.country}
+                  onChange={(e) => setEditForm(f => ({ ...f, country: e.target.value }))}
+                  placeholder="United States, India, etc."
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">LinkedIn URL</Label>
+                <Input
+                  value={editForm.linkedinUrl}
+                  onChange={(e) => setEditForm(f => ({ ...f, linkedinUrl: e.target.value }))}
+                  placeholder="https://linkedin.com/in/..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Instagram URL</Label>
+                <Input
+                  value={editForm.instagramUrl}
+                  onChange={(e) => setEditForm(f => ({ ...f, instagramUrl: e.target.value }))}
+                  placeholder="https://instagram.com/..."
+                />
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">

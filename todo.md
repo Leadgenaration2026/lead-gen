@@ -345,3 +345,14 @@
 - [x] Feature — Keep Regenerate and Analyze Problems accessible in both modes
 - [x] Feature — Remove separate Campaigns tab from Dashboard (integrate campaign list into unified view)
 - [x] Feature — Campaign history/management section within the unified Email Composer tab
+
+## Batch 26 — Country Filter, Signature Fix, Seamless.ai, Social Posting, Single Lead Campaign
+
+- [x] Feature — Add country dropdown to lead generation (filter leads by country)
+- [x] Feature — Fix email signature font size to match email body font
+- [x] Feature — Integrate Seamless.ai API for real lead data generation
+- [x] Feature — Add LinkedIn and Instagram profile URLs to lead schema
+- [x] Feature — Add LinkedIn/Instagram posting option as additional outreach channel
+- [x] Feature — Social profiles sourced from Seamless.ai or deep search
+- [x] Feature — Add campaign tracking to single lead emails (create campaign for single sends)
+- [x] Bug — Single lead mode not showing campaign option for tracking
