@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -9,9 +9,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
+import { LeadPicker } from "@/components/LeadPicker";
+import { ActivityFeed } from "@/components/ActivityFeed";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -26,6 +29,11 @@ const emailTypeDescriptions: Record<EmailType, string> = {
 export default function EmailComposer() {
   const { user } = useAuth();
   const searchString = useSearch();
+
+  // Mode: "single" for one lead, "bulk" for campaign
+  const [mode, setMode] = useState<"single" | "bulk">("single");
+
+  // Single lead state
   const [selectedLead, setSelectedLead] = useState<number | null>(null);
   const [emailType, setEmailType] = useState<EmailType>("discovery");
   const [instructions, setInstructions] = useState("");
@@ -35,6 +43,23 @@ export default function EmailComposer() {
   const [showPreview, setShowPreview] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [lastAIPrompt, setLastAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
+  const [testEmail, setTestEmail] = useState("");
+  const [showTestEmailInput, setShowTestEmailInput] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
+
+  // Bulk campaign state
+  const [selectedLeadSetId, setSelectedLeadSetId] = useState<number | null>(null);
+  const [campaignFormData, setCampaignFormData] = useState({
+    name: "",
+    description: "",
+    subject: "",
+    emailTemplate: "",
+    leadIds: [] as number[],
+  });
+  const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
 
   // Pre-fill from URL params (template quick-launch)
   useEffect(() => {
@@ -51,31 +76,44 @@ export default function EmailComposer() {
       }
       setShowPreview(true);
       setPrefilled(true);
+      setMode("single");
     }
   }, [searchString, prefilled]);
 
-  const [testEmail, setTestEmail] = useState("");
-  const [showTestEmailInput, setShowTestEmailInput] = useState(false);
-
-  const [scheduleMode, setScheduleMode] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState("");
-  const [scheduledTime, setScheduledTime] = useState("");
-
+  // Queries
   const leadsQuery = trpc.leads.list.useQuery();
+  const leadSetsQuery = trpc.leadSets.list.useQuery();
+  const campaignsQuery = trpc.campaigns.list.useQuery();
+
+  // Mutations - Single
   const generateEmailMutation = trpc.email.generateAI.useMutation();
   const regenerateMutation = trpc.email.generateAITemplate.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
   const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
 
+  // Mutations - Bulk
+  const createCampaignMutation = trpc.campaigns.create.useMutation();
+  const launchCampaignMutation = trpc.campaigns.launch.useMutation();
+  const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
+  const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
+  const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
+
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
+  // Filter leads by selected lead set for bulk mode
+  const filteredLeads = useMemo(() => {
+    const allLeads = leadsQuery.data || [];
+    if (!selectedLeadSetId) return allLeads;
+    return allLeads.filter((l: any) => l.leadSetId === selectedLeadSetId);
+  }, [leadsQuery.data, selectedLeadSetId]);
+
+  // Single lead handlers
   const handleGenerateEmail = async () => {
     if (!selectedLead) {
       toast.error("Please select a lead first");
       return;
     }
-
     try {
       const result = await generateEmailMutation.mutateAsync({
         leadId: selectedLead,
@@ -83,7 +121,6 @@ export default function EmailComposer() {
         instructions: instructions || undefined,
         ctaLink,
       });
-
       setSubject(result.subject);
       setEmailBody(result.body);
       setShowPreview(true);
@@ -99,15 +136,9 @@ export default function EmailComposer() {
       toast.error("Please fill in all fields");
       return;
     }
-
     try {
-      await sendEmailMutation.mutateAsync({
-        leadId: selectedLead,
-        subject,
-        body: emailBody,
-      });
+      await sendEmailMutation.mutateAsync({ leadId: selectedLead, subject, body: emailBody });
       toast.success("Email sent successfully!");
-      // Reset form
       setSubject("");
       setEmailBody("");
       setInstructions("");
@@ -117,468 +148,717 @@ export default function EmailComposer() {
     }
   };
 
+  // Bulk campaign handlers
+  const handleCreateCampaign = async () => {
+    if (!campaignFormData.name || !campaignFormData.subject || !campaignFormData.emailTemplate) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    if (campaignFormData.leadIds.length === 0) {
+      toast.error("Please select at least one lead for this campaign");
+      return;
+    }
+    try {
+      await createCampaignMutation.mutateAsync({
+        ...campaignFormData,
+        leadIds: campaignFormData.leadIds,
+      });
+      toast.success(`Campaign created with ${campaignFormData.leadIds.length} leads!`);
+      setCampaignFormData({ name: "", description: "", subject: "", emailTemplate: "", leadIds: [] });
+      campaignsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to create campaign");
+    }
+  };
+
+  const handleLaunchCampaign = async (campaignId: number) => {
+    try {
+      await launchCampaignMutation.mutateAsync(campaignId);
+      toast.success("Campaign launched successfully");
+      campaignsQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to launch campaign");
+    }
+  };
+
+  const handlePauseCampaign = async (campaignId: number) => {
+    try {
+      await pauseCampaignMutation.mutateAsync(campaignId);
+      toast.success("Campaign paused");
+      campaignsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to pause campaign");
+    }
+  };
+
+  const handleDeleteCampaign = async (campaignId: number) => {
+    if (!confirm("Are you sure you want to delete this campaign?")) return;
+    try {
+      await deleteCampaignMutation.mutateAsync(campaignId);
+      toast.success("Campaign deleted");
+      campaignsQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete campaign");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Email Composer</h1>
         <p className="text-muted-foreground mt-2">
-          Create professional, AI-powered personalized emails for individual leads
+          Create and send personalized emails — one at a time or as a bulk campaign
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Panel - Configuration */}
-        <div className="lg:col-span-1 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-blue-600" />
-                AI Email Generator
-              </CardTitle>
-              <CardDescription>
-                Tell the AI what you want to say and it will create a professional email
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Lead Selection */}
-              <div className="space-y-2">
-                <Label htmlFor="lead-select">Select Lead *</Label>
-                <Select value={selectedLead?.toString() || ""} onValueChange={(v) => setSelectedLead(parseInt(v))}>
-                  <SelectTrigger id="lead-select">
-                    <SelectValue placeholder="Choose a lead..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {leadsQuery.data?.map((lead) => (
-                      <SelectItem key={lead.id} value={lead.id.toString()}>
-                        {lead.ownerName} - {lead.companyName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* Mode Toggle */}
+      <Tabs value={mode} onValueChange={(v) => setMode(v as "single" | "bulk")} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="single" className="gap-2">
+            <Mail className="w-4 h-4" />
+            Single Lead
+          </TabsTrigger>
+          <TabsTrigger value="bulk" className="gap-2">
+            <Users className="w-4 h-4" />
+            Bulk Campaign
+          </TabsTrigger>
+        </TabsList>
 
-              {/* Email Type Selection */}
-              <div className="space-y-2">
-                <Label htmlFor="email-type">Email Type *</Label>
-                <Select value={emailType} onValueChange={(v) => setEmailType(v as EmailType)}>
-                  <SelectTrigger id="email-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="discovery">Discovery</SelectItem>
-                    <SelectItem value="value_prop">Value Proposition</SelectItem>
-                    <SelectItem value="social_proof">Social Proof</SelectItem>
-                    <SelectItem value="urgency">Urgency</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">{emailTypeDescriptions[emailType]}</p>
-              </div>
-
-              {/* Instructions */}
-              <div className="space-y-2">
-                <Label htmlFor="instructions">Your Instructions</Label>
-                <Textarea
-                  id="instructions"
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  placeholder="Tell the AI what you want to say...&#10;&#10;Example: Their website is outdated. Tell them we can redesign it to get 3x more leads. Mention our case study with XYZ Corp where we increased conversions by 200%."
-                  rows={5}
-                  className="text-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Be specific about their weak points and what you want to offer
-                </p>
-              </div>
-
-              {/* CTA Link */}
-              <div className="space-y-2">
-                <Label htmlFor="cta-link">CTA Link (Calendly)</Label>
-                <Input
-                  id="cta-link"
-                  value={ctaLink}
-                  onChange={(e) => setCtaLink(e.target.value)}
-                  placeholder="https://calendly.com/..."
-                  className="text-sm"
-                />
-              </div>
-
-              {/* Generate Button */}
-              <Button
-                onClick={handleGenerateEmail}
-                disabled={generateEmailMutation.isPending || !selectedLead}
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                size="lg"
-              >
-                {generateEmailMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Generating Email...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Generate with AI
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Lead Details Card */}
-          {selectedLeadData && (
-            <Card className="border-blue-200 bg-blue-50/50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-blue-900">Selected Lead</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm space-y-2 text-blue-800">
-                <div className="flex justify-between">
-                  <span className="font-medium">Name:</span>
-                  <span>{selectedLeadData.ownerName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Company:</span>
-                  <span>{selectedLeadData.companyName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Email:</span>
-                  <span className="text-xs">{selectedLeadData.email}</span>
-                </div>
-                {selectedLeadData.industry && (
-                  <div className="flex justify-between">
-                    <span className="font-medium">Industry:</span>
-                    <Badge variant="outline" className="text-xs">{selectedLeadData.industry}</Badge>
+        {/* ===== SINGLE LEAD MODE ===== */}
+        <TabsContent value="single" className="mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Panel - Configuration */}
+            <div className="lg:col-span-1 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-blue-600" />
+                    AI Email Generator
+                  </CardTitle>
+                  <CardDescription>
+                    Select a lead, describe what you want to say, and AI creates a professional email
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Lead Selection */}
+                  <div className="space-y-2">
+                    <Label htmlFor="lead-select">Select Lead *</Label>
+                    <Select value={selectedLead?.toString() || ""} onValueChange={(v) => setSelectedLead(parseInt(v))}>
+                      <SelectTrigger id="lead-select">
+                        <SelectValue placeholder="Choose a lead..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {leadsQuery.data?.map((lead) => (
+                          <SelectItem key={lead.id} value={lead.id.toString()}>
+                            {lead.ownerName} - {lead.companyName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="font-medium">Status:</span>
-                  <Badge variant="outline" className="text-xs capitalize">{selectedLeadData.status}</Badge>
+
+                  {/* Email Type Selection */}
+                  <div className="space-y-2">
+                    <Label htmlFor="email-type">Email Type *</Label>
+                    <Select value={emailType} onValueChange={(v) => setEmailType(v as EmailType)}>
+                      <SelectTrigger id="email-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="discovery">Discovery</SelectItem>
+                        <SelectItem value="value_prop">Value Proposition</SelectItem>
+                        <SelectItem value="social_proof">Social Proof</SelectItem>
+                        <SelectItem value="urgency">Urgency</SelectItem>
+                        <SelectItem value="custom">Custom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{emailTypeDescriptions[emailType]}</p>
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="space-y-2">
+                    <Label htmlFor="instructions">Your Instructions</Label>
+                    <Textarea
+                      id="instructions"
+                      value={instructions}
+                      onChange={(e) => setInstructions(e.target.value)}
+                      placeholder="Tell the AI what you want to say...&#10;&#10;Example: Their website is outdated. Tell them we can redesign it to get 3x more leads. Mention our case study with XYZ Corp where we increased conversions by 200%."
+                      rows={5}
+                      className="text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Be specific about their weak points and what you want to offer
+                    </p>
+                  </div>
+
+                  {/* CTA Link */}
+                  <div className="space-y-2">
+                    <Label htmlFor="cta-link">CTA Link (Calendly)</Label>
+                    <Input
+                      id="cta-link"
+                      value={ctaLink}
+                      onChange={(e) => setCtaLink(e.target.value)}
+                      placeholder="https://calendly.com/..."
+                      className="text-sm"
+                    />
+                  </div>
+
+                  {/* Generate Button */}
+                  <Button
+                    onClick={handleGenerateEmail}
+                    disabled={generateEmailMutation.isPending || !selectedLead}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    size="lg"
+                  >
+                    {generateEmailMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Email...</>
+                    ) : (
+                      <><Sparkles className="w-4 h-4 mr-2" /> Generate with AI</>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Lead Details Card */}
+              {selectedLeadData && (
+                <Card className="border-blue-200 bg-blue-50/50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold text-blue-900">Selected Lead</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-2 text-blue-800">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Name:</span>
+                      <span>{selectedLeadData.ownerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Company:</span>
+                      <span>{selectedLeadData.companyName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Email:</span>
+                      <span className="text-xs">{selectedLeadData.email}</span>
+                    </div>
+                    {selectedLeadData.industry && (
+                      <div className="flex justify-between">
+                        <span className="font-medium">Industry:</span>
+                        <Badge variant="outline" className="text-xs">{selectedLeadData.industry}</Badge>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="font-medium">Status:</span>
+                      <Badge variant="outline" className="text-xs capitalize">{selectedLeadData.status}</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Right Panel - Email Editor & Preview */}
+            <div className="lg:col-span-2 space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Mail className="w-5 h-5" />
+                        Email Editor
+                      </CardTitle>
+                      <CardDescription>Review, edit, and send your email</CardDescription>
+                    </div>
+                    {emailBody && (
+                      <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)}>
+                        <Eye className="w-4 h-4 mr-1" />
+                        {showPreview ? "Edit" : "Preview"}
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Subject Line */}
+                  <div className="space-y-2">
+                    <Label htmlFor="subject" className="font-semibold">Subject Line</Label>
+                    <Input
+                      id="subject"
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      placeholder="AI will generate a spam-proof subject line..."
+                      className="font-medium text-base"
+                    />
+                    {subject && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                          {subject.length < 50 ? "Good length" : "Consider shortening"}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{subject.length}/50 chars</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI Write Button - Direct access */}
+                  <div className="flex items-center gap-2">
+                    <AIWriteButton
+                      onGenerated={(s, b) => { setSubject(s); setEmailBody(b); setShowPreview(true); }}
+                      onPromptUsed={(prompt: string, emailType: string, companyContext?: string) => setLastAIPrompt({ prompt, emailType, companyContext })}
+                      leadId={selectedLead || undefined}
+                      includeVariables={false}
+                      buttonLabel="AI Write Email"
+                      buttonVariant="default"
+                      buttonSize="default"
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                    />
+                    <span className="text-xs text-muted-foreground">Describe what you want to say and AI writes a professional email</span>
+                  </div>
+
+                  {/* Regenerate Variation Card */}
+                  {emailBody && lastAIPrompt && (
+                    <div className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-purple-900">Not happy with this email?</p>
+                          <p className="text-xs text-purple-600 mt-0.5">Click to generate a completely different variation using the same context</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="default"
+                          onClick={async () => {
+                            try {
+                              const result = await regenerateMutation.mutateAsync({
+                                prompt: lastAIPrompt.prompt,
+                                emailType: lastAIPrompt.emailType as any,
+                                companyContext: lastAIPrompt.companyContext || undefined,
+                                leadId: selectedLead || undefined,
+                                includeVariables: false,
+                                useProblemAnalysis: true,
+                              });
+                              setSubject(result.subject);
+                              setEmailBody(result.body);
+                              toast.success("New variation generated!");
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to regenerate");
+                            }
+                          }}
+                          disabled={regenerateMutation.isPending}
+                          className="gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5"
+                        >
+                          {regenerateMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating...</>
+                          ) : (
+                            <><RefreshCw className="w-4 h-4" /> Regenerate Variation</>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email Body */}
+                  <div className="space-y-2">
+                    <Label htmlFor="body" className="font-semibold">Email Body</Label>
+                    {showPreview ? (
+                      <div className="border rounded-lg p-4 min-h-[300px] bg-white text-sm leading-relaxed whitespace-pre-wrap font-sans">
+                        {emailBody}
+                      </div>
+                    ) : (
+                      <Textarea
+                        id="body"
+                        value={emailBody}
+                        onChange={(e) => setEmailBody(e.target.value)}
+                        placeholder="Click 'Generate with AI' to create your email, or write it manually here..."
+                        rows={14}
+                        className="text-sm leading-relaxed"
+                      />
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col gap-3 pt-2">
+                    <div className="flex gap-3">
+                      {!scheduleMode ? (
+                        <Button
+                          onClick={handleSendEmail}
+                          disabled={sendEmailMutation.isPending || !subject || !emailBody || !selectedLead}
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          size="lg"
+                        >
+                          {sendEmailMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
+                          ) : (
+                            <><Send className="w-4 h-4 mr-2" /> Send Email to {selectedLeadData?.ownerName || "Lead"}</>
+                          )}
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={async () => {
+                            if (!selectedLead || !subject || !emailBody || !scheduledDate || !scheduledTime) {
+                              toast.error("Please fill in all fields and select a date/time");
+                              return;
+                            }
+                            try {
+                              const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+                              await scheduleEmailMutation.mutateAsync({ leadId: selectedLead, subject, emailBody: emailBody, scheduledFor });
+                              toast.success(`Email scheduled for ${scheduledDate} at ${scheduledTime}`);
+                              setSubject(""); setEmailBody(""); setScheduleMode(false); setScheduledDate(""); setScheduledTime(""); setShowPreview(false);
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to schedule email");
+                            }
+                          }}
+                          disabled={scheduleEmailMutation.isPending || !subject || !emailBody || !selectedLead || !scheduledDate || !scheduledTime}
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                          size="lg"
+                        >
+                          {scheduleEmailMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Scheduling...</>
+                          ) : (
+                            <><Clock className="w-4 h-4 mr-2" /> Schedule Email</>
+                          )}
+                        </Button>
+                      )}
+                      <Button
+                        variant={scheduleMode ? "default" : "outline"}
+                        onClick={() => setScheduleMode(!scheduleMode)}
+                        className={scheduleMode ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-300" : ""}
+                      >
+                        <Clock className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => { setSubject(""); setEmailBody(""); setShowPreview(false); setScheduleMode(false); }}
+                        disabled={!subject && !emailBody}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+
+                    {/* Schedule Date/Time Picker */}
+                    {scheduleMode && (
+                      <div className="border rounded-lg p-3 bg-indigo-50/50 border-indigo-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 text-indigo-600" />
+                          <span className="text-sm font-medium text-indigo-900">Schedule Send</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-indigo-700">Date</Label>
+                            <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} min={new Date().toISOString().split("T")[0]} className="text-sm h-9 bg-white" />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-indigo-700">Time</Label>
+                            <Input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className="text-sm h-9 bg-white" />
+                          </div>
+                        </div>
+                        <p className="text-xs text-indigo-600 mt-2">Tip: Emails sent Tuesday-Thursday between 9-11 AM get the best open rates</p>
+                      </div>
+                    )}
+
+                    {/* Send Test Email */}
+                    <div className="border rounded-lg p-3 bg-amber-50/50 border-amber-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <TestTube className="w-4 h-4 text-amber-600" />
+                          <span className="text-sm font-medium text-amber-900">Send Test Email to Myself</span>
+                        </div>
+                        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowTestEmailInput(!showTestEmailInput)}>
+                          {showTestEmailInput ? "Hide" : "Show"}
+                        </Button>
+                      </div>
+                      {showTestEmailInput && (
+                        <div className="flex gap-2">
+                          <Input type="email" placeholder="your-email@example.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} className="text-sm h-9 bg-white" />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 h-9 border-amber-300 text-amber-700 hover:bg-amber-100"
+                            disabled={sendTestEmailMutation.isPending || !subject || !emailBody || !testEmail}
+                            onClick={async () => {
+                              try {
+                                await sendTestEmailMutation.mutateAsync({ subject, body: emailBody, testEmail });
+                                toast.success(`Test email sent to ${testEmail}! Check your inbox.`);
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to send test email. Check SMTP settings.");
+                              }
+                            }}
+                          >
+                            {sendTestEmailMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <>Send Test</>}
+                          </Button>
+                        </div>
+                      )}
+                      <p className="text-xs text-amber-700 mt-1.5">Preview how the email looks in your inbox before sending to the lead</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== BULK CAMPAIGN MODE ===== */}
+        <TabsContent value="bulk" className="mt-6">
+          <div className="space-y-6">
+            {/* Create Campaign Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-blue-600" />
+                  Create Bulk Campaign
+                </CardTitle>
+                <CardDescription>
+                  Send personalized emails to multiple leads at once. Use variables like {"{{ownerName}}"}, {"{{companyName}}"} for personalization.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Campaign Name *</Label>
+                    <Input
+                      placeholder="e.g., Q2 SaaS Outreach"
+                      value={campaignFormData.name}
+                      onChange={(e) => setCampaignFormData({ ...campaignFormData, name: e.target.value })}
+                      className="mt-1.5"
+                    />
+                  </div>
+                  <div>
+                    <Label>Description</Label>
+                    <Input
+                      placeholder="Brief campaign description"
+                      value={campaignFormData.description}
+                      onChange={(e) => setCampaignFormData({ ...campaignFormData, description: e.target.value })}
+                      className="mt-1.5"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Email Subject *</Label>
+                  <Input
+                    placeholder="e.g., Quick question about {{companyName}}"
+                    value={campaignFormData.subject}
+                    onChange={(e) => setCampaignFormData({ ...campaignFormData, subject: e.target.value })}
+                    className="mt-1.5"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"} for personalization</p>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label>Email Template *</Label>
+                    <div className="flex items-center gap-2">
+                      {campaignFormData.emailTemplate && lastCampaignAIPrompt && (
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const result = await regenerateTemplateMutation.mutateAsync({
+                                prompt: lastCampaignAIPrompt.prompt,
+                                emailType: lastCampaignAIPrompt.emailType as any,
+                                companyContext: lastCampaignAIPrompt.companyContext || undefined,
+                                includeVariables: true,
+                                useProblemAnalysis: false,
+                              });
+                              setCampaignFormData({ ...campaignFormData, subject: result.subject, emailTemplate: result.body });
+                              toast.success("New template variation generated!");
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to regenerate");
+                            }
+                          }}
+                          disabled={regenerateTemplateMutation.isPending}
+                          className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
+                        >
+                          {regenerateTemplateMutation.isPending ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Regenerating...</>
+                          ) : (
+                            <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
+                          )}
+                        </Button>
+                      )}
+                      <AIWriteButton
+                        onGenerated={(s, b) => setCampaignFormData({ ...campaignFormData, subject: s, emailTemplate: b })}
+                        onPromptUsed={(prompt, emailType, companyContext) => setLastCampaignAIPrompt({ prompt, emailType, companyContext })}
+                        includeVariables={true}
+                        buttonLabel="AI Write"
+                        buttonVariant="outline"
+                        buttonSize="sm"
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                      />
+                    </div>
+                  </div>
+                  <Textarea
+                    placeholder="Email template with personalization variables..."
+                    value={campaignFormData.emailTemplate}
+                    onChange={(e) => setCampaignFormData({ ...campaignFormData, emailTemplate: e.target.value })}
+                    className="mt-1.5 min-h-32 font-mono text-xs"
+                  />
+                  {campaignFormData.emailTemplate && lastCampaignAIPrompt && (
+                    <div className="mt-2 border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-purple-900">Not happy with this template?</p>
+                          <p className="text-xs text-purple-600">Click Regenerate above to get a completely different variation</p>
+                        </div>
+                        <RefreshCw className="w-4 h-4 text-purple-500" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="mb-2 block">Select Leads *</Label>
+                  <div className="mb-2">
+                    <select
+                      value={selectedLeadSetId || ""}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : null;
+                        setSelectedLeadSetId(val);
+                        if (val) {
+                          const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === val);
+                          setCampaignFormData({ ...campaignFormData, leadIds: setLeads.map((l: any) => l.id) });
+                        } else {
+                          setCampaignFormData({ ...campaignFormData, leadIds: [] });
+                        }
+                      }}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">All Leads (no set filter)</option>
+                      {(leadSetsQuery.data || []).map((set: any) => (
+                        <option key={set.id} value={set.id}>
+                          {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <LeadPicker
+                    leads={filteredLeads}
+                    selectedIds={campaignFormData.leadIds}
+                    onChange={(ids) => setCampaignFormData({ ...campaignFormData, leadIds: ids })}
+                    isLoading={leadsQuery.isLoading}
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2 border-t">
+                  <Button
+                    onClick={handleCreateCampaign}
+                    disabled={createCampaignMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    size="lg"
+                  >
+                    {createCampaignMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</>
+                    ) : (
+                      <><Plus className="w-4 h-4 mr-2" /> Create Campaign ({campaignFormData.leadIds.length} leads)</>
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
 
-        {/* Right Panel - Email Editor & Preview */}
-        <div className="lg:col-span-2 space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mail className="w-5 h-5" />
-                    Email Editor
-                  </CardTitle>
-                  <CardDescription>Review, edit, and send your email</CardDescription>
-                </div>
-                {emailBody && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowPreview(!showPreview)}
-                  >
-                    <Eye className="w-4 h-4 mr-1" />
-                    {showPreview ? "Edit" : "Preview"}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Subject Line */}
-              <div className="space-y-2">
-                <Label htmlFor="subject" className="font-semibold">Subject Line</Label>
-                <Input
-                  id="subject"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="AI will generate a spam-proof subject line..."
-                  className="font-medium text-base"
-                />
-                {subject && (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                      {subject.length < 50 ? "Good length" : "Consider shortening"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">{subject.length}/50 chars</span>
+            {/* Campaign History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="w-5 h-5" />
+                  Your Campaigns ({campaignsQuery.data?.length || 0})
+                </CardTitle>
+                <CardDescription>Manage your email campaigns and track performance</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {campaignsQuery.isLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                   </div>
-                )}
-              </div>
+                ) : campaignsQuery.data && campaignsQuery.data.length > 0 ? (
+                  <div className="space-y-4">
+                    {campaignsQuery.data.map((campaign) => (
+                      <div key={campaign.id} className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <h3 className="font-semibold">{campaign.name}</h3>
+                            <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
+                          </div>
+                          <Badge variant={
+                            campaign.status === "active" ? "default" :
+                            campaign.status === "draft" ? "secondary" :
+                            campaign.status === "paused" ? "outline" : "secondary"
+                          }>
+                            {campaign.status}
+                          </Badge>
+                        </div>
 
-              {/* AI Write Button - Direct access */}
-              <div className="flex items-center gap-2">
-                <AIWriteButton
-                  onGenerated={(s, b) => { setSubject(s); setEmailBody(b); setShowPreview(true); }}
-                  onPromptUsed={(prompt: string, emailType: string, companyContext?: string) => setLastAIPrompt({ prompt, emailType, companyContext })}
-                  leadId={selectedLead || undefined}
-                  includeVariables={false}
-                  buttonLabel="AI Write Email"
-                  buttonVariant="default"
-                  buttonSize="default"
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
-                />
-                <span className="text-xs text-muted-foreground">Describe what you want to say and AI writes a professional email</span>
-              </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 py-3 border-y border-border">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Total Leads</p>
+                            <p className="text-lg font-semibold">{campaign.totalLeads}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Sent</p>
+                            <p className="text-lg font-semibold">{campaign.sentCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Opens</p>
+                            <p className="text-lg font-semibold">{campaign.openCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Calls</p>
+                            <p className="text-lg font-semibold">{campaign.callCount}</p>
+                          </div>
+                        </div>
 
-              {/* Regenerate Variation Card - Prominent placement */}
-              {emailBody && lastAIPrompt && (
-                <div className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-purple-900">Not happy with this email?</p>
-                      <p className="text-xs text-purple-600 mt-0.5">Click to generate a completely different variation using the same context</p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="default"
-                      onClick={async () => {
-                        try {
-                          const result = await regenerateMutation.mutateAsync({
-                            prompt: lastAIPrompt.prompt,
-                            emailType: lastAIPrompt.emailType as any,
-                            companyContext: lastAIPrompt.companyContext || undefined,
-                            leadId: selectedLead || undefined,
-                            includeVariables: false,
-                            useProblemAnalysis: true,
-                          });
-                          setSubject(result.subject);
-                          setEmailBody(result.body);
-                          toast.success("New variation generated!");
-                        } catch (error: any) {
-                          toast.error(error.message || "Failed to regenerate");
-                        }
-                      }}
-                      disabled={regenerateMutation.isPending}
-                      className="gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5"
-                    >
-                      {regenerateMutation.isPending ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating...</>
-                      ) : (
-                        <><RefreshCw className="w-4 h-4" /> Regenerate Variation</>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Email Body */}
-              <div className="space-y-2">
-                <Label htmlFor="body" className="font-semibold">Email Body</Label>
-                {showPreview ? (
-                  <div
-                    className="border rounded-lg p-4 min-h-[300px] bg-white text-sm leading-relaxed whitespace-pre-wrap font-sans"
-                  >
-                    {emailBody}
+                        <div className="flex gap-2">
+                          {campaign.status === "draft" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    await sendTestEmailMutation.mutateAsync({ subject: campaign.subject || "Preview", body: campaign.emailTemplate || "Preview not available" });
+                                    toast.success("Preview email sent to your inbox!");
+                                  } catch (error: any) {
+                                    toast.error(error?.message || "Failed to send preview email");
+                                  }
+                                }}
+                                disabled={sendTestEmailMutation.isPending}
+                                className="gap-2"
+                              >
+                                <Mail className="w-4 h-4" />
+                                {sendTestEmailMutation.isPending ? "Sending..." : "Send Preview"}
+                              </Button>
+                              <Button size="sm" onClick={() => handleLaunchCampaign(campaign.id)} disabled={launchCampaignMutation.isPending} className="gap-2">
+                                <Play className="w-4 h-4" /> Launch
+                              </Button>
+                            </>
+                          )}
+                          {campaign.status === "active" && (
+                            <Button size="sm" variant="outline" onClick={() => handlePauseCampaign(campaign.id)} disabled={pauseCampaignMutation.isPending} className="gap-2">
+                              <Pause className="w-4 h-4" /> Pause
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>
+                            {selectedCampaignId === campaign.id ? "Hide" : "View"} Activity
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteCampaign(campaign.id)} disabled={deleteCampaignMutation.isPending}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        {selectedCampaignId === campaign.id && (
+                          <div className="mt-4 pt-4 border-t border-border">
+                            <ActivityFeed campaignId={campaign.id} />
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  <Textarea
-                    id="body"
-                    value={emailBody}
-                    onChange={(e) => setEmailBody(e.target.value)}
-                    placeholder="Click 'Generate with AI' to create your email, or write it manually here..."
-                    rows={14}
-                    className="text-sm leading-relaxed"
-                  />
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col gap-3 pt-2">
-                <div className="flex gap-3">
-                  {!scheduleMode ? (
-                    <Button
-                      onClick={handleSendEmail}
-                      disabled={sendEmailMutation.isPending || !subject || !emailBody || !selectedLead}
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      size="lg"
-                    >
-                      {sendEmailMutation.isPending ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4 mr-2" />
-                          Send Email to {selectedLeadData?.ownerName || "Lead"}
-                        </>
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={async () => {
-                        if (!selectedLead || !subject || !emailBody || !scheduledDate || !scheduledTime) {
-                          toast.error("Please fill in all fields and select a date/time");
-                          return;
-                        }
-                        try {
-                          const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
-                          await scheduleEmailMutation.mutateAsync({
-                            leadId: selectedLead,
-                            subject,
-                            emailBody: emailBody,
-                            scheduledFor,
-                          });
-                          toast.success(`Email scheduled for ${scheduledDate} at ${scheduledTime}`);
-                          setSubject("");
-                          setEmailBody("");
-                          setScheduleMode(false);
-                          setScheduledDate("");
-                          setScheduledTime("");
-                          setShowPreview(false);
-                        } catch (error: any) {
-                          toast.error(error.message || "Failed to schedule email");
-                        }
-                      }}
-                      disabled={scheduleEmailMutation.isPending || !subject || !emailBody || !selectedLead || !scheduledDate || !scheduledTime}
-                      className="flex-1 bg-indigo-600 hover:bg-indigo-700"
-                      size="lg"
-                    >
-                      {scheduleEmailMutation.isPending ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Scheduling...
-                        </>
-                      ) : (
-                        <>
-                          <Clock className="w-4 h-4 mr-2" />
-                          Schedule Email
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  <Button
-                    variant={scheduleMode ? "default" : "outline"}
-                    onClick={() => setScheduleMode(!scheduleMode)}
-                    className={scheduleMode ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-300" : ""}
-                  >
-                    <Clock className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSubject("");
-                      setEmailBody("");
-                      setShowPreview(false);
-                      setScheduleMode(false);
-                    }}
-                    disabled={!subject && !emailBody}
-                  >
-                    Clear
-                  </Button>
-                </div>
-
-                {/* Schedule Date/Time Picker */}
-                {scheduleMode && (
-                  <div className="border rounded-lg p-3 bg-indigo-50/50 border-indigo-200">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock className="w-4 h-4 text-indigo-600" />
-                      <span className="text-sm font-medium text-indigo-900">Schedule Send</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs text-indigo-700">Date</Label>
-                        <Input
-                          type="date"
-                          value={scheduledDate}
-                          onChange={(e) => setScheduledDate(e.target.value)}
-                          min={new Date().toISOString().split("T")[0]}
-                          className="text-sm h-9 bg-white"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-indigo-700">Time</Label>
-                        <Input
-                          type="time"
-                          value={scheduledTime}
-                          onChange={(e) => setScheduledTime(e.target.value)}
-                          className="text-sm h-9 bg-white"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-indigo-600 mt-2">Tip: Emails sent Tuesday-Thursday between 9-11 AM get the best open rates</p>
+                  <div className="text-center py-12">
+                    <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">No campaigns yet. Create one above to get started!</p>
                   </div>
                 )}
-
-                {/* Send Test Email to Myself */}
-                <div className="border rounded-lg p-3 bg-amber-50/50 border-amber-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <TestTube className="w-4 h-4 text-amber-600" />
-                      <span className="text-sm font-medium text-amber-900">Send Test Email to Myself</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs h-7"
-                      onClick={() => setShowTestEmailInput(!showTestEmailInput)}
-                    >
-                      {showTestEmailInput ? "Hide" : "Show"}
-                    </Button>
-                  </div>
-                  {showTestEmailInput && (
-                    <div className="flex gap-2">
-                      <Input
-                        type="email"
-                        placeholder="your-email@example.com"
-                        value={testEmail}
-                        onChange={(e) => setTestEmail(e.target.value)}
-                        className="text-sm h-9 bg-white"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 h-9 border-amber-300 text-amber-700 hover:bg-amber-100"
-                        disabled={sendTestEmailMutation.isPending || !subject || !emailBody || !testEmail}
-                        onClick={async () => {
-                          try {
-                            await sendTestEmailMutation.mutateAsync({
-                              subject,
-                              body: emailBody,
-                              testEmail,
-                            });
-                            toast.success(`Test email sent to ${testEmail}! Check your inbox.`);
-                          } catch (error: any) {
-                            toast.error(error.message || "Failed to send test email. Check SMTP settings.");
-                          }
-                        }}
-                      >
-                        {sendTestEmailMutation.isPending ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <>Send Test</>  
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                  <p className="text-xs text-amber-700 mt-1.5">Preview how the email looks in your inbox before sending to the lead</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Tips Card */}
-          <Card className="bg-amber-50 border-amber-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-amber-900">How It Works</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-amber-800 space-y-2">
-              <p><strong>1.</strong> Select a lead from your list</p>
-              <p><strong>2.</strong> Choose the email type (discovery, value prop, etc.)</p>
-              <p><strong>3.</strong> Describe what you want to say in your own words</p>
-              <p><strong>4.</strong> Click "Generate with AI" — it creates a professional email with:</p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Spam-proof subject line (lands in inbox, not promotions)</li>
-                <li>Personalized opening based on their company</li>
-                <li>2-3 bullet points highlighting key benefits</li>
-                <li>Your Calendly CTA link for booking</li>
-                <li>Your email signature automatically appended</li>
-              </ul>
-              <p><strong>5.</strong> Review, edit if needed, and click "Send"</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

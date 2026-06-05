@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus } from "lucide-react";
 import LeadsPage from "./Leads";
-import CampaignsPage from "./Campaigns";
 import SettingsPage from "./Settings";
 import AnalyticsPage from "./Analytics";
 import EmailComposerPage from "./EmailComposer";
@@ -53,10 +52,9 @@ export default function Dashboard() {
 
         {/* Main Navigation Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
             <TabsTrigger value="compose">Email Composer</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -72,12 +70,7 @@ export default function Dashboard() {
             <LeadsPage />
           </TabsContent>
 
-          {/* Campaigns Tab */}
-          <TabsContent value="campaigns">
-            <CampaignsPage />
-          </TabsContent>
-
-          {/* Email Composer Tab */}
+          {/* Email Composer Tab - Unified single + bulk */}
           <TabsContent value="compose">
             <EmailComposerPage />
           </TabsContent>

@@ -335,3 +335,13 @@
 - [x] Fix — Make Regenerate button more prominent with a dedicated card/section after email is generated
 - [x] Fix — Added Email Composer as a tab in the Dashboard for easy access
 - [x] Fix — Added Regenerate button to the Campaigns email template creation flow
+
+## Batch 25 — Unified Email Composer (Single + Bulk)
+
+- [x] Feature — Merge Email Composer and Campaigns into one unified tab
+- [x] Feature — Add mode toggle: "Single Lead" vs "Bulk Campaign" in Email Composer
+- [x] Feature — Single Lead mode: select one lead, analyze problems, generate personalized email, send
+- [x] Feature — Bulk Campaign mode: select lead set, generate template with variables, create campaign, launch
+- [x] Feature — Keep Regenerate and Analyze Problems accessible in both modes
+- [x] Feature — Remove separate Campaigns tab from Dashboard (integrate campaign list into unified view)
+- [x] Feature — Campaign history/management section within the unified Email Composer tab
