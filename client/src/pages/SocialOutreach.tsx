@@ -25,11 +25,11 @@ export default function SocialOutreach() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [context, setContext] = useState("");
 
-  const leadsQuery = trpc.leads.list.useQuery({ page: 1, pageSize: 100 });
+  const leadsQuery = trpc.leads.list.useQuery();
   const generateMessageMutation = trpc.social.generateMessage.useMutation();
 
-  const leads = useMemo(() => leadsQuery.data?.leads || [], [leadsQuery.data]);
-  const selectedLead = useMemo(() => leads.find((l: any) => l.id === selectedLeadId), [leads, selectedLeadId]);
+  const leads = useMemo(() => leadsQuery.data || [], [leadsQuery.data]);
+  const selectedLead = useMemo(() => leads.find((l) => String(l.id) === selectedLeadId), [leads, selectedLeadId]);
 
   const handleGenerate = async () => {
     if (!selectedLeadId) {
@@ -119,10 +119,10 @@ export default function SocialOutreach() {
                   <SelectValue placeholder="Choose a lead..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {leads.map((lead: any) => (
-                    <SelectItem key={lead.id} value={lead.id}>
+                  {leads.map((lead) => (
+                    <SelectItem key={lead.id} value={String(lead.id)}>
                       <span className="flex items-center gap-2">
-                        {lead.name} {lead.company && <span className="text-muted-foreground">— {lead.company}</span>}
+                        {lead.ownerName} {lead.companyName && <span className="text-muted-foreground">\u2014 {lead.companyName}</span>}
                       </span>
                     </SelectItem>
                   ))}
@@ -134,7 +134,7 @@ export default function SocialOutreach() {
             {selectedLead && (
               <div className="p-3 bg-muted/50 rounded-lg space-y-1.5 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">{selectedLead.name}</span>
+                  <span className="font-medium">{selectedLead.ownerName}</span>
                   <div className="flex gap-1.5">
                     {selectedLead.linkedinUrl && (
                       <Badge variant="outline" className="text-xs gap-1">
@@ -148,8 +148,8 @@ export default function SocialOutreach() {
                     )}
                   </div>
                 </div>
-                {selectedLead.title && <p className="text-muted-foreground">{selectedLead.title}</p>}
-                {selectedLead.company && <p className="text-muted-foreground">{selectedLead.company}</p>}
+                {selectedLead.industry && <p className="text-muted-foreground">{selectedLead.industry}</p>}
+                {selectedLead.companyName && <p className="text-muted-foreground">{selectedLead.companyName}</p>}
               </div>
             )}
 
@@ -165,7 +165,7 @@ export default function SocialOutreach() {
                     <SelectItem key={key} value={key}>
                       <div>
                         <span>{label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">— {description}</span>
+                        <span className="text-xs text-muted-foreground ml-2">\u2014 {description}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -233,7 +233,7 @@ export default function SocialOutreach() {
               <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
                 <Users className="w-12 h-12 mb-4 opacity-50" />
                 <p className="text-sm">Select a lead and generate a personalized message</p>
-                <p className="text-xs mt-1">Messages are crafted using AI based on the lead's profile</p>
+                <p className="text-xs mt-1">Messages are crafted using AI based on the lead\'s profile</p>
               </div>
             )}
           </CardContent>

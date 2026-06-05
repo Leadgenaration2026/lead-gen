@@ -361,3 +361,9 @@
 - [x] Verified Seamless.ai TabsContent exists with API key configuration
 - [x] Verified 6 matching triggers and TabsContent values (integrations, email, seamless, deliverability, signature, webhooks)
 - [x] All 181 tests passing, zero TypeScript errors
+
+## Batch 29 — Fix 3 Reported Issues
+
+- [ ] Bug — Seamless.ai API settings page not visible/accessible
+- [ ] Bug — Lead generation does not have option to choose between AI or Seamless.ai API source
+- [ ] Bug — Single individual email does not show campaign creation option in the UI
