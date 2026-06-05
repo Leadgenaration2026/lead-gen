@@ -11,6 +11,7 @@ import LeadsPage from "./Leads";
 import SettingsPage from "./Settings";
 import AnalyticsPage from "./Analytics";
 import EmailComposerPage from "./EmailComposer";
+import SocialOutreachPage from "./SocialOutreach";
 
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -52,10 +53,11 @@ export default function Dashboard() {
 
         {/* Main Navigation Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="compose">Email Composer</TabsTrigger>
+            <TabsTrigger value="social">Social Outreach</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
@@ -73,6 +75,11 @@ export default function Dashboard() {
           {/* Email Composer Tab - Unified single + bulk */}
           <TabsContent value="compose">
             <EmailComposerPage />
+          </TabsContent>
+
+          {/* Social Outreach Tab */}
+          <TabsContent value="social">
+            <SocialOutreachPage />
           </TabsContent>
 
           {/* Analytics Tab */}
