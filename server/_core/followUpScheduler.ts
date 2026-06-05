@@ -660,7 +660,7 @@ function getSignatureHtml(signature: any): string {
       const withEmails = withLinks.replace(emailRegex, '<a href="mailto:$1" style="color:#2563eb;text-decoration:none;">$1</a>');
       return `<p style="margin:0;padding:0;line-height:1.4;">${withEmails}</p>`;
     });
-    return `<br/><br/><div style="font-family:Arial,sans-serif;font-size:15px;color:#333;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:16px;">${htmlLines.join('')}</div>`;
+    return `<br/><br/><div style="font-family:Arial,sans-serif;font-size:13px;color:#555;border-top:1px solid #e5e7eb;padding-top:12px;margin-top:16px;">${htmlLines.join('')}</div>`;
   }
 
   // Fallback to signatureHtml if no plain text version
