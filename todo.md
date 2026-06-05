@@ -326,3 +326,10 @@
 - [x] Bug — Regenerate Variation button not appearing on email preview after AI generation
 - [x] Bug — Lead sets not filtering in campaign creation (all leads showing instead of selected set)
 - [x] Bug — Emails not being sent — added detailed SMTP error messages and lead set filter to campaign creation
+
+## Batch 24 — Visibility Fixes for Analyze Problems & Regenerate
+
+- [x] Bug — "Analyze Problems" step not visible in AI Write dialog (only shows when lead is pre-selected)
+- [x] Bug — "Regenerate Variation" button not visible/prominent after email generation
+- [x] Fix — Always show Analyze Problems section in AI Write dialog with clear guidance to select a lead
+- [x] Fix — Make Regenerate button more prominent with a dedicated card/section after email is generated

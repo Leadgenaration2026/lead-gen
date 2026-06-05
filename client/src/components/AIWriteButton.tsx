@@ -155,21 +155,22 @@ export function AIWriteButton({
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
-            {/* Step 1: Problem Analysis */}
-            {leadId && (
-              <div className="border border-blue-200 bg-blue-50/50 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Search className="w-4 h-4 text-blue-600" />
-                    <Label className="font-medium text-blue-900">Step 1: Analyze Industry Problems</Label>
-                  </div>
+            {/* Step 1: Problem Analysis - Always visible */}
+            <div className="border-2 border-blue-300 bg-blue-50/70 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Search className="w-5 h-5 text-blue-600" />
+                  <Label className="font-semibold text-blue-900 text-base">Step 1: Analyze Industry Problems</Label>
+                  <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">Recommended</Badge>
+                </div>
+                {leadId ? (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="default"
                     size="sm"
                     onClick={handleAnalyzeProblems}
                     disabled={analyzeMutation.isPending}
-                    className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {analyzeMutation.isPending ? (
                       <>
@@ -188,10 +189,22 @@ export function AIWriteButton({
                       </>
                     )}
                   </Button>
+                ) : (
+                  <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50">
+                    Select a lead first
+                  </Badge>
+                )}
+              </div>
+              {!leadId ? (
+                <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                  <p className="text-sm text-amber-800 font-medium">Please select a lead from the Email Composer page first</p>
+                  <p className="text-xs text-amber-600 mt-1">The AI needs to know which company/industry to research. Select a lead from the dropdown on the left panel, then click "AI Write Email" again.</p>
                 </div>
-                <p className="text-xs text-blue-700">
+              ) : (
+                <p className="text-sm text-blue-700">
                   AI will research the lead's industry to identify specific pain points, trends, and competitive threats — then use these insights to write a highly relevant email.
                 </p>
+              )}
 
                 {/* Analysis Results */}
                 {problemAnalysis && showAnalysis && (
@@ -261,8 +274,7 @@ export function AIWriteButton({
                     )}
                   </div>
                 )}
-              </div>
-            )}
+            </div>
 
             {/* Step 2: Email Generation */}
             <div className="space-y-4">

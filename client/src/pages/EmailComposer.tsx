@@ -319,15 +319,18 @@ export default function EmailComposer() {
                 <span className="text-xs text-muted-foreground">Describe what you want to say and AI writes a professional email</span>
               </div>
 
-              {/* Email Body */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="body" className="font-semibold">Email Body</Label>
-                  {showPreview && lastAIPrompt && (
+              {/* Regenerate Variation Card - Prominent placement */}
+              {emailBody && lastAIPrompt && (
+                <div className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-purple-900">Not happy with this email?</p>
+                      <p className="text-xs text-purple-600 mt-0.5">Click to generate a completely different variation using the same context</p>
+                    </div>
                     <Button
                       type="button"
-                      variant="outline"
-                      size="sm"
+                      variant="default"
+                      size="default"
                       onClick={async () => {
                         try {
                           const result = await regenerateMutation.mutateAsync({
@@ -346,16 +349,21 @@ export default function EmailComposer() {
                         }
                       }}
                       disabled={regenerateMutation.isPending}
-                      className="gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+                      className="gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5"
                     >
                       {regenerateMutation.isPending ? (
-                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Regenerating...</>
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating...</>
                       ) : (
-                        <><RefreshCw className="w-3.5 h-3.5" /> Regenerate Variation</>
+                        <><RefreshCw className="w-4 h-4" /> Regenerate Variation</>
                       )}
                     </Button>
-                  )}
+                  </div>
                 </div>
+              )}
+
+              {/* Email Body */}
+              <div className="space-y-2">
+                <Label htmlFor="body" className="font-semibold">Email Body</Label>
                 {showPreview ? (
                   <div
                     className="border rounded-lg p-4 min-h-[300px] bg-white text-sm leading-relaxed whitespace-pre-wrap font-sans"
