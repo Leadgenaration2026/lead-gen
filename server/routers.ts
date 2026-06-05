@@ -707,8 +707,15 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             });
 
             sentCount++;
-          } catch (error) {
-            console.error("Failed to send email:", error);
+          } catch (error: any) {
+            console.error(`[Campaign Launch] Failed to send email to campaignLead ${campaignLead.id}:`, error?.message, error?.code);
+            // If it's an auth error, throw immediately to stop the campaign
+            if (error?.code === 'EAUTH') {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `SMTP authentication failed. Please check your SMTP username and password in Settings. Error: ${error.message}`,
+              });
+            }
           }
         }
 
@@ -1350,12 +1357,24 @@ Respond in this exact JSON format:
         // Convert plain text to HTML if needed, append signature
         const htmlBody = plainTextToHtml(input.body) + signatureHtml + trackingPixel;
 
-        await transporter.sendMail({
-          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
-          to: lead.email,
-          subject: input.subject,
-          html: htmlBody,
-        });
+        try {
+          await transporter.sendMail({
+            from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+            to: lead.email,
+            subject: input.subject,
+            html: htmlBody,
+          });
+        } catch (smtpError: any) {
+          console.error("[Email Send] SMTP error:", smtpError.message, smtpError.code);
+          const errorMsg = smtpError.code === "EAUTH" 
+            ? "SMTP authentication failed. Please check your username and password in Settings."
+            : smtpError.code === "ECONNREFUSED"
+            ? "Could not connect to SMTP server. Please verify your SMTP host and port in Settings."
+            : smtpError.code === "ESOCKET"
+            ? "SMTP connection timed out. Check your host/port and try port 587 or 465."
+            : `Email sending failed: ${smtpError.message}`;
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
+        }
 
         // Log the email send (we track it as a tracking token for future opens)
         // Note: Individual emails outside campaigns don't need campaignLeadId tracking
@@ -1402,13 +1421,25 @@ Respond in this exact JSON format:
         // Convert plain text to HTML if needed, append signature
         const htmlBody = testBanner + plainTextToHtml(input.body) + signatureHtml;
 
-        await transporter.sendMail({
-          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
-          to: recipientEmail,
-          replyTo: "nitin@virtualassistant-group.com",
-          subject: testSubject,
-          html: htmlBody,
-        });
+        try {
+          await transporter.sendMail({
+            from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+            to: recipientEmail,
+            replyTo: "nitin@virtualassistant-group.com",
+            subject: testSubject,
+            html: htmlBody,
+          });
+        } catch (smtpError: any) {
+          console.error("[Test Email] SMTP error:", smtpError.message, smtpError.code);
+          const errorMsg = smtpError.code === "EAUTH" 
+            ? "SMTP authentication failed. Please check your username and password in Settings."
+            : smtpError.code === "ECONNREFUSED"
+            ? "Could not connect to SMTP server. Please verify your SMTP host and port in Settings."
+            : smtpError.code === "ESOCKET"
+            ? "SMTP connection timed out. Check your host/port and try port 587 or 465."
+            : `Email sending failed: ${smtpError.message}`;
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
+        }
 
         return { success: true };
       }),

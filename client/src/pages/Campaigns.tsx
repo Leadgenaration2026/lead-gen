@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { AIWriteButton } from "@/components/AIWriteButton";
 export default function CampaignsPage() {
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const leadsQuery = trpc.leads.list.useQuery();
+  const leadSetsQuery = trpc.leadSets.list.useQuery();
   const createCampaignMutation = trpc.campaigns.create.useMutation();
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
@@ -23,6 +24,7 @@ export default function CampaignsPage() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
+  const [selectedLeadSetId, setSelectedLeadSetId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -30,6 +32,13 @@ export default function CampaignsPage() {
     emailTemplate: "",
     leadIds: [] as number[],
   });
+
+  // Filter leads by selected lead set
+  const filteredLeads = useMemo(() => {
+    const allLeads = leadsQuery.data || [];
+    if (!selectedLeadSetId) return allLeads;
+    return allLeads.filter((l: any) => l.leadSetId === selectedLeadSetId);
+  }, [leadsQuery.data, selectedLeadSetId]);
 
   const handleCreateCampaign = async () => {
     if (!formData.name || !formData.subject || !formData.emailTemplate) {
@@ -162,8 +171,32 @@ export default function CampaignsPage() {
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block">Select Leads *</label>
+              <div className="mb-2">
+                <select
+                  value={selectedLeadSetId || ""}
+                  onChange={(e) => {
+                    const val = e.target.value ? Number(e.target.value) : null;
+                    setSelectedLeadSetId(val);
+                    // Auto-select all leads from the chosen set
+                    if (val) {
+                      const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === val);
+                      setFormData({ ...formData, leadIds: setLeads.map((l: any) => l.id) });
+                    } else {
+                      setFormData({ ...formData, leadIds: [] });
+                    }
+                  }}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">All Leads (no set filter)</option>
+                  {(leadSetsQuery.data || []).map((set: any) => (
+                    <option key={set.id} value={set.id}>
+                      {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
+                    </option>
+                  ))}
+                </select>
+              </div>
               <LeadPicker
-                leads={leadsQuery.data || []}
+                leads={filteredLeads}
                 selectedIds={formData.leadIds}
                 onChange={(ids) => setFormData({ ...formData, leadIds: ids })}
                 isLoading={leadsQuery.isLoading}

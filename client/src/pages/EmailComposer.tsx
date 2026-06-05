@@ -87,6 +87,7 @@ export default function EmailComposer() {
       setSubject(result.subject);
       setEmailBody(result.body);
       setShowPreview(true);
+      setLastAIPrompt({ prompt: instructions || `Generate a ${emailType} email`, emailType, companyContext: undefined });
       toast.success("Email generated successfully! Review and edit before sending.");
     } catch (error: any) {
       toast.error(error.message || "Failed to generate email");

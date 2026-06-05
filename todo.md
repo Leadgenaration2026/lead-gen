@@ -320,3 +320,9 @@
 ## Batch 22 — Regenerate Email Button
 
 - [x] Feature — Add "Regenerate" button on email preview to get a different variation without re-entering the prompt
+
+## Batch 23 — Bug Fixes
+
+- [x] Bug — Regenerate Variation button not appearing on email preview after AI generation
+- [x] Bug — Lead sets not filtering in campaign creation (all leads showing instead of selected set)
+- [x] Bug — Emails not being sent — added detailed SMTP error messages and lead set filter to campaign creation
