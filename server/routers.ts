@@ -1322,25 +1322,45 @@ Respond in this exact JSON format:
         leadId: z.number(),
         subject: z.string().min(1),
         body: z.string().min(1),
+        senderAccountId: z.number().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const lead = await db.getLeadById(input.leadId);
         if (!lead || lead.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
 
         const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your SMTP settings first in the Settings page." });
+        let smtpHost: string, smtpPort: number, smtpUser: string, smtpPass: string, fromEmail: string, fromName: string;
+
+        if (input.senderAccountId) {
+          // Use a specific rotational email account
+          const rotationalEmails = await db.getRotationalEmailsByUser(ctx.user.id);
+          const account = rotationalEmails.find((e: any) => e.id === input.senderAccountId);
+          if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Sender account not found" });
+          smtpHost = account.smtpHost;
+          smtpPort = account.smtpPort || 587;
+          smtpUser = account.smtpUsername;
+          smtpPass = account.smtpPassword;
+          fromEmail = account.email;
+          fromName = account.senderName || "";
+        } else {
+          // Use primary SMTP settings
+          if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your SMTP settings first in the Settings page." });
+          }
+          smtpHost = settings.smtpHost;
+          smtpPort = settings.smtpPort || 587;
+          smtpUser = settings.smtpUsername;
+          smtpPass = settings.smtpPassword;
+          fromEmail = settings.senderEmail || settings.smtpUsername;
+          fromName = settings.senderName || "";
         }
 
-        // Create transporter
+        // Create transporter with selected account
         const transporter = nodemailer.createTransport({
-          host: settings.smtpHost,
-          port: settings.smtpPort || 587,
-          secure: (settings.smtpPort || 587) === 465,
-          auth: {
-            user: settings.smtpUsername,
-            pass: settings.smtpPassword,
-          },
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: { user: smtpUser, pass: smtpPass },
         });
 
         // Create tracking token
@@ -1359,7 +1379,7 @@ Respond in this exact JSON format:
 
         try {
           await transporter.sendMail({
-            from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+            from: `"${fromName || "Lead Gen Pro"}" <${fromEmail}>`,
             to: lead.email,
             subject: input.subject,
             html: htmlBody,

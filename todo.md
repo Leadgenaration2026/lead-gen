@@ -345,3 +345,13 @@
 - [x] Feature — Keep Regenerate and Analyze Problems accessible in both modes
 - [x] Feature — Remove separate Campaigns tab from Dashboard (integrate campaign list into unified view)
 - [x] Feature — Campaign history/management section within the unified Email Composer tab
+
+## Batch 26 — Sender Selection & Settings Fixes
+
+- [x] Feature — Add sender account selection dropdown to Email Composer ("Send From" field)
+- [x] Feature — Sender dropdown shows primary SMTP account + all rotational email accounts
+- [x] Feature — Backend sendIndividual procedure accepts optional senderAccountId parameter
+- [x] Feature — When senderAccountId is provided, use that rotational account's SMTP credentials
+- [x] Feature — When no senderAccountId, fall back to primary SMTP settings
+- [x] Fix — Seamless.ai tab in Settings now properly shows API key configuration content
+- [x] Fix — Settings tabs consolidated: SMTP + Rotational merged into "Email Accounts" tab (6 tabs total)

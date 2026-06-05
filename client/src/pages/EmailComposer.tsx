@@ -45,6 +45,7 @@ export default function EmailComposer() {
   const [lastAIPrompt, setLastAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
   const [testEmail, setTestEmail] = useState("");
   const [showTestEmailInput, setShowTestEmailInput] = useState(false);
+  const [selectedSenderAccount, setSelectedSenderAccount] = useState<string>("primary");
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -137,7 +138,7 @@ export default function EmailComposer() {
       return;
     }
     try {
-      await sendEmailMutation.mutateAsync({ leadId: selectedLead, subject, body: emailBody });
+      await sendEmailMutation.mutateAsync({ leadId: selectedLead, subject, body: emailBody, senderAccountId: selectedSenderAccount !== "primary" ? Number(selectedSenderAccount) : undefined });
       toast.success("Email sent successfully!");
       setSubject("");
       setEmailBody("");
