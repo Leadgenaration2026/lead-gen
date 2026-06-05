@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Mail, Play, Pause, Trash2 } from "lucide-react";
+import { Loader2, Plus, Mail, Play, Pause, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { LeadPicker } from "@/components/LeadPicker";
@@ -32,6 +32,8 @@ export default function CampaignsPage() {
     emailTemplate: "",
     leadIds: [] as number[],
   });
+  const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
+  const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
 
   // Filter leads by selected lead set
   const filteredLeads = useMemo(() => {
@@ -153,14 +155,47 @@ export default function CampaignsPage() {
             <div>
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Email Template *</label>
-                <AIWriteButton
-                  onGenerated={(s, b) => setFormData({ ...formData, subject: s, emailTemplate: b })}
-                  includeVariables={true}
-                  buttonLabel="AI Write"
-                  buttonVariant="outline"
-                  buttonSize="sm"
-                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                />
+                <div className="flex items-center gap-2">
+                  {formData.emailTemplate && lastCampaignAIPrompt && (
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const result = await regenerateTemplateMutation.mutateAsync({
+                            prompt: lastCampaignAIPrompt.prompt,
+                            emailType: lastCampaignAIPrompt.emailType as any,
+                            companyContext: lastCampaignAIPrompt.companyContext || undefined,
+                            includeVariables: true,
+                            useProblemAnalysis: false,
+                          });
+                          setFormData({ ...formData, subject: result.subject, emailTemplate: result.body });
+                          toast.success("New template variation generated!");
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to regenerate");
+                        }
+                      }}
+                      disabled={regenerateTemplateMutation.isPending}
+                      className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      {regenerateTemplateMutation.isPending ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Regenerating...</>
+                      ) : (
+                        <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
+                      )}
+                    </Button>
+                  )}
+                  <AIWriteButton
+                    onGenerated={(s, b) => setFormData({ ...formData, subject: s, emailTemplate: b })}
+                    onPromptUsed={(prompt, emailType, companyContext) => setLastCampaignAIPrompt({ prompt, emailType, companyContext })}
+                    includeVariables={true}
+                    buttonLabel="AI Write"
+                    buttonVariant="outline"
+                    buttonSize="sm"
+                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                  />
+                </div>
               </div>
               <Textarea
                 placeholder="HTML email template with personalization variables"
@@ -168,6 +203,17 @@ export default function CampaignsPage() {
                 onChange={(e) => setFormData({ ...formData, emailTemplate: e.target.value })}
                 className="mt-1.5 min-h-28 font-mono text-xs"
               />
+              {formData.emailTemplate && lastCampaignAIPrompt && (
+                <div className="mt-2 border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-purple-900">Not happy with this template?</p>
+                      <p className="text-xs text-purple-600">Click Regenerate above to get a different variation</p>
+                    </div>
+                    <RefreshCw className="w-4 h-4 text-purple-500" />
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block">Select Leads *</label>

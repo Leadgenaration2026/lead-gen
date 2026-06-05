@@ -333,3 +333,5 @@
 - [x] Bug — "Regenerate Variation" button not visible/prominent after email generation
 - [x] Fix — Always show Analyze Problems section in AI Write dialog with clear guidance to select a lead
 - [x] Fix — Make Regenerate button more prominent with a dedicated card/section after email is generated
+- [x] Fix — Added Email Composer as a tab in the Dashboard for easy access
+- [x] Fix — Added Regenerate button to the Campaigns email template creation flow
