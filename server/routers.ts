@@ -36,6 +36,8 @@ const generateLeadsSchema = z.object({
   instruction: z.string().min(10),
   count: z.number().min(1).max(100),
   leadSetName: z.string().optional(), // Optional: assign generated leads to a named set
+  source: z.enum(["ai", "seamless"]).optional().default("ai"),
+  country: z.string().optional(),
 });
 
 const updateUserSettingsSchema = z.object({
@@ -50,6 +52,7 @@ const updateUserSettingsSchema = z.object({
   senderName: z.string().optional(),
   calendlyWebhookSecret: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
+  seamlessApiKey: z.string().optional(),
 });
 
 export const appRouter = router({
@@ -157,7 +160,8 @@ export const appRouter = router({
     generate: protectedProcedure
       .input(generateLeadsSchema)
       .mutation(async ({ input, ctx }) => {
-        const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"
+        const countryHint = input.country ? `\nIMPORTANT: All leads MUST be from ${input.country}. Use phone numbers, timezones, and domains appropriate for ${input.country}.` : "";
+        const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryHint}
         
 Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - companyName: string
@@ -918,6 +922,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           if (key === 'retellApiKey' && !value) continue;
           if (key === 'calendlyWebhookSecret' && !value) continue;
           if (key === 'retellWebhookSecret' && !value) continue;
+          if (key === 'seamlessApiKey' && !value) continue;
           cleanedInput[key] = value;
         }
         
@@ -1396,14 +1401,40 @@ Respond in this exact JSON format:
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
         }
 
-        // Log the email send (we track it as a tracking token for future opens)
-        // Note: Individual emails outside campaigns don't need campaignLeadId tracking
-        // The trackingToken is used by the pixel endpoint to detect opens later
-
+        // Create a mini campaign record for tracking this single email
+        let campaignId: number | undefined;
+        try {
+          campaignId = await db.createCampaign({
+            userId: ctx.user.id,
+            name: `Single Email to ${lead.ownerName || lead.companyName}`,
+            subject: input.subject,
+            emailTemplate: input.body,
+            status: "completed",
+            totalLeads: 1,
+            sentCount: 1,
+          });
+          // Add lead to campaign and mark as sent
+          await db.addLeadsToCampaign(campaignId, [lead.id]);
+          const campaignLeadsList = await db.getCampaignLeads(campaignId);
+          if (campaignLeadsList.length > 0) {
+            await db.updateCampaignLead(campaignLeadsList[0].id, {
+              emailSent: true,
+              emailSentAt: new Date(),
+            });
+            // Store tracking token for pixel tracking
+            await db.createEmailTrackingEvent({
+              campaignLeadId: campaignLeadsList[0].id,
+              trackingToken,
+              eventType: "open",
+            });
+          }
+        } catch (e) {
+          // Campaign tracking is optional - don't fail the send
+          console.error('Campaign tracking failed:', e);
+        }
         // Update lead status
         await db.updateLead(lead.id, { status: "contacted" });
-
-        return { success: true, trackingToken };
+        return { success: true, trackingToken, campaignId };
       }),
 
     // Send test email to yourself
@@ -1943,6 +1974,39 @@ Respond in this exact JSON format:
       }),
   }),
 
+  // Social outreach message generation
+  social: router({
+    generateMessage: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        platform: z.enum(["linkedin", "instagram"]),
+        messageType: z.enum(["connection_request", "dm", "follow_up"]),
+        tone: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        const platformGuide = input.platform === "linkedin"
+          ? "LinkedIn: Professional tone, mention mutual connections or industry. Max 300 chars for connection requests."
+          : "Instagram: Casual but professional DM. Keep it brief and engaging.";
+        const typeGuide = input.messageType === "connection_request"
+          ? "This is a connection/follow request note. Be brief, mention why you want to connect."
+          : input.messageType === "follow_up"
+          ? "This is a follow-up message. Reference previous outreach without being pushy."
+          : "This is a direct message. Be personable and include a clear value proposition.";
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: `You are a social media outreach expert. Generate a personalized ${input.platform} ${input.messageType.replace("_", " ")} message. ${platformGuide} ${typeGuide} ${input.tone ? "Tone: " + input.tone : ""}. Return ONLY the message text, nothing else.` },
+            { role: "user", content: `Generate a ${input.platform} ${input.messageType.replace("_", " ")} for:
+Name: ${lead.ownerName}
+Company: ${lead.companyName}
+Industry: ${lead.industry || "Unknown"}` },
+          ],
+        });
+        const content = response.choices?.[0]?.message?.content;
+        const message = typeof content === "string" ? content.trim() : "";
+        return { message, platform: input.platform, messageType: input.messageType };
+      }),
+  }),
   webhooks: router({
     // Get recent webhook events
     list: protectedProcedure

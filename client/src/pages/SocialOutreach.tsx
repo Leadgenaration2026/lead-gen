@@ -9,11 +9,11 @@ import { toast } from "sonner";
 import { Loader2, Linkedin, Instagram, Copy, ExternalLink, MessageSquare, Sparkles, Users } from "lucide-react";
 
 type Platform = "linkedin" | "instagram";
-type MessageType = "connection_request" | "direct_message" | "follow_up";
+type MessageType = "connection_request" | "dm" | "follow_up";
 
 const MESSAGE_TYPES: Record<MessageType, { label: string; description: string }> = {
   connection_request: { label: "Connection Request", description: "Short note for LinkedIn connection request (300 chars max)" },
-  direct_message: { label: "Direct Message", description: "Personalized DM to start a conversation" },
+  dm: { label: "Direct Message", description: "Personalized DM to start a conversation" },
   follow_up: { label: "Follow-up Message", description: "Follow-up after initial connection" },
 };
 
@@ -39,10 +39,10 @@ export default function SocialOutreach() {
     setIsGenerating(true);
     try {
       const result = await generateMessageMutation.mutateAsync({
-        leadId: selectedLeadId,
+        leadId: Number(selectedLeadId),
         platform: selectedPlatform,
         messageType,
-        context: context.trim() || undefined,
+        tone: context.trim() || undefined,
       });
       setGeneratedMessage(result.message);
       toast.success("Message generated!");
@@ -122,7 +122,7 @@ export default function SocialOutreach() {
                   {leads.map((lead) => (
                     <SelectItem key={lead.id} value={String(lead.id)}>
                       <span className="flex items-center gap-2">
-                        {lead.ownerName} {lead.companyName && <span className="text-muted-foreground">\u2014 {lead.companyName}</span>}
+                        {lead.ownerName} {lead.companyName && <span className="text-muted-foreground">&mdash; {lead.companyName}</span>}
                       </span>
                     </SelectItem>
                   ))}
@@ -165,7 +165,7 @@ export default function SocialOutreach() {
                     <SelectItem key={key} value={key}>
                       <div>
                         <span>{label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">\u2014 {description}</span>
+                        <span className="text-xs text-muted-foreground ml-2">&mdash; {description}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -233,7 +233,7 @@ export default function SocialOutreach() {
               <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
                 <Users className="w-12 h-12 mb-4 opacity-50" />
                 <p className="text-sm">Select a lead and generate a personalized message</p>
-                <p className="text-xs mt-1">Messages are crafted using AI based on the lead\'s profile</p>
+                <p className="text-xs mt-1">Messages are crafted using AI based on the lead's profile</p>
               </div>
             )}
           </CardContent>

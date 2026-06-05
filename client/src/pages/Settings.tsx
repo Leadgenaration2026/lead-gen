@@ -31,6 +31,7 @@ export default function SettingsPage() {
     smtpPassword: "",
     senderEmail: "",
     senderName: "",
+    seamlessApiKey: "",
   });
 
   // Track whether user has typed into password fields
@@ -86,6 +87,7 @@ export default function SettingsPage() {
         smtpPassword: "",
         senderEmail: settingsQuery.data.senderEmail || "",
         senderName: settingsQuery.data.senderName || "",
+        seamlessApiKey: "",
       });
       setPasswordTouched(false);
       setRetellKeyTouched(false);
@@ -200,6 +202,18 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveSeamless = async () => {
+    try {
+      await updateSettingsMutation.mutateAsync({
+        seamlessApiKey: formData.seamlessApiKey || undefined,
+      });
+      toast.success("Seamless.ai settings saved");
+      settingsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to save Seamless.ai settings");
+    }
+  };
+
   // Run email deliverability checks
   const runDeliverabilityChecks = () => {
     setChecksRunning(true);
@@ -290,18 +304,18 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="integrations" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="integrations" className="flex items-center gap-1 text-xs">
             <Phone className="w-3.5 h-3.5" />
             Retell.AI
           </TabsTrigger>
           <TabsTrigger value="email" className="flex items-center gap-1 text-xs">
             <Mail className="w-3.5 h-3.5" />
-            SMTP
+            Email Accounts
           </TabsTrigger>
-          <TabsTrigger value="rotational" className="flex items-center gap-1 text-xs">
-            <RotateCcw className="w-3.5 h-3.5" />
-            Rotational
+          <TabsTrigger value="seamless" className="flex items-center gap-1 text-xs">
+            <Zap className="w-3.5 h-3.5" />
+            Seamless.ai
           </TabsTrigger>
           <TabsTrigger value="deliverability" className="flex items-center gap-1 text-xs">
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -701,6 +715,57 @@ export default function SettingsPage() {
         <TabsContent value="webhooks" className="mt-6 space-y-6">
           <WebhookStatusPanel />
         </TabsContent>
+
+        {/* Seamless.ai API Tab */}
+        <TabsContent value="seamless" className="mt-6 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-blue-600" />
+                Seamless.ai Integration
+              </CardTitle>
+              <CardDescription>
+                Connect your Seamless.ai account to generate leads from real business data instead of AI-generated placeholders.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Seamless.ai API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    placeholder="Enter your Seamless.ai API key"
+                    value={formData.seamlessApiKey || ""}
+                    onChange={(e) => setFormData({ ...formData, seamlessApiKey: e.target.value })}
+                  />
+                  <Button variant="outline" size="icon" onClick={() => {
+                    const input = document.querySelector('input[placeholder="Enter your Seamless.ai API key"]') as HTMLInputElement;
+                    if (input) input.type = input.type === 'password' ? 'text' : 'password';
+                  }}>
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Get your API key from <a href="https://login.seamless.ai/settings/api" target="_blank" rel="noopener" className="text-blue-600 underline">Seamless.ai Settings → API</a>
+                </p>
+              </div>
+              <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
+                <h4 className="font-medium text-sm">How it works</h4>
+                <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                  <li>When generating leads, choose "Seamless.ai (Real Data)" as the source</li>
+                  <li>Seamless.ai will return verified business contacts with real emails and phone numbers</li>
+                  <li>Your AI instructions will be used as search criteria (industry, location, company size, etc.)</li>
+                  <li>Credits from your Seamless.ai account will be consumed per lead generated</li>
+                </ul>
+              </div>
+              <Button onClick={handleSaveSeamless} disabled={updateSettingsMutation.isPending} className="gap-2">
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Seamless.ai Settings
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
     </div>
   );

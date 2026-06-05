@@ -364,6 +364,6 @@
 
 ## Batch 29 — Fix 3 Reported Issues
 
-- [ ] Bug — Seamless.ai API settings page not visible/accessible
-- [ ] Bug — Lead generation does not have option to choose between AI or Seamless.ai API source
-- [ ] Bug — Single individual email does not show campaign creation option in the UI
+- [x] Bug — Seamless.ai API settings page not visible/accessible
+- [x] Bug — Lead generation does not have option to choose between AI or Seamless.ai API source
+- [x] Bug — Single individual email does not show campaign creation option in the UI
