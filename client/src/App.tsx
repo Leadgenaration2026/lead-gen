@@ -13,6 +13,7 @@ import CampaignTemplates from "./pages/CampaignTemplates";
 import ScheduledEmails from "./pages/ScheduledEmails";
 import Analytics from "./pages/Analytics";
 import LeadSets from "./pages/LeadSets";
+import CampaignDetail from "./pages/CampaignDetail";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -27,6 +28,7 @@ function Router() {
       <Route path={"/scheduled-emails"} component={ScheduledEmails} />
       <Route path={"/analytics"} component={Analytics} />
       <Route path={"/lead-sets"} component={LeadSets} />
+      <Route path={"/campaigns/:id"} component={CampaignDetail} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

@@ -384,3 +384,9 @@
 - [x] Fix — Campaign detail view shows who opened, who clicked, call status per lead
 - [x] Fix — Retell.AI call triggers when client clicks email link
 - [x] Feature — Add "View Campaign" link in success toast after sending single email
+
+## Batch 33 — Dedicated Campaign Detail Page
+- [x] Create backend procedure for campaign detail with per-lead engagement timeline
+- [x] Build CampaignDetail.tsx page with timeline UI per lead
+- [x] Register /campaigns/:id route in App.tsx
+- [x] Add navigation links from campaigns list to detail page

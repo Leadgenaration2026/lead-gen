@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { LeadPicker } from "@/components/LeadPicker";
 import { AIWriteButton } from "@/components/AIWriteButton";
 
 export default function CampaignsPage() {
+  const [, navigate] = useLocation();
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const leadsQuery = trpc.leads.list.useQuery();
   const leadSetsQuery = trpc.leadSets.list.useQuery();
@@ -381,6 +383,14 @@ export default function CampaignsPage() {
                       onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}
                     >
                       {selectedCampaignId === campaign.id ? "Hide Details" : "View Tracking"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={() => navigate(`/campaigns/${campaign.id}`)}
+                    >
+                      View Full Details
                     </Button>
                     <Button
                       size="sm"

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,7 @@ const emailTypeDescriptions: Record<EmailType, string> = {
 export default function EmailComposer() {
   const { user } = useAuth();
   const searchString = useSearch();
+  const [, navigate] = useLocation();
 
   // Mode: "single" for one lead, "bulk" for campaign
   const [mode, setMode] = useState<"single" | "bulk">("single");
@@ -152,12 +153,7 @@ export default function EmailComposer() {
           action: {
             label: "View Campaign",
             onClick: () => {
-              setMode("bulk");
-              setSelectedCampaignId(result.campaignId!);
-              // Scroll to campaigns section after tab switch
-              setTimeout(() => {
-                document.getElementById("campaigns-list")?.scrollIntoView({ behavior: "smooth" });
-              }, 100);
+              navigate(`/campaigns/${result.campaignId}`);
             },
           },
         });
@@ -884,6 +880,9 @@ export default function EmailComposer() {
                           )}
                           <Button size="sm" variant="ghost" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>
                             {selectedCampaignId === campaign.id ? "Hide Details" : "View Tracking"}
+                          </Button>
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate(`/campaigns/${campaign.id}`)}>
+                            View Full Details
                           </Button>
                           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteCampaign(campaign.id)} disabled={deleteCampaignMutation.isPending}>
                             <Trash2 className="w-4 h-4" />
