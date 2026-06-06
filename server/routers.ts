@@ -1339,41 +1339,42 @@ Return JSON with: { "subject": "...", "body": "..." }`,
           custom: "Write a professional outreach email based on the specific instructions provided.",
         };
 
-        const prompt = `You are a professional email copywriter specializing in personalized cold outreach. Generate a cold outreach email.
+        const prompt = `You are a professional email copywriter specializing in hyper-personalized cold outreach. Generate a cold outreach email that feels like it was written specifically for this ONE person — not a template.
 
 Lead Information:
-- First Name: ${lead.ownerName?.split(' ')[0] || 'there'}
+- First Name: ${firstName}
 - Full Name: ${lead.ownerName || 'Business Owner'}
-- Company: ${lead.companyName}
+- Company Name: ${lead.companyName}
 - Industry: ${lead.industry || 'business services'}
 - Website: ${lead.website || 'Not available'}
+- Phone: ${lead.phoneNumber || 'Not available'}
 - Email: ${lead.email}
+${problemContext}
 
 Email Type: ${input.emailType}
 Guidance: ${emailTypePrompts[input.emailType]}
 ${input.instructions ? `Additional Instructions from sender: ${input.instructions}` : ""}
 CTA Link (for booking a meeting): ${ctaLink}
 
-CRITICAL RULES:
-1. ALWAYS address the recipient by their first name "${lead.ownerName?.split(' ')[0] || 'there'}" in the opening line
-2. Subject line MUST be under 50 characters, conversational, lowercase, NO spam words (free, urgent, limited, act now, click here)
-3. Subject line should look like a personal email from a colleague, NOT marketing
-4. Email MUST be under 150 words
-5. Include 2-3 bullet points highlighting key benefits SPECIFIC to their industry (${lead.industry || 'their business'})
-6. End with a clear CTA: "Schedule a quick chat: ${ctaLink}"
-7. Tone: Professional but warm, like a helpful peer, NOT salesy
-8. Do NOT use exclamation marks excessively
-9. First line must reference their company (${lead.companyName}) or industry-specific challenges
-10. Do NOT include any signature - it will be appended separately
-11. Research and mention 1-2 specific pain points common in the ${lead.industry || 'business services'} industry
-12. If website is available, reference something relevant about their business
-13. Make the email feel like you've done your homework on their company
-14. NEVER leave industry as "Not specified" - use the actual industry value or infer from company name
+CRITICAL PERSONALIZATION RULES:
+1. OPENING LINE: Start with "Hi ${firstName}," then immediately reference something SPECIFIC about ${lead.companyName} — e.g. their recent growth, a challenge common to ${lead.industry || 'their industry'} companies of their size, or something from their website (${lead.website || 'N/A'}). Do NOT use generic openers.
+2. COMPANY REFERENCE: Mention "${lead.companyName}" by name at least once in the body. Show you know WHO they are.
+3. INDUSTRY SPECIFICITY: Reference the ${lead.industry || 'business services'} industry by name. Mention 1-2 pain points UNIQUE to ${lead.industry || 'this industry'} (e.g. for dental: patient no-shows, insurance verification backlogs; for real estate: transaction coordination, lead follow-up delays; for e-commerce: cart abandonment, inventory management).
+4. DYNAMIC CASE STUDY: Invent a realistic but UNIQUE case study for each email. Reference a fictional company IN THE SAME INDUSTRY as ${lead.companyName} (a ${lead.industry || 'similar'} business). Use specific numbers (hours saved, % improvement, deals closed). NEVER repeat the same case study. Make it sound like their direct competitor benefited.
+5. VALUE PROPOSITION: You CAN mention pricing like "$6/hour" as a value anchor. Also frame value in terms of OUTCOMES specific to ${lead.industry || 'their business'}: time saved, revenue gained, problems eliminated.
+6. Subject line MUST be under 50 characters, conversational, lowercase, NO spam words. Should reference ${lead.companyName} or ${lead.industry || 'their industry'} specifically.
+7. Email MUST be under 150 words total.
+8. Include 2-3 bullet points with benefits SPECIFIC to ${lead.industry || 'their'} industry challenges.
+9. End with clear CTA: "Schedule a quick chat: ${ctaLink}"
+10. Tone: Professional but warm, like a knowledgeable peer who understands their specific business.
+11. Do NOT include any signature - it will be appended separately.
+12. NEVER use these overused phrases: "I noticed that", "I came across", "I hope this finds you well", "I wanted to reach out".
+13. Each email must feel UNIQUE — if you generated 10 emails for 10 different leads, none should look similar.
 
 Respond in this exact JSON format:
 {
   "subject": "the subject line here",
-  "body": "the full email body in HTML format with proper <p> tags and <ul><li> for bullet points"
+  "body": "the full email body in plain text format with line breaks. Use dashes (-) for bullet points, NOT HTML tags."
 }`;
 
         const response = await invokeLLM({

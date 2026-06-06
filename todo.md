@@ -394,3 +394,4 @@
 - [x] Add campaigns section to home/dashboard page for quick activity checking
 - [x] Add Email Deliverability Checks under Email Composer that auto-validates each generated email
 - [x] Add AI-powered "Fix Issues" button that rewrites email to resolve failed deliverability checks
+- [x] Fix AI email generation: reference company name, make case studies dynamic based on industry/competitors
