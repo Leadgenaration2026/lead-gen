@@ -6,12 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus } from "lucide-react";
+import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import LeadsPage from "./Leads";
 import SettingsPage from "./Settings";
 import AnalyticsPage from "./Analytics";
 import EmailComposerPage from "./EmailComposer";
 import SocialOutreachPage from "./SocialOutreach";
+import CampaignsPage from "./Campaigns";
 
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -53,10 +55,11 @@ export default function Dashboard() {
 
         {/* Main Navigation Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>
             <TabsTrigger value="compose">Email Composer</TabsTrigger>
+            <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
             <TabsTrigger value="social">Social Outreach</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -75,6 +78,11 @@ export default function Dashboard() {
           {/* Email Composer Tab - Unified single + bulk */}
           <TabsContent value="compose">
             <EmailComposerPage />
+          </TabsContent>
+
+          {/* Campaigns Tab */}
+          <TabsContent value="campaigns">
+            <CampaignsPage />
           </TabsContent>
 
           {/* Social Outreach Tab */}
@@ -196,9 +204,15 @@ function OverviewTab() {
 
       {/* Recent Campaigns */}
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Campaigns</CardTitle>
-          <CardDescription>Your latest email campaigns</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Recent Campaigns</CardTitle>
+            <CardDescription>Click any campaign to view full activity timeline</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.location.href = '/email-composer'}>
+            View All
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Button>
         </CardHeader>
         <CardContent>
           {campaignsQuery.isLoading ? (
@@ -210,13 +224,17 @@ function OverviewTab() {
               {campaignsQuery.data.slice(0, 5).map((campaign) => (
                 <div
                   key={campaign.id}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                  className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors cursor-pointer group"
+                  onClick={() => window.location.href = `/campaigns/${campaign.id}`}
                 >
                   <div className="flex-1">
-                    <p className="font-medium text-sm">{campaign.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {campaign.sentCount} sent • {campaign.openCount} opens
-                    </p>
+                    <p className="font-medium text-sm group-hover:text-primary transition-colors">{campaign.name}</p>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                      <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {campaign.sentCount} sent</span>
+                      <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {campaign.openCount} opens</span>
+                      <span className="flex items-center gap-1"><MousePointerClick className="w-3 h-3" /> {(campaign as any).clickCount || 0} clicks</span>
+                      <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {(campaign as any).callCount || 0} calls</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${
@@ -230,6 +248,7 @@ function OverviewTab() {
                     }`}>
                       {campaign.status}
                     </span>
+                    <ExternalLink className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
               ))}

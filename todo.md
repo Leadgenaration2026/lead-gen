@@ -391,3 +391,4 @@
 - [x] Register /campaigns/:id route in App.tsx
 - [x] Add navigation links from campaigns list to detail page
 - [x] Add real-time auto-refresh to campaign detail page (10s polling with live/pause toggle)
+- [x] Add campaigns section to home/dashboard page for quick activity checking
