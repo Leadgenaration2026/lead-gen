@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2 } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
@@ -95,6 +95,7 @@ export default function EmailComposer() {
   const regenerateMutation = trpc.email.generateAITemplate.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
   const deliverabilityCheckMutation = trpc.email.checkDeliverability.useMutation();
+  const fixDeliverabilityMutation = trpc.email.fixDeliverability.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
   const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
 
@@ -601,7 +602,42 @@ export default function EmailComposer() {
                                   </div>
                                 );
                               })}
-                              <div className="pt-2 border-t mt-2">
+                              <div className="pt-2 border-t mt-2 space-y-2">
+                                {deliverabilityResult.checks.some(c => c.status === "fail" || c.status === "warning") && (
+                                  <Button
+                                    size="sm"
+                                    className="w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                                    onClick={async () => {
+                                      const failedChecks = deliverabilityResult.checks.filter(c => c.status === "fail" || c.status === "warning");
+                                      const selectedLeadData = selectedLead ? leadsQuery.data?.find(l => l.id === selectedLead) : null;
+                                      try {
+                                        const fixed = await fixDeliverabilityMutation.mutateAsync({
+                                          subject,
+                                          body: emailBody,
+                                          failedChecks: failedChecks.map(c => ({ name: c.name, status: c.status as "fail" | "warning", message: c.message, category: c.category })),
+                                          leadName: selectedLeadData?.ownerName,
+                                          companyName: selectedLeadData?.companyName,
+                                          industry: selectedLeadData?.industry || undefined,
+                                        });
+                                        setSubject(fixed.subject);
+                                        setEmailBody(fixed.body);
+                                        toast.success("Email rewritten to fix deliverability issues");
+                                        // Auto re-run checks on the fixed version
+                                        const newResult = await deliverabilityCheckMutation.mutateAsync({ subject: fixed.subject, body: fixed.body });
+                                        setDeliverabilityResult(newResult);
+                                      } catch {
+                                        toast.error("Failed to fix email. Please try again.");
+                                      }
+                                    }}
+                                    disabled={fixDeliverabilityMutation.isPending}
+                                  >
+                                    {fixDeliverabilityMutation.isPending ? (
+                                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Fixing Issues...</>
+                                    ) : (
+                                      <><Wand2 className="w-3.5 h-3.5" /> Fix Issues with AI</>
+                                    )}
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"

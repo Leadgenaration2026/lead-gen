@@ -1213,6 +1213,87 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         });
       }),
 
+    fixDeliverability: protectedProcedure
+      .input(z.object({
+        subject: z.string(),
+        body: z.string(),
+        failedChecks: z.array(z.object({
+          name: z.string(),
+          status: z.enum(["fail", "warning"]),
+          message: z.string(),
+          category: z.string(),
+        })),
+        leadName: z.string().optional(),
+        companyName: z.string().optional(),
+        industry: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const issuesList = input.failedChecks.map(c => `- [${c.category.toUpperCase()}] ${c.name}: ${c.message}`).join("\n");
+
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: `You are an email deliverability expert. Your job is to rewrite emails to fix deliverability issues while preserving the original intent, tone, and message. Keep the email professional and human-sounding. Output plain text format (not HTML). Always maintain a clear Call to Action.`,
+            },
+            {
+              role: "user",
+              content: `Rewrite this email to fix the following deliverability issues:
+
+ISSUES TO FIX:
+${issuesList}
+
+CONTEXT:
+- Recipient name: ${input.leadName || "the recipient"}
+- Company: ${input.companyName || "their company"}
+- Industry: ${input.industry || "their industry"}
+
+ORIGINAL SUBJECT: ${input.subject}
+
+ORIGINAL BODY:
+${input.body}
+
+Rules for the rewrite:
+1. If personalization is missing, add the recipient's first name in the opening and reference their company/industry
+2. If spam words are detected, replace them with professional alternatives
+3. If subject line has issues, rewrite it to be compelling but not spammy (under 60 chars)
+4. If unsubscribe link is missing, add "If you'd like to opt out of future emails, simply reply with 'unsubscribe'." at the end
+5. Keep the email concise (under 200 words for body)
+6. Maintain the original CTA and core message
+7. Keep plain text format with clear line breaks
+8. Do NOT use excessive capitalization, exclamation marks, or urgency words
+
+Return JSON with: { "subject": "...", "body": "..." }`,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "fixed_email",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  subject: { type: "string", description: "The fixed subject line" },
+                  body: { type: "string", description: "The fixed email body in plain text" },
+                },
+                required: ["subject", "body"],
+                additionalProperties: false,
+              },
+            },
+          },
+        }) as any;
+
+        let content = response.choices?.[0]?.message?.content;
+        if (Array.isArray(content)) {
+          content = content.map((c: any) => typeof c === "string" ? c : c.text || "").join("");
+        }
+        if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI failed to generate fixed email" });
+        content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        const parsed = JSON.parse(content);
+        return { subject: parsed.subject, body: parsed.body };
+      }),
+
     generateAI: protectedProcedure
       .input(z.object({
         leadId: z.number(),

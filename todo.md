@@ -393,3 +393,4 @@
 - [x] Add real-time auto-refresh to campaign detail page (10s polling with live/pause toggle)
 - [x] Add campaigns section to home/dashboard page for quick activity checking
 - [x] Add Email Deliverability Checks under Email Composer that auto-validates each generated email
+- [x] Add AI-powered "Fix Issues" button that rewrites email to resolve failed deliverability checks
