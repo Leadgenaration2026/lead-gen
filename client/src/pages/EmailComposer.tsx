@@ -11,10 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2 } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -397,10 +398,25 @@ export default function EmailComposer() {
                       <CardDescription>Review, edit, and send your email</CardDescription>
                     </div>
                     {emailBody && (
-                      <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)}>
-                        <Eye className="w-4 h-4 mr-1" />
-                        {showPreview ? "Edit" : "Preview"}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)}>
+                          <Eye className="w-4 h-4 mr-1" />
+                          {showPreview ? "Edit" : "Preview"}
+                        </Button>
+                        <EmailPreviewDialog
+                          subject={subject}
+                          body={emailBody}
+                          recipientName={selectedLeadData?.ownerName}
+                          recipientEmail={selectedLeadData?.email}
+                          recipientCompany={selectedLeadData?.companyName}
+                          trigger={
+                            <Button variant="outline" size="sm" className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50">
+                              <Inbox className="w-4 h-4" />
+                              Preview as Recipient
+                            </Button>
+                          }
+                        />
+                      </div>
                     )}
                   </div>
                 </CardHeader>
@@ -1040,6 +1056,19 @@ export default function EmailComposer() {
                                 <Mail className="w-4 h-4" />
                                 {sendTestEmailMutation.isPending ? "Sending..." : "Send Preview"}
                               </Button>
+                              <EmailPreviewDialog
+                                subject={campaign.subject || "(No subject)"}
+                                body={campaign.emailTemplate || ""}
+                                recipientName="{{ownerName}}"  
+                                recipientEmail="lead@company.com"
+                                recipientCompany="{{companyName}}"
+                                trigger={
+                                  <Button size="sm" variant="outline" className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50">
+                                    <Inbox className="w-4 h-4" />
+                                    Preview
+                                  </Button>
+                                }
+                              />
                               <Button size="sm" onClick={() => handleLaunchCampaign(campaign.id)} disabled={launchCampaignMutation.isPending} className="gap-2">
                                 <Play className="w-4 h-4" /> Launch
                               </Button>
