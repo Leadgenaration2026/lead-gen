@@ -1199,7 +1199,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         if (!settings?.smtpHost || !settings?.senderEmail) {
           return {
             allPassed: false,
-            checks: [{ name: "SMTP Configuration", status: "fail" as const, message: "SMTP not configured" }],
+            score: 0,
+            checks: [{ name: "SMTP Configuration", status: "fail" as const, message: "SMTP not configured — go to Settings to configure your email", category: "infrastructure" as const }],
           };
         }
         const { runDeliverabilityChecks } = await import("./deliverabilityChecks");

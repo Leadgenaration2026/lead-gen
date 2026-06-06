@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
@@ -50,6 +50,8 @@ export default function EmailComposer() {
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const [deliverabilityResult, setDeliverabilityResult] = useState<{ allPassed: boolean; score: number; checks: Array<{ name: string; status: "pass" | "fail" | "warning"; message: string; category: string }> } | null>(null);
+  const [showDeliverabilityDetails, setShowDeliverabilityDetails] = useState(false);
 
   // Bulk campaign state
   const [selectedLeadSetId, setSelectedLeadSetId] = useState<number | null>(null);
@@ -92,6 +94,7 @@ export default function EmailComposer() {
   const generateEmailMutation = trpc.email.generateAI.useMutation();
   const regenerateMutation = trpc.email.generateAITemplate.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
+  const deliverabilityCheckMutation = trpc.email.checkDeliverability.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
   const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
 
@@ -129,6 +132,11 @@ export default function EmailComposer() {
       setShowPreview(true);
       setLastAIPrompt({ prompt: instructions || `Generate a ${emailType} email`, emailType, companyContext: undefined });
       toast.success("Email generated successfully! Review and edit before sending.");
+      // Auto-run deliverability checks
+      try {
+        const checkResult = await deliverabilityCheckMutation.mutateAsync({ subject: result.subject, body: result.body });
+        setDeliverabilityResult(checkResult);
+      } catch { /* silently fail - checks are informational */ }
     } catch (error: any) {
       toast.error(error.message || "Failed to generate email");
     }
@@ -491,6 +499,134 @@ export default function EmailComposer() {
                       />
                     )}
                   </div>
+
+                  {/* Email Deliverability Checks */}
+                  {(subject || emailBody) && (
+                    <div className="border rounded-lg overflow-hidden mt-2">
+                      <button
+                        onClick={async () => {
+                          setShowDeliverabilityDetails(!showDeliverabilityDetails);
+                          if (!deliverabilityResult) {
+                            try {
+                              const result = await deliverabilityCheckMutation.mutateAsync({ subject, body: emailBody });
+                              setDeliverabilityResult(result);
+                            } catch { /* silent */ }
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-primary" />
+                          <span className="text-sm font-medium">Deliverability Score</span>
+                          {deliverabilityCheckMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                          {deliverabilityResult && !deliverabilityCheckMutation.isPending && (
+                            <>
+                              <Badge variant="outline" className={`text-xs font-bold ${
+                                deliverabilityResult.score >= 80
+                                  ? "bg-green-50 text-green-700 border-green-200"
+                                  : deliverabilityResult.score >= 50
+                                  ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                  : "bg-red-50 text-red-700 border-red-200"
+                              }`}>
+                                {deliverabilityResult.score}/100
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {deliverabilityResult.checks.filter(c => c.status === "pass").length}/{deliverabilityResult.checks.length} checks passed
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {deliverabilityResult && !showDeliverabilityDetails && (
+                            <div className="flex gap-0.5">
+                              {deliverabilityResult.checks.map((check, i) => (
+                                <span key={i} className={`w-2 h-2 rounded-full ${
+                                  check.status === "pass" ? "bg-green-500" : check.status === "warning" ? "bg-yellow-500" : "bg-red-500"
+                                }`} />
+                              ))}
+                            </div>
+                          )}
+                          {showDeliverabilityDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </div>
+                      </button>
+                      {showDeliverabilityDetails && (
+                        <div className="p-3 border-t space-y-3">
+                          {deliverabilityCheckMutation.isPending ? (
+                            <div className="flex items-center justify-center py-4 gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span className="text-sm text-muted-foreground">Running comprehensive checks...</span>
+                            </div>
+                          ) : deliverabilityResult ? (
+                            <>
+                              {/* Score bar */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">Deliverability Score</span>
+                                  <span className={`font-bold ${
+                                    deliverabilityResult.score >= 80 ? "text-green-600" : deliverabilityResult.score >= 50 ? "text-yellow-600" : "text-red-600"
+                                  }`}>{deliverabilityResult.score}%</span>
+                                </div>
+                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      deliverabilityResult.score >= 80 ? "bg-green-500" : deliverabilityResult.score >= 50 ? "bg-yellow-500" : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${deliverabilityResult.score}%` }}
+                                  />
+                                </div>
+                              </div>
+                              {/* Grouped checks by category */}
+                              {(["infrastructure", "content", "personalization", "compliance"] as const).map(category => {
+                                const categoryChecks = deliverabilityResult.checks.filter(c => c.category === category);
+                                if (categoryChecks.length === 0) return null;
+                                const categoryLabels = { infrastructure: "Infrastructure", content: "Content Quality", personalization: "Personalization", compliance: "Compliance" };
+                                return (
+                                  <div key={category} className="space-y-1">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{categoryLabels[category]}</p>
+                                    {categoryChecks.map((check, i) => (
+                                      <div key={i} className="flex items-start gap-2 py-1 pl-1">
+                                        {check.status === "pass" ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
+                                        ) : check.status === "warning" ? (
+                                          <AlertTriangle className="w-3.5 h-3.5 text-yellow-600 mt-0.5 shrink-0" />
+                                        ) : (
+                                          <XCircle className="w-3.5 h-3.5 text-red-600 mt-0.5 shrink-0" />
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm leading-tight">{check.name}</p>
+                                          <p className="text-xs text-muted-foreground leading-tight">{check.message}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })}
+                              <div className="pt-2 border-t mt-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full gap-2"
+                                  onClick={async () => {
+                                    try {
+                                      const result = await deliverabilityCheckMutation.mutateAsync({ subject, body: emailBody });
+                                      setDeliverabilityResult(result);
+                                      toast.success("Deliverability checks refreshed");
+                                    } catch { toast.error("Failed to run checks"); }
+                                  }}
+                                  disabled={deliverabilityCheckMutation.isPending}
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${deliverabilityCheckMutation.isPending ? "animate-spin" : ""}`} />
+                                  Re-run All Checks
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-2">Click to run deliverability checks</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Send From & Campaign Options */}
                   <div className="grid grid-cols-1 gap-4 pt-2 border-t">
