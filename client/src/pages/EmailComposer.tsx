@@ -146,7 +146,21 @@ export default function EmailComposer() {
         senderAccountId: selectedSenderAccount !== "primary" ? Number(selectedSenderAccount) : undefined,
       });
       if (result.campaignId) {
-        toast.success("Email sent & campaign created! Track opens/clicks in Campaigns.", { duration: 5000 });
+        toast.success("Email sent & campaign created!", {
+          duration: 8000,
+          description: "Track opens, clicks & calls in real-time.",
+          action: {
+            label: "View Campaign",
+            onClick: () => {
+              setMode("bulk");
+              setSelectedCampaignId(result.campaignId!);
+              // Scroll to campaigns section after tab switch
+              setTimeout(() => {
+                document.getElementById("campaigns-list")?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
+            },
+          },
+        });
         campaignsQuery.refetch();
       } else {
         toast.success("Email sent successfully!");
@@ -784,7 +798,7 @@ export default function EmailComposer() {
             </Card>
 
             {/* Campaign History */}
-            <Card>
+            <Card id="campaigns-list">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Mail className="w-5 h-5" />
@@ -803,7 +817,7 @@ export default function EmailComposer() {
                       <div key={campaign.id} className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
-                            <h3 className="font-semibold">{campaign.name}</h3>
+                            <h3 className="font-semibold cursor-pointer hover:text-primary transition-colors" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>{campaign.name}</h3>
                             <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
                           </div>
                           <Badge variant={
@@ -815,7 +829,7 @@ export default function EmailComposer() {
                           </Badge>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 py-3 border-y border-border">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 py-3 border-y border-border">
                           <div>
                             <p className="text-xs text-muted-foreground">Total Leads</p>
                             <p className="text-lg font-semibold">{campaign.totalLeads}</p>
@@ -826,11 +840,15 @@ export default function EmailComposer() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Opens</p>
-                            <p className="text-lg font-semibold">{campaign.openCount}</p>
+                            <p className="text-lg font-semibold text-green-600">{campaign.openCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Clicks</p>
+                            <p className="text-lg font-semibold text-purple-600">{campaign.clickCount || 0}</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Calls</p>
-                            <p className="text-lg font-semibold">{campaign.callCount}</p>
+                            <p className="text-lg font-semibold text-orange-600">{campaign.callCount}</p>
                           </div>
                         </div>
 
@@ -865,7 +883,7 @@ export default function EmailComposer() {
                             </Button>
                           )}
                           <Button size="sm" variant="ghost" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>
-                            {selectedCampaignId === campaign.id ? "Hide" : "View"} Activity
+                            {selectedCampaignId === campaign.id ? "Hide Details" : "View Tracking"}
                           </Button>
                           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteCampaign(campaign.id)} disabled={deleteCampaignMutation.isPending}>
                             <Trash2 className="w-4 h-4" />

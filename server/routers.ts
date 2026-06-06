@@ -1405,9 +1405,21 @@ Respond in this exact JSON format:
         // Use request origin for tracking URL
         const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
+
+        // Create click tracking token for CTA links
+        const clickTrackingToken = nanoid();
+        // Wrap all links in the email body with click tracking
+        const linkRegex = /href=["']([^"']*)["']/g;
+        const trackedBody = input.body.replace(linkRegex, (match, url) => {
+          if (url.startsWith('http')) {
+            return `href="${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}"`;
+          }
+          return match;
+        });
+
         
         // Convert plain text to HTML if needed, append signature
-        const htmlBody = plainTextToHtml(input.body) + signatureHtml + trackingPixel;
+        const htmlBody = plainTextToHtml(trackedBody) + signatureHtml + trackingPixel;
 
         try {
           await transporter.sendMail({
@@ -1452,6 +1464,12 @@ Respond in this exact JSON format:
                 campaignLeadId: campaignLeadsList[0].id,
                 trackingToken,
                 eventType: "open",
+              });
+              // Store click tracking event for link tracking
+              await db.createEmailTrackingEvent({
+                campaignLeadId: campaignLeadsList[0].id,
+                trackingToken: clickTrackingToken,
+                eventType: "click",
               });
             }
           } catch (e) {

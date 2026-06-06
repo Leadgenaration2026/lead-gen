@@ -293,7 +293,7 @@ export default function CampaignsPage() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h3 className="font-semibold">{campaign.name}</h3>
+                      <h3 className="font-semibold cursor-pointer hover:text-primary transition-colors" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>{campaign.name}</h3>
                       <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
                     </div>
                     <Badge variant={
@@ -306,7 +306,7 @@ export default function CampaignsPage() {
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 py-3 border-y border-border">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 py-3 border-y border-border">
                     <div>
                       <p className="text-xs text-muted-foreground">Total Leads</p>
                       <p className="text-lg font-semibold">{campaign.totalLeads}</p>
@@ -317,11 +317,15 @@ export default function CampaignsPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Opens</p>
-                      <p className="text-lg font-semibold">{campaign.openCount}</p>
+                      <p className="text-lg font-semibold text-green-600">{campaign.openCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Clicks</p>
+                      <p className="text-lg font-semibold text-purple-600">{campaign.clickCount || 0}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Calls</p>
-                      <p className="text-lg font-semibold">{campaign.callCount}</p>
+                      <p className="text-lg font-semibold text-orange-600">{campaign.callCount}</p>
                     </div>
                   </div>
 
@@ -376,7 +380,7 @@ export default function CampaignsPage() {
                       variant="ghost"
                       onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}
                     >
-                      {selectedCampaignId === campaign.id ? "Hide" : "View"} Activity
+                      {selectedCampaignId === campaign.id ? "Hide Details" : "View Tracking"}
                     </Button>
                     <Button
                       size="sm"

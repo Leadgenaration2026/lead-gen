@@ -379,3 +379,8 @@
 ## Batch 31 — Always Create Campaign for Single Lead Emails
 - [x] Fix — Remove Campaign Tracking toggle from single lead email composer
 - [x] Fix — Always auto-create campaign when sending single lead email (no opt-in needed)
+## Batch 32 — Campaign Tracking View & Retell.AI Click Trigger
+- [x] Fix — Make campaigns clickable to show detailed tracking (opens, clicks, calls per lead)
+- [x] Fix — Campaign detail view shows who opened, who clicked, call status per lead
+- [x] Fix — Retell.AI call triggers when client clicks email link
+- [x] Feature — Add "View Campaign" link in success toast after sending single email
