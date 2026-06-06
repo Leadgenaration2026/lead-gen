@@ -1354,7 +1354,7 @@ Respond in this exact JSON format:
         subject: z.string().min(1),
         body: z.string().min(1),
         senderAccountId: z.number().optional(),
-        createCampaign: z.boolean().optional(),
+        
       }))
       .mutation(async ({ input, ctx }) => {
         const lead = await db.getLeadById(input.leadId);
@@ -1430,7 +1430,7 @@ Respond in this exact JSON format:
 
         // Create a campaign record for tracking (only if user opted in)
         let campaignId: number | undefined;
-        if (input.createCampaign) {
+        { // Always create campaign for tracking
           try {
             campaignId = await db.createCampaign({
               userId: ctx.user.id,

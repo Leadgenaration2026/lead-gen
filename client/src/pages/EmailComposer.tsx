@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users } from "lucide-react";
@@ -47,7 +46,6 @@ export default function EmailComposer() {
   const [testEmail, setTestEmail] = useState("");
   const [showTestEmailInput, setShowTestEmailInput] = useState(false);
   const [selectedSenderAccount, setSelectedSenderAccount] = useState<string>("primary");
-  const [createCampaignOnSend, setCreateCampaignOnSend] = useState(false);
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
@@ -146,7 +144,6 @@ export default function EmailComposer() {
         subject,
         body: emailBody,
         senderAccountId: selectedSenderAccount !== "primary" ? Number(selectedSenderAccount) : undefined,
-        createCampaign: createCampaignOnSend,
       });
       if (result.campaignId) {
         toast.success("Email sent & campaign created! Track opens/clicks in Campaigns.", { duration: 5000 });
@@ -486,7 +483,7 @@ export default function EmailComposer() {
                   </div>
 
                   {/* Send From & Campaign Options */}
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div className="grid grid-cols-1 gap-4 pt-2 border-t">
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Send From</Label>
                       <Select value={selectedSenderAccount} onValueChange={setSelectedSenderAccount}>
@@ -502,18 +499,6 @@ export default function EmailComposer() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Campaign Tracking</Label>
-                      <div className="flex items-center gap-3 h-10">
-                        <Switch
-                          checked={createCampaignOnSend}
-                          onCheckedChange={setCreateCampaignOnSend}
-                        />
-                        <span className="text-sm text-muted-foreground">
-                          {createCampaignOnSend ? "Will create campaign for tracking" : "Send without campaign tracking"}
-                        </span>
-                      </div>
                     </div>
                   </div>
                   {/* Action Buttons */}

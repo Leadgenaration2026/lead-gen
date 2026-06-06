@@ -376,3 +376,6 @@
 - [x] Fix — sendIndividual backend accepts createCampaign boolean flag
 - [x] Fix — Campaign only created when user explicitly enables "Campaign Tracking" toggle
 - [x] Fix — All 179 tests passing, zero TypeScript errors
+## Batch 31 — Always Create Campaign for Single Lead Emails
+- [x] Fix — Remove Campaign Tracking toggle from single lead email composer
+- [x] Fix — Always auto-create campaign when sending single lead email (no opt-in needed)
