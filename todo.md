@@ -390,3 +390,4 @@
 - [x] Build CampaignDetail.tsx page with timeline UI per lead
 - [x] Register /campaigns/:id route in App.tsx
 - [x] Add navigation links from campaigns list to detail page
+- [x] Add real-time auto-refresh to campaign detail page (10s polling with live/pause toggle)

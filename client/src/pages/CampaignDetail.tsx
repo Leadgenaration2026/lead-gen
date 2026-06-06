@@ -24,8 +24,9 @@ import {
   MailWarning,
   Reply,
   Ban,
+  RefreshCw,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type TimelineEvent = {
   type: "email_sent" | "email_opened" | "email_clicked" | "call_triggered" | "call_completed" | "call_failed" | "call_no_answer" | "replied" | "unsubscribed" | "follow_up_email" | "follow_up_call";
@@ -324,9 +325,24 @@ export default function CampaignDetail() {
   const [, navigate] = useLocation();
   const campaignId = Number(params.id);
   const [expandedLeadId, setExpandedLeadId] = useState<number | null>(null);
+  const [isLive, setIsLive] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  const campaignQuery = trpc.campaigns.get.useQuery(campaignId, { enabled: !!campaignId });
-  const reportQuery = trpc.reports.campaignReport.useQuery(campaignId, { enabled: !!campaignId });
+  const campaignQuery = trpc.campaigns.get.useQuery(campaignId, {
+    enabled: !!campaignId,
+    refetchInterval: isLive ? 10000 : false,
+  });
+  const reportQuery = trpc.reports.campaignReport.useQuery(campaignId, {
+    enabled: !!campaignId,
+    refetchInterval: isLive ? 10000 : false,
+  });
+
+  // Update last refreshed timestamp when data changes
+  useEffect(() => {
+    if (reportQuery.dataUpdatedAt) {
+      setLastRefreshed(new Date(reportQuery.dataUpdatedAt));
+    }
+  }, [reportQuery.dataUpdatedAt]);
 
   if (!campaignId || isNaN(campaignId)) {
     return (
@@ -342,10 +358,33 @@ export default function CampaignDetail() {
   return (
     <div className="container py-8 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center justify-between mb-6">
         <Button variant="ghost" size="sm" onClick={() => navigate("/email-composer")} className="gap-2">
           <ArrowLeft className="w-4 h-4" /> Back
         </Button>
+        <div className="flex items-center gap-3">
+          {/* Live indicator */}
+          <button
+            onClick={() => setIsLive(!isLive)}
+            className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border transition-all hover:bg-muted"
+          >
+            <span className={`w-2 h-2 rounded-full ${isLive ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
+            {isLive ? "Live" : "Paused"}
+          </button>
+          <span className="text-xs text-muted-foreground">
+            Updated {lastRefreshed.toLocaleTimeString()}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { reportQuery.refetch(); campaignQuery.refetch(); }}
+            disabled={reportQuery.isFetching}
+            className="gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${reportQuery.isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {campaignQuery.isLoading ? (
