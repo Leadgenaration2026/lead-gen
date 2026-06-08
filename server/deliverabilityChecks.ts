@@ -191,17 +191,31 @@ export async function runDeliverabilityChecks(params: {
   // ═══════════════════════════════════════════════
 
   // 13. First name personalization
-  const hasGreeting = /\b(hi|hello|hey|dear)\s+[A-Z][a-z]+/i.test(params.body);
-  const hasNameVariable = params.body.includes("{{") && params.body.includes("}}");
-  if (hasGreeting || hasNameVariable) {
+  // Strip HTML tags for text analysis
+  const bodyTextOnly = params.body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+  // Check for greeting patterns: "Hi Name", "Hello Name", "Hey Name", "Dear Name" (with or without HTML)
+  const hasGreeting = /\b(hi|hello|hey|dear)\s+[A-Z][a-z]+/i.test(bodyTextOnly);
+  // Check for template variable placeholders
+  const hasNameVariable = /\{\{\s*(ownerName|firstName|name|recipientName)\s*\}\}/i.test(params.body);
+  // Also check if the body starts with a name-like pattern after stripping HTML
+  const startsWithName = /^\s*(hi|hello|hey|dear)\b/i.test(bodyTextOnly.trim());
+  if (hasGreeting || hasNameVariable || startsWithName) {
     checks.push({ name: "Name Personalization", status: "pass", message: "Email addresses recipient by name — good personalization", category: "personalization" });
   } else {
     checks.push({ name: "Name Personalization", status: "warning", message: "No personal greeting detected — add recipient's name for better engagement", category: "personalization" });
   }
 
   // 14. Company/industry mention
-  const hasCompanyRef = /\b(your company|your team|your business|your organization)\b/i.test(params.body) ||
-    /\b(at [A-Z][a-zA-Z]+|with [A-Z][a-zA-Z]+)\b/.test(params.body);
+  const hasCompanyRef = /\b(your company|your team|your business|your organization|your firm|your agency|your practice|your clinic|your store|your shop)\b/i.test(bodyTextOnly) ||
+    /\b(at [A-Z][a-zA-Z]+|with [A-Z][a-zA-Z]+)\b/.test(bodyTextOnly) ||
+    // Detect template variable for company name
+    /\{\{\s*(companyName|company|businessName)\s*\}\}/i.test(params.body) ||
+    // Detect industry-specific references (e.g., "your dental practice", "in the real estate industry")
+    /\b(industry|sector|field|niche|market)\b/i.test(bodyTextOnly) ||
+    // Detect patterns like "companies like yours", "businesses in your space"
+    /\b(companies like|businesses like|firms like|practices like|clinics like|agencies like)\b/i.test(bodyTextOnly) ||
+    // Detect capitalized multi-word proper nouns that could be company names (2+ capitalized words together)
+    /[A-Z][a-z]+\s+[A-Z][a-z]+/.test(bodyTextOnly);
   if (hasCompanyRef) {
     checks.push({ name: "Company Reference", status: "pass", message: "Email references recipient's company — shows research effort", category: "personalization" });
   } else {

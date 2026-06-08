@@ -1432,6 +1432,9 @@ Respond in this exact JSON format:
           fullBody += sigHtml;
         }
 
+        // Add unsubscribe opt-out text for CAN-SPAM compliance
+        fullBody += `\n\n<p style="font-size:11px;color:#888;margin-top:24px;">If you'd like to opt out of future emails, simply reply with 'unsubscribe'.</p>`;
+
         return {
           subject: parsed.subject,
           body: fullBody,

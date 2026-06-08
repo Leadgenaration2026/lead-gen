@@ -405,3 +405,6 @@
 ## Batch — Bulk Campaign Signature & Unsubscribe Fix
 - [x] Include signature in bulk campaign AI-generated template (same as single email)
 - [x] Fix unsubscribe link visibility in bulk campaign emails
+- [x] Fix Name Personalization check — detect greeting patterns and {{ownerName}}/{{firstName}} variables in both single and bulk emails
+- [x] Fix Company Reference check — detect company name mentions and {{companyName}} variable in both single and bulk emails
+- [x] Fix Unsubscribe Link check for single emails — add unsubscribe opt-out text to single email generation
