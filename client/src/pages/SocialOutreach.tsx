@@ -8,13 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Linkedin, Instagram, Copy, ExternalLink, MessageSquare, Sparkles, Users } from "lucide-react";
 
-type Platform = "linkedin" | "instagram";
-type MessageType = "connection_request" | "dm" | "follow_up";
+type Platform = "linkedin" | "instagram" | "facebook";
+type MessageType = "connection_request" | "direct_message";
 
 const MESSAGE_TYPES: Record<MessageType, { label: string; description: string }> = {
-  connection_request: { label: "Connection Request", description: "Short note for LinkedIn connection request (300 chars max)" },
-  dm: { label: "Direct Message", description: "Personalized DM to start a conversation" },
-  follow_up: { label: "Follow-up Message", description: "Follow-up after initial connection" },
+  connection_request: { label: "Connection Request", description: "Short note for connection/follow request (200 chars max)" },
+  direct_message: { label: "Direct Message", description: "Personalized DM to start a conversation" },
 };
 
 export default function SocialOutreach() {

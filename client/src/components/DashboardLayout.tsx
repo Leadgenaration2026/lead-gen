@@ -29,7 +29,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Users, label: "Leads", path: "/dashboard" },
+  { icon: Users, label: "All Leads", path: "/all-leads" },
   { icon: Mail, label: "Email Composer", path: "/email-composer" },
   { icon: Megaphone, label: "Campaigns", path: "/email-composer" },
   { icon: FileText, label: "Templates", path: "/templates" },

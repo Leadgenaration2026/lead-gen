@@ -42,6 +42,7 @@ export const leads = mysqlTable("leads", {
   timezone: varchar("timezone", { length: 50 }).default("America/New_York"),
   linkedinUrl: varchar("linkedinUrl", { length: 500 }),
   instagramUrl: varchar("instagramUrl", { length: 500 }),
+  facebookUrl: varchar("facebookUrl", { length: 500 }),
   country: varchar("country", { length: 100 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -151,6 +152,16 @@ export const userSettings = mysqlTable("userSettings", {
   calendlyWebhookSecret: varchar("calendlyWebhookSecret", { length: 255 }), // Calendly signing key for HMAC verification
   retellWebhookSecret: varchar("retellWebhookSecret", { length: 255 }), // Retell API key used for webhook signature verification
   seamlessApiKey: varchar("seamlessApiKey", { length: 500 }), // Seamless.ai API key for lead generation
+  // Social profiles for the business
+  linkedinUrl: varchar("linkedinUrl", { length: 500 }),
+  linkedinType: mysqlEnum("linkedinType", ["page", "personal"]).default("personal"),
+  instagramUrl: varchar("instagramUrl", { length: 500 }),
+  instagramType: mysqlEnum("instagramType", ["page", "personal"]).default("personal"),
+  facebookUrl: varchar("facebookUrl", { length: 500 }),
+  facebookType: mysqlEnum("facebookType", ["page", "personal"]).default("personal"),
+  // Social outreach limits
+  socialDailyLimit: int("socialDailyLimit").default(20), // Max connection requests per day across all platforms
+  socialMessageCharLimit: int("socialMessageCharLimit").default(300), // Max characters for social messages
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -348,3 +359,24 @@ export const webhookEvents = mysqlTable("webhookEvents", {
 
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type InsertWebhookEvent = typeof webhookEvents.$inferInsert;
+
+// Social outreach table - tracks connection requests and messages sent on social platforms
+export const socialOutreach = mysqlTable("socialOutreach", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  leadId: int("leadId").notNull(),
+  campaignLeadId: int("campaignLeadId"), // Optional link to campaign
+  platform: mysqlEnum("platform", ["linkedin", "instagram", "facebook"]).notNull(),
+  messageType: mysqlEnum("messageType", ["connection_request", "direct_message"]).notNull(),
+  message: text("message").notNull(), // The generated message content
+  status: mysqlEnum("status", ["pending", "sent", "failed", "skipped"]).default("pending").notNull(),
+  errorMessage: text("errorMessage"),
+  sentAt: timestamp("sentAt"),
+  profileUrl: varchar("profileUrl", { length: 500 }), // The target profile URL
+  characterCount: int("characterCount"), // Track message length for compliance
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SocialOutreach = typeof socialOutreach.$inferSelect;
+export type InsertSocialOutreach = typeof socialOutreach.$inferInsert;

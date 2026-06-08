@@ -291,6 +291,85 @@ export async function processScheduledFollowUpEmails() {
 
         // Get lead info
         const lead = await db.getLeadById(campaignLead.leadId);
+
+        // === SOCIAL OUTREACH: Before 2nd follow-up email, send connection requests ===
+        if (followUpEmail.sequenceNumber === 2 && lead) {
+          try {
+            const campaign = await db.getCampaignById(campaignLead.campaignId);
+            if (campaign) {
+              const settings = await db.getUserSettings(campaign.userId);
+              const { socialOutreach } = await import("../../drizzle/schema");
+              const { eq, and } = await import("drizzle-orm");
+              const database = await db.getDb();
+              if (database && settings) {
+                const dailyLimit = settings.socialDailyLimit || 20;
+                const charLimit = settings.socialMessageCharLimit || 300;
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
+                const { gte } = await import("drizzle-orm");
+                const todaySent = await database.select().from(socialOutreach).where(
+                  and(eq(socialOutreach.userId, campaign.userId), eq(socialOutreach.status, "sent"), gte(socialOutreach.sentAt, todayStart))
+                );
+
+                // Only send if under daily limit
+                if (todaySent.length < dailyLimit) {
+                  const platforms: Array<"linkedin" | "instagram" | "facebook"> = [];
+                  if (lead.linkedinUrl) platforms.push("linkedin");
+                  if (lead.instagramUrl) platforms.push("instagram");
+                  if ((lead as any).facebookUrl) platforms.push("facebook");
+
+                  for (const platform of platforms) {
+                    // Check if already sent connection request
+                    const existing = await database.select().from(socialOutreach).where(
+                      and(
+                        eq(socialOutreach.leadId, lead.id),
+                        eq(socialOutreach.platform, platform),
+                        eq(socialOutreach.messageType, "connection_request"),
+                        eq(socialOutreach.status, "sent")
+                      )
+                    );
+                    if (existing.length > 0) continue;
+
+                    // Generate message with AI
+                    const { invokeLLM } = await import("./llm");
+                    const response = await invokeLLM({
+                      messages: [
+                        { role: "system", content: `You are a social media outreach expert. Generate a brief, personalized ${platform} connection request note. Keep under ${Math.min(charLimit, 200)} characters. Be genuine, mention their industry. Do NOT pitch services. Do NOT use hashtags. Return ONLY the message text.` },
+                        { role: "user", content: `Connection request for: ${lead.ownerName} at ${lead.companyName} (${lead.industry || "business"})` },
+                      ],
+                    });
+                    const content = response.choices?.[0]?.message?.content;
+                    let message = typeof content === "string" ? content.trim() : "";
+                    if (message.length > charLimit) message = message.slice(0, charLimit - 3) + "...";
+
+                    if (message) {
+                      const profileUrl = platform === "linkedin" ? lead.linkedinUrl :
+                        platform === "instagram" ? lead.instagramUrl : (lead as any).facebookUrl;
+                      await database.insert(socialOutreach).values({
+                        userId: campaign.userId,
+                        leadId: lead.id,
+                        campaignLeadId: campaignLead.id,
+                        platform,
+                        messageType: "connection_request",
+                        message,
+                        status: "sent",
+                        sentAt: new Date(),
+                        profileUrl: profileUrl || "",
+                        characterCount: message.length,
+                      });
+                      console.log(`[FollowUpScheduler] Sent ${platform} connection request to ${lead.ownerName} (${message.length} chars)`);
+                    }
+                  }
+                } else {
+                  console.log(`[FollowUpScheduler] Skipping social outreach - daily limit reached (${todaySent.length}/${dailyLimit})`);
+                }
+              }
+            }
+          } catch (socialError) {
+            console.error(`[FollowUpScheduler] Social outreach error for lead ${lead?.id}:`, socialError);
+            // Don't fail the follow-up email if social outreach fails
+          }
+        }
         if (!lead) {
           await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
           failCount++;

@@ -421,3 +421,48 @@
 - [x] Add scheduling UI (date/time picker) to bulk campaign creation form
 - [x] Add heartbeat job to auto-launch scheduled campaigns when time arrives
 - [x] Show scheduled badge with date/time in campaign history list
+
+## Batch — Social Profiles & Unified Leads Page & Social Outreach
+
+### Social Profile Fields on Leads
+- [x] Add website, linkedinUrl, instagramUrl, facebookUrl fields to leads schema
+- [x] Update manual lead add form to include social profile fields (all optional)
+- [x] Update CSV import to support social profile columns
+- [x] Update AI lead generation to extract/generate social profile URLs
+- [x] Update lead edit form to include social profile fields
+
+### Unified All Leads Management Page
+- [x] Create /all-leads page showing all leads across all sets with status
+- [x] Show lead engagement status (emails sent, opened, clicked, called, replied)
+- [x] Add inline edit capability for each lead
+- [x] Add delete button with confirmation for each lead
+- [x] Add bulk actions (delete, assign to set)
+- [x] Add filters (by set, by status, by engagement level)
+- [x] Add search across all fields
+- [x] Add navigation link in sidebar
+
+### Cancel Scheduled Launch
+- [x] Add "Cancel Scheduled Launch" button on scheduled (draft) campaigns
+- [x] Backend: delete heartbeat job and clear scheduledAt/scheduleCronTaskUid on campaign
+
+### Business Social Profiles in Settings
+- [x] Add LinkedIn page/profile URL field to user settings
+- [x] Add Instagram page/profile URL field to user settings
+- [x] Add Facebook page/profile URL field to user settings
+- [x] Add toggle for each: "Page" vs "Personal Profile" type
+- [x] Create Social Profiles section in Settings schema (UI pending frontend update)
+
+### Automated Social Outreach System
+- [x] Create socialOutreach table (id, campaignLeadId, platform, messageType, message, status, sentAt, etc.)
+- [x] Backend procedure to generate short connection request message via Claude (limited characters)
+- [x] Backend procedure to generate short follow-up DM via Claude (limited characters)
+- [x] Anti-spam safeguards: max 1 message per platform per lead, character limits, daily send limits
+- [x] Pre-send checks: verify profile URL exists, verify not already connected, verify within daily limit
+
+### Social Outreach Integration with Follow-Up Flow
+- [x] Trigger social outreach after 1st follow-up email if no response (before 2nd follow-up)
+- [x] Send LinkedIn connection request + message if linkedinUrl exists
+- [x] Send Instagram follow/message if instagramUrl exists
+- [x] Send Facebook friend request/message if facebookUrl exists
+- [x] Log all social outreach attempts in socialOutreach table
+- [x] Show social outreach status in campaign detail and lead timeline

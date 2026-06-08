@@ -20,6 +20,9 @@ const createLeadSchema = z.object({
   phoneNumber: z.string().min(1),
   website: z.string().optional(),
   industry: z.string().optional(),
+  linkedinUrl: z.string().optional(),
+  instagramUrl: z.string().optional(),
+  facebookUrl: z.string().optional(),
   customData: z.any().optional(),
 });
 
@@ -54,6 +57,15 @@ const updateUserSettingsSchema = z.object({
   calendlyWebhookSecret: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
   seamlessApiKey: z.string().optional(),
+  // Social profiles
+  linkedinUrl: z.string().optional(),
+  linkedinType: z.enum(["page", "personal"]).optional(),
+  instagramUrl: z.string().optional(),
+  instagramType: z.enum(["page", "personal"]).optional(),
+  facebookUrl: z.string().optional(),
+  facebookType: z.enum(["page", "personal"]).optional(),
+  socialDailyLimit: z.number().optional(),
+  socialMessageCharLimit: z.number().optional(),
 });
 
 export const appRouter = router({
@@ -73,6 +85,46 @@ export const appRouter = router({
   leads: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return db.getLeadsByUserId(ctx.user.id);
+    }),
+
+    // All leads with engagement status for the unified management page
+    listWithStatus: protectedProcedure.query(async ({ ctx }) => {
+      const allLeads = await db.getLeadsByUserId(ctx.user.id);
+      const allCampaigns = await db.getCampaignsByUserId(ctx.user.id);
+      
+      // Get engagement data for each lead
+      const leadsWithStatus = await Promise.all(allLeads.map(async (lead) => {
+        let emailsSent = 0, emailsOpened = 0, emailsClicked = 0, callsMade = 0, replied = false, socialSent = 0;
+        
+        for (const campaign of allCampaigns) {
+          const cls = await db.getCampaignLeads(campaign.id);
+          const matchingCL = cls.find(cl => cl.leadId === lead.id);
+          if (matchingCL) {
+            if (matchingCL.emailSent) emailsSent++;
+            if (matchingCL.emailOpened) emailsOpened++;
+            if (matchingCL.emailClicked) emailsClicked++;
+            if ((matchingCL as any).replied) replied = true;
+          }
+        }
+        
+        // Get social outreach count
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq, and } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (database) {
+          const socialResults = await database.select().from(socialOutreach).where(
+            and(eq(socialOutreach.leadId, lead.id), eq(socialOutreach.status, "sent"))
+          );
+          socialSent = socialResults.length;
+        }
+        
+        return {
+          ...lead,
+          engagement: { emailsSent, emailsOpened, emailsClicked, callsMade, replied, socialSent },
+        };
+      }));
+      
+      return leadsWithStatus;
     }),
 
     get: protectedProcedure.input(z.number()).query(async ({ input: leadId, ctx }) => {
@@ -99,6 +151,9 @@ export const appRouter = router({
         phoneNumber: z.string().optional(),
         website: z.string().optional(),
         industry: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        instagramUrl: z.string().optional(),
+        facebookUrl: z.string().optional(),
         customData: z.any().optional(),
         status: z.enum(["new", "contacted", "qualified", "converted", "rejected"]).optional(),
         tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
@@ -142,6 +197,10 @@ export const appRouter = router({
         phoneNumber: z.string().min(1),
         industry: z.string().optional(),
         companySize: z.string().optional(),
+        website: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        instagramUrl: z.string().optional(),
+        facebookUrl: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         return db.createLead({
@@ -150,7 +209,10 @@ export const appRouter = router({
           email: input.email,
           phoneNumber: input.phoneNumber,
           industry: input.industry,
-          website: undefined,
+          website: input.website || undefined,
+          linkedinUrl: input.linkedinUrl || undefined,
+          instagramUrl: input.instagramUrl || undefined,
+          facebookUrl: input.facebookUrl || undefined,
           customData: { companySize: input.companySize },
           userId: ctx.user.id,
           status: "new",
@@ -172,6 +234,9 @@ Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - website: string (optional, valid URL if provided)
 - industry: string (the industry/sector of the business)
 - timezone: string (IANA timezone of the lead's location, e.g. "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London")
+- linkedinUrl: string (optional, LinkedIn profile URL if available, e.g. "https://linkedin.com/in/john-smith")
+- instagramUrl: string (optional, Instagram profile URL if available, e.g. "https://instagram.com/companyname")
+- facebookUrl: string (optional, Facebook profile/page URL if available, e.g. "https://facebook.com/companyname")
 
 Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
@@ -245,6 +310,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               website: leadData.website,
               industry: leadData.industry,
               timezone: leadData.timezone || "America/New_York",
+              linkedinUrl: leadData.linkedinUrl || undefined,
+              instagramUrl: leadData.instagramUrl || undefined,
+              facebookUrl: leadData.facebookUrl || undefined,
               userId: ctx.user.id,
               status: "new",
               leadSetId,
@@ -272,6 +340,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           phoneNumber: z.string().min(1),
           website: z.string().optional(),
           industry: z.string().optional(),
+          linkedinUrl: z.string().optional(),
+          instagramUrl: z.string().optional(),
+          facebookUrl: z.string().optional(),
           tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
         })),
         leadSetName: z.string().optional(),
@@ -304,6 +375,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               phoneNumber: leadData.phoneNumber,
               website: leadData.website,
               industry: leadData.industry,
+              linkedinUrl: leadData.linkedinUrl || undefined,
+              instagramUrl: leadData.instagramUrl || undefined,
+              facebookUrl: leadData.facebookUrl || undefined,
               userId: ctx.user.id,
               status: "new",
               leadSetId,
@@ -597,6 +671,34 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           throw new TRPCError({ code: "NOT_FOUND" });
         }
         return db.updateCampaign(input.id, input.data);
+      }),
+
+    // Cancel a scheduled campaign launch
+    cancelSchedule: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: campaignId, ctx }) => {
+        const campaign = await db.getCampaignById(campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        if (!campaign.scheduledAt) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Campaign is not scheduled" });
+        }
+        // Cancel the heartbeat cron job if it exists
+        if ((campaign as any).scheduleCronTaskUid) {
+          try {
+            const { deleteHeartbeatJob } = await import("./_core/heartbeat");
+            const { parse: parseCookie } = await import("cookie");
+            const { COOKIE_NAME } = await import("@shared/const");
+            const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+            await deleteHeartbeatJob((campaign as any).scheduleCronTaskUid, sessionToken);
+          } catch (e) {
+            console.warn("Failed to delete heartbeat job:", e);
+          }
+        }
+        // Clear the scheduled time and keep as draft
+        await db.updateCampaign(campaignId, { scheduledAt: null, scheduleCronTaskUid: null } as any);
+        return { success: true };
       }),
 
     // Launch campaign - send emails to all leads
@@ -925,6 +1027,14 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           hasRetellApiKey: false,
           hasCalendlyWebhookSecret: false,
           hasRetellWebhookSecret: false,
+          linkedinUrl: "",
+          linkedinType: "personal" as const,
+          instagramUrl: "",
+          instagramType: "personal" as const,
+          facebookUrl: "",
+          facebookType: "personal" as const,
+          socialDailyLimit: 20,
+          socialMessageCharLimit: 300,
         };
       }
       // Don't return sensitive data to frontend
@@ -941,6 +1051,14 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         hasRetellApiKey: !!settings.retellApiKey,
         hasCalendlyWebhookSecret: !!settings.calendlyWebhookSecret,
         hasRetellWebhookSecret: !!settings.retellWebhookSecret,
+        linkedinUrl: settings.linkedinUrl || "",
+        linkedinType: settings.linkedinType || "personal",
+        instagramUrl: settings.instagramUrl || "",
+        instagramType: settings.instagramType || "personal",
+        facebookUrl: settings.facebookUrl || "",
+        facebookType: settings.facebookType || "personal",
+        socialDailyLimit: settings.socialDailyLimit || 20,
+        socialMessageCharLimit: settings.socialMessageCharLimit || 300,
       };
     }),
 
@@ -2232,35 +2350,250 @@ Respond in this exact JSON format:
 
   // Social outreach message generation
   social: router({
+    // Generate a social outreach message using AI
     generateMessage: protectedProcedure
       .input(z.object({
         leadId: z.number(),
-        platform: z.enum(["linkedin", "instagram"]),
-        messageType: z.enum(["connection_request", "dm", "follow_up"]),
+        platform: z.enum(["linkedin", "instagram", "facebook"]),
+        messageType: z.enum(["connection_request", "direct_message"]),
         tone: z.string().optional(),
+        context: z.string().optional(), // Additional context like "they didn't reply to 1st follow-up"
       }))
       .mutation(async ({ input, ctx }) => {
         const lead = await db.getLeadById(input.leadId);
-        const platformGuide = input.platform === "linkedin"
-          ? "LinkedIn: Professional tone, mention mutual connections or industry. Max 300 chars for connection requests."
-          : "Instagram: Casual but professional DM. Keep it brief and engaging.";
-        const typeGuide = input.messageType === "connection_request"
-          ? "This is a connection/follow request note. Be brief, mention why you want to connect."
-          : input.messageType === "follow_up"
-          ? "This is a follow-up message. Reference previous outreach without being pushy."
-          : "This is a direct message. Be personable and include a clear value proposition.";
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const settings = await db.getUserSettings(ctx.user.id);
+        const charLimit = settings?.socialMessageCharLimit || 300;
+
+        const platformGuides: Record<string, string> = {
+          linkedin: "LinkedIn: Professional tone, mention mutual connections or industry relevance. Keep connection request notes under 200 chars.",
+          instagram: "Instagram: Casual but professional DM. Keep it brief, engaging, and personal.",
+          facebook: "Facebook: Friendly and professional. Reference their business page or recent activity.",
+        };
+        const typeGuides: Record<string, string> = {
+          connection_request: "This is a connection/follow request note. Be very brief, mention why you want to connect. Do NOT pitch services directly.",
+          direct_message: "This is a direct message after connecting. Be personable, reference their work, and include a subtle value proposition.",
+        };
+
         const response = await invokeLLM({
           messages: [
-            { role: "system", content: `You are a social media outreach expert. Generate a personalized ${input.platform} ${input.messageType.replace("_", " ")} message. ${platformGuide} ${typeGuide} ${input.tone ? "Tone: " + input.tone : ""}. Return ONLY the message text, nothing else.` },
+            { role: "system", content: `You are a social media outreach expert. Generate a personalized ${input.platform} ${input.messageType.replace("_", " ")} message.
+${platformGuides[input.platform]}
+${typeGuides[input.messageType]}
+${input.tone ? "Tone: " + input.tone : ""}
+${input.context ? "Context: " + input.context : ""}
+IMPORTANT: Keep the message under ${charLimit} characters. Do NOT use hashtags. Do NOT be salesy. Be genuine and human.
+Return ONLY the message text, nothing else.` },
             { role: "user", content: `Generate a ${input.platform} ${input.messageType.replace("_", " ")} for:
 Name: ${lead.ownerName}
 Company: ${lead.companyName}
-Industry: ${lead.industry || "Unknown"}` },
+Industry: ${lead.industry || "Unknown"}
+Website: ${lead.website || "N/A"}` },
           ],
         });
         const content = response.choices?.[0]?.message?.content;
-        const message = typeof content === "string" ? content.trim() : "";
-        return { message, platform: input.platform, messageType: input.messageType };
+        let message = typeof content === "string" ? content.trim() : "";
+        // Enforce character limit
+        if (message.length > charLimit) {
+          message = message.slice(0, charLimit - 3) + "...";
+        }
+        return { message, platform: input.platform, messageType: input.messageType, characterCount: message.length, charLimit };
+      }),
+
+    // Send/queue a social outreach message (records it in DB)
+    send: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        platform: z.enum(["linkedin", "instagram", "facebook"]),
+        messageType: z.enum(["connection_request", "direct_message"]),
+        message: z.string().min(1),
+        campaignLeadId: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const settings = await db.getUserSettings(ctx.user.id);
+        const charLimit = settings?.socialMessageCharLimit || 300;
+        const dailyLimit = settings?.socialDailyLimit || 20;
+
+        // Anti-spam: check daily limit
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq, and, gte } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todaySent = await database.select().from(socialOutreach).where(
+          and(
+            eq(socialOutreach.userId, ctx.user.id),
+            eq(socialOutreach.status, "sent"),
+            gte(socialOutreach.sentAt, todayStart)
+          )
+        );
+        if (todaySent.length >= dailyLimit) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Daily social outreach limit reached (${dailyLimit}). Try again tomorrow to avoid spamming.` });
+        }
+
+        // Character limit check
+        if (input.message.length > charLimit) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Message exceeds ${charLimit} character limit (${input.message.length} chars).` });
+        }
+
+        // Determine profile URL
+        const profileUrl = input.platform === "linkedin" ? lead.linkedinUrl :
+          input.platform === "instagram" ? lead.instagramUrl :
+          (lead as any).facebookUrl;
+
+        if (!profileUrl) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `No ${input.platform} profile URL found for this lead. Please add it first.` });
+        }
+
+        // Check if we already sent a connection request to this lead on this platform
+        if (input.messageType === "connection_request") {
+          const existing = await database.select().from(socialOutreach).where(
+            and(
+              eq(socialOutreach.leadId, input.leadId),
+              eq(socialOutreach.platform, input.platform),
+              eq(socialOutreach.messageType, "connection_request"),
+              eq(socialOutreach.status, "sent")
+            )
+          );
+          if (existing.length > 0) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `Connection request already sent to this lead on ${input.platform}.` });
+          }
+        }
+
+        // Record the outreach
+        await database.insert(socialOutreach).values({
+          userId: ctx.user.id,
+          leadId: input.leadId,
+          campaignLeadId: input.campaignLeadId || null,
+          platform: input.platform,
+          messageType: input.messageType,
+          message: input.message,
+          status: "sent",
+          sentAt: new Date(),
+          profileUrl,
+          characterCount: input.message.length,
+        });
+
+        return { success: true, profileUrl, message: input.message, characterCount: input.message.length };
+      }),
+
+    // List all social outreach for a lead
+    listByLead: protectedProcedure
+      .input(z.number())
+      .query(async ({ input: leadId, ctx }) => {
+        const lead = await db.getLeadById(leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (!database) return [];
+        return database.select().from(socialOutreach).where(eq(socialOutreach.leadId, leadId)).orderBy(desc(socialOutreach.createdAt));
+      }),
+
+    // List all social outreach for user (for reporting)
+    listAll: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(200).default(50) }).optional())
+      .query(async ({ ctx, input }) => {
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (!database) return [];
+        return database.select().from(socialOutreach).where(eq(socialOutreach.userId, ctx.user.id)).orderBy(desc(socialOutreach.createdAt)).limit(input?.limit || 50);
+      }),
+
+    // Pre-send checklist validation
+    validateOutreach: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        platform: z.enum(["linkedin", "instagram", "facebook"]),
+        messageType: z.enum(["connection_request", "direct_message"]),
+        message: z.string(),
+      }))
+      .query(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const settings = await db.getUserSettings(ctx.user.id);
+        const charLimit = settings?.socialMessageCharLimit || 300;
+        const dailyLimit = settings?.socialDailyLimit || 20;
+
+        const checks: { name: string; passed: boolean; message: string }[] = [];
+
+        // Check 1: Profile URL exists
+        const profileUrl = input.platform === "linkedin" ? lead.linkedinUrl :
+          input.platform === "instagram" ? lead.instagramUrl :
+          (lead as any).facebookUrl;
+        checks.push({
+          name: "Profile URL",
+          passed: !!profileUrl,
+          message: profileUrl ? `${input.platform} profile found` : `No ${input.platform} profile URL for this lead`,
+        });
+
+        // Check 2: Character limit
+        checks.push({
+          name: "Character Limit",
+          passed: input.message.length <= charLimit,
+          message: `${input.message.length}/${charLimit} characters`,
+        });
+
+        // Check 3: Daily limit
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq, and, gte } = await import("drizzle-orm");
+        const database = await db.getDb();
+        let todayCount = 0;
+        if (database) {
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const todaySent = await database.select().from(socialOutreach).where(
+            and(eq(socialOutreach.userId, ctx.user.id), eq(socialOutreach.status, "sent"), gte(socialOutreach.sentAt, todayStart))
+          );
+          todayCount = todaySent.length;
+        }
+        checks.push({
+          name: "Daily Limit",
+          passed: todayCount < dailyLimit,
+          message: `${todayCount}/${dailyLimit} messages sent today`,
+        });
+
+        // Check 4: No duplicate connection request
+        if (input.messageType === "connection_request" && database) {
+          const existing = await database.select().from(socialOutreach).where(
+            and(
+              eq(socialOutreach.leadId, input.leadId),
+              eq(socialOutreach.platform, input.platform),
+              eq(socialOutreach.messageType, "connection_request"),
+              eq(socialOutreach.status, "sent")
+            )
+          );
+          checks.push({
+            name: "No Duplicate",
+            passed: existing.length === 0,
+            message: existing.length === 0 ? "No previous connection request" : "Connection request already sent",
+          });
+        }
+
+        // Check 5: Message not too spammy (no excessive caps, links, or emojis)
+        const capsRatio = (input.message.match(/[A-Z]/g) || []).length / Math.max(input.message.length, 1);
+        const linkCount = (input.message.match(/https?:\/\//g) || []).length;
+        checks.push({
+          name: "Spam Check",
+          passed: capsRatio < 0.5 && linkCount <= 1,
+          message: capsRatio >= 0.5 ? "Too many capital letters" : linkCount > 1 ? "Too many links" : "Message looks natural",
+        });
+
+        const allPassed = checks.every(c => c.passed);
+        return { checks, allPassed };
       }),
   }),
   webhooks: router({

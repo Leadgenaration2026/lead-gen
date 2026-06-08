@@ -111,6 +111,13 @@ export default function EmailComposer() {
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
   const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
+  const cancelScheduleMutation = trpc.campaigns.cancelSchedule.useMutation({
+    onSuccess: () => {
+      toast.success("Scheduled launch cancelled");
+      campaignsQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
   const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
@@ -1304,10 +1311,24 @@ export default function EmailComposer() {
                           </div>
                           <div className="flex items-center gap-2">
                             {(campaign as any).scheduledAt && campaign.status === "draft" && (
-                              <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50 gap-1">
-                                <CalendarClock className="w-3 h-3" />
-                                {new Date((campaign as any).scheduledAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              </Badge>
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50 gap-1">
+                                  <CalendarClock className="w-3 h-3" />
+                                  {new Date((campaign as any).scheduledAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    cancelScheduleMutation.mutate(campaign.id);
+                                  }}
+                                  disabled={cancelScheduleMutation.isPending}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
                             )}
                             <Badge variant={
                               campaign.status === "active" ? "default" :
