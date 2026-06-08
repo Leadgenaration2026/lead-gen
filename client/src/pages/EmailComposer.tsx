@@ -467,26 +467,6 @@ export default function EmailComposer() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Subject Line */}
-                  <div className="space-y-2">
-                    <Label htmlFor="subject" className="font-semibold">Subject Line</Label>
-                    <Input
-                      id="subject"
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                      placeholder="AI will generate a spam-proof subject line..."
-                      className="font-medium text-base"
-                    />
-                    {subject && (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                          {subject.length < 50 ? "Good length" : "Consider shortening"}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">{subject.length}/50 chars</span>
-                      </div>
-                    )}
-                  </div>
-
                   {/* AI Write Button - Direct access */}
                   <div className="flex items-center gap-2">
                     <AIWriteButton
@@ -560,6 +540,26 @@ export default function EmailComposer() {
                         rows={14}
                         className="text-sm leading-relaxed"
                       />
+                    )}
+                  </div>
+
+                  {/* Subject Line - placed after body so user focuses on lead & content first */}
+                  <div className="space-y-2">
+                    <Label htmlFor="subject" className="font-semibold">Subject Line</Label>
+                    <Input
+                      id="subject"
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      placeholder="AI will generate a spam-proof subject line..."
+                      className="font-medium text-base"
+                    />
+                    {subject && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                          {subject.length < 50 ? "Good length" : "Consider shortening"}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{subject.length}/50 chars</span>
+                      </div>
                     )}
                   </div>
 

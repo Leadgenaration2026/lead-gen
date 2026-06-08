@@ -7,10 +7,12 @@ import { Loader2, Globe, TrendingUp, TrendingDown, Search, BarChart3, ArrowUpRig
 import { toast } from "sonner";
 
 interface WebsiteInsightsPanelProps {
-  domain: string; // Website URL or domain
-  leadId?: number; // Optional: for generating personalized email
-  onGenerateEmail?: (subject: string, body: string) => void; // Callback when email is generated
-  compact?: boolean; // Compact mode for drawer
+  domain: string;
+  leadId?: number;
+  companyName?: string;
+  industry?: string;
+  onGenerateEmail?: (subject: string, body: string) => void;
+  compact?: boolean;
 }
 
 interface InsightsData {
