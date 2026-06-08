@@ -487,3 +487,6 @@
 - [x] Add website, LinkedIn, Instagram, Facebook URL fields to manual lead add form UI
 - [x] Add social profile fields to AI lead generation form/results display
 - [x] Add downloadable sample CSV file showing correct data format including social profile columns
+
+## Social Profile Icons in Leads List
+- [x] Show clickable social profile icons (LinkedIn, Instagram, Facebook, Website) in the leads list table

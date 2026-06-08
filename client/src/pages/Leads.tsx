@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
@@ -1099,6 +1099,7 @@ export default function LeadsPage() {
                     <TableHead>Owner</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Socials</TableHead>
                     <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
@@ -1119,6 +1120,33 @@ export default function LeadsPage() {
                       <TableCell>{lead.ownerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                       <TableCell className="text-sm">{lead.phoneNumber}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {lead.website && (
+                            <a href={lead.website} target="_blank" rel="noopener noreferrer" title="Website" className="text-muted-foreground hover:text-blue-600 transition-colors">
+                              <Globe className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          {lead.linkedinUrl && (
+                            <a href={lead.linkedinUrl} target="_blank" rel="noopener noreferrer" title="LinkedIn" className="text-muted-foreground hover:text-[#0A66C2] transition-colors">
+                              <Linkedin className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          {lead.instagramUrl && (
+                            <a href={lead.instagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram" className="text-muted-foreground hover:text-[#E4405F] transition-colors">
+                              <Instagram className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          {lead.facebookUrl && (
+                            <a href={lead.facebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook" className="text-muted-foreground hover:text-[#1877F2] transition-colors">
+                              <Facebook className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          {!lead.website && !lead.linkedinUrl && !lead.instagramUrl && !lead.facebookUrl && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         {lead.leadSetId ? (
                           <Badge variant="outline" className="text-xs">
