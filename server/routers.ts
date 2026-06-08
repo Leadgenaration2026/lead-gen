@@ -11,6 +11,7 @@ import { nanoid } from "nanoid";
 import nodemailer from "nodemailer";
 import { plainTextToHtml } from "@shared/emailFormat";
 import { getSignatureHtml, normalizePhoneNumber } from "./_core/followUpScheduler";
+import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PLAIN, getUnsubscribeLinkHtml } from "@shared/signature";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -950,9 +951,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           });
         }
 
-        // Get user's email signature (uses plain text version for correct display)
-        const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = getSignatureHtml(signature);
+        // Using Nitin's hardcoded signature
 
         // Get campaign leads
         const campaignLeads = await db.getCampaignLeads(campaignId);
@@ -1660,7 +1659,7 @@ Rules for the rewrite:
 1. If personalization is missing, add the recipient's first name in the opening and reference their company/industry
 2. If spam words are detected, replace them with professional alternatives
 3. If subject line has issues, rewrite it to be compelling but not spammy (under 60 chars)
-4. If unsubscribe link is missing, add "If you'd like to opt out of future emails, simply reply with 'unsubscribe'." at the end
+4. Do NOT include any unsubscribe text - it will be appended separately as a clickable link.
 5. Keep the email concise (under 200 words for body)
 6. Maintain the original CTA and core message
 7. Keep plain text format with clear line breaks
@@ -1708,8 +1707,7 @@ Return JSON with: { "subject": "...", "body": "..." }`,
         const lead = await db.getLeadById(input.leadId);
         if (!lead || lead.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // Get user signature
-        const signature = await db.getEmailSignature(ctx.user.id);
+        // Signature is hardcoded (Nitin's)
         const settings = await db.getUserSettings(ctx.user.id);
         const ctaLink = input.ctaLink || "https://calendly.com/nitin-virtualassistant/30min";
 
@@ -1819,16 +1817,10 @@ Respond in this exact JSON format:
         if (!emailBody.includes(ctaLink)) {
           emailBody += `<p style="margin-top:16px;"><a href="${ctaLink}" style="color:#2563eb;font-weight:500;">Schedule a quick chat</a></p>`;
         }
-
-        // Append signature if available
-        let fullBody = emailBody;
-        const sigHtml = getSignatureHtml(signature);
-        if (sigHtml) {
-          fullBody += sigHtml;
-        }
-
+        // Append Nitin's signature with clickable links
+        let fullBody = emailBody + NITIN_SIGNATURE_HTML;
         // Add unsubscribe opt-out text for CAN-SPAM compliance
-        fullBody += `\n\n<p style="font-size:11px;color:#888;margin-top:24px;">If you'd like to opt out of future emails, simply reply with 'unsubscribe'.</p>`;
+        // Unsubscribe link is now added as a clickable link in the HTML version
 
         return {
           subject: parsed.subject,
@@ -1887,9 +1879,7 @@ Respond in this exact JSON format:
         // Create tracking token
         const trackingToken = nanoid();
 
-        // Get user's email signature (uses plain text version for correct display)
-        const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = getSignatureHtml(signature);
+        // Using Nitin's hardcoded signature
 
         // Use request origin for tracking URL
         const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
@@ -1908,7 +1898,7 @@ Respond in this exact JSON format:
 
         
         // Convert plain text to HTML if needed, append signature
-        const htmlBody = plainTextToHtml(trackedBody) + signatureHtml + trackingPixel;
+        const htmlBody = plainTextToHtml(trackedBody) + NITIN_SIGNATURE_HTML + trackingPixel;
 
         try {
           await transporter.sendMail({
@@ -1994,15 +1984,13 @@ Respond in this exact JSON format:
           },
         });
 
-        // Get user's email signature (uses plain text version for correct display)
-        const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = getSignatureHtml(signature);
+        // Using Nitin's hardcoded signature
 
         // Add a [TEST] prefix to subject
         const testSubject = `[TEST PREVIEW] ${input.subject}`;
         const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> \u2014 This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
         // Convert plain text to HTML if needed, append signature
-        const htmlBody = testBanner + plainTextToHtml(input.body) + signatureHtml;
+        const htmlBody = testBanner + plainTextToHtml(input.body) + NITIN_SIGNATURE_HTML;
 
         try {
           await transporter.sendMail({
@@ -2040,8 +2028,7 @@ Respond in this exact JSON format:
           throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your primary SMTP settings first in the Settings page." });
         }
         const recipientEmail = input.testEmail || settings.senderEmail || settings.smtpUsername;
-        const signature = await db.getEmailSignature(ctx.user.id);
-        const signatureHtml = getSignatureHtml(signature);
+        // Using Nitin's hardcoded signature
         const testSubject = `[TEST ALL ACCOUNTS] ${input.subject}`;
 
         // Collect all SMTP accounts: primary + rotational
@@ -2085,7 +2072,7 @@ Respond in this exact JSON format:
               auth: { user: account.username, pass: account.password },
             });
             const accountBanner = `<div style="background:#dbeafe;border:1px solid #3b82f6;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#1e40af;"><strong>\u2709\uFE0F Sent via: ${account.label}</strong> &mdash; ${account.senderEmail}</div>`;
-            const htmlBody = accountBanner + plainTextToHtml(input.body) + signatureHtml;
+            const htmlBody = accountBanner + plainTextToHtml(input.body) + NITIN_SIGNATURE_HTML;
             await transporter.sendMail({
               from: `"${account.senderName}" <${account.senderEmail}>`,
               to: recipientEmail,
@@ -2148,18 +2135,10 @@ Respond in this exact JSON format:
           problemAnalysis,
         });
 
-        // Append signature to the generated template (same as single email)
-        const signature = await db.getEmailSignature(ctx.user.id);
+        // Append Nitin's signature
         let fullBody = result.body;
-        if (signature) {
-          const sigText = signature.signaturePlainText || signature.signatureHtml.replace(/<[^>]*>/g, "");
-          fullBody += "\n\n" + sigText;
-        }
-
-        // Add unsubscribe line for bulk templates
-        if (input.includeVariables) {
-          fullBody += "\n\n---\nIf you'd like to opt out of future emails, simply reply with 'unsubscribe'.";
-        }
+        fullBody += "\n\n" + NITIN_SIGNATURE_PLAIN;
+        fullBody += UNSUBSCRIBE_PLACEHOLDER_PLAIN;
 
         return {
           ...result,
@@ -2955,13 +2934,10 @@ Use the website data to:
           includeVariables: input.includeVariables || false,
         });
 
-        // Append signature
-        const signature = await db.getEmailSignature(ctx.user.id);
+        // Append Nitin's signature
         let fullBody = result.body;
-        if (signature) {
-          const sigText = signature.signaturePlainText || signature.signatureHtml.replace(/<[^>]*>/g, "");
-          fullBody += "\n\n" + sigText;
-        }
+        fullBody += "\n\n" + NITIN_SIGNATURE_PLAIN;
+        fullBody += UNSUBSCRIBE_PLACEHOLDER_PLAIN;
 
         return {
           ...result,

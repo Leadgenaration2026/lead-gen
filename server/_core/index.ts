@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerEmailTrackingRoutes } from "./emailTracking";
+import { NITIN_SIGNATURE_HTML } from "@shared/signature";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -129,6 +130,7 @@ async function startServer() {
       const nodemailer = (await import("nodemailer")).default;
       const { nanoid } = await import("nanoid");
       const { plainTextToHtml } = await import("@shared/emailFormat");
+      const { NITIN_SIGNATURE_HTML, getUnsubscribeLinkHtml } = await import("@shared/signature");
       const { getSignatureHtml } = await import("./followUpScheduler");
 
       const signature = await db.getEmailSignature(campaign.userId);

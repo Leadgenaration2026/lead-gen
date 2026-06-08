@@ -1,4 +1,5 @@
 import * as db from "../db";
+import { NITIN_SIGNATURE_HTML, getUnsubscribeLinkHtml } from "@shared/signature";
 import { triggerRetellCall } from "./retellAI";
 import { nanoid } from "nanoid";
 
@@ -393,8 +394,7 @@ export async function processScheduledFollowUpEmails() {
         }
 
         // Get user's email signature (use plain text version, converted to HTML)
-        const signature = await db.getEmailSignature(campaign.userId);
-        const signatureHtml = getSignatureHtml(signature);
+        // Using Nitin hardcoded signature
 
         // Create transporter
         const transporter = nodemailer.default.createTransport({
@@ -437,7 +437,7 @@ export async function processScheduledFollowUpEmails() {
         const { plainTextToHtml } = await import("@shared/emailFormat");
         let htmlBody = followUpEmail.emailBody
           .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
-        htmlBody = plainTextToHtml(htmlBody) + signatureHtml + trackingPixel;
+        htmlBody = plainTextToHtml(htmlBody) + NITIN_SIGNATURE_HTML + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -536,12 +536,11 @@ export async function processScheduledEmails() {
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
         
         // Get user's email signature
-        const signature = await db.getEmailSignature(scheduledEmail.userId);
-        const signatureHtml = getSignatureHtml(signature);
+        // Using Nitin hardcoded signature
         
         // Convert plain text to HTML (preserve line breaks and bullet points)
         const { plainTextToHtml } = await import("@shared/emailFormat");
-        const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + signatureHtml + trackingPixel;
+        const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + NITIN_SIGNATURE_HTML + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
