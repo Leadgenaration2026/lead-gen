@@ -501,3 +501,9 @@
 ## Export Leads & Lead Detail Drawer
 - [x] Add "Export Leads" button to Leads page that downloads filtered leads as CSV with all fields including social profiles
 - [x] Create Lead Detail Drawer/page showing full engagement timeline (emails sent/opened/clicked, calls, social outreach) when clicking a lead row
+
+## Signature Update & Social Media Auth
+- [x] Replace generic signature template with Nitin's actual signature in all email generation
+- [x] Make website (www.virtualassistant-group.com) and LinkedIn clickable links in signature
+- [x] Ensure signature uses same font as email body for both single and bulk campaigns
+- [x] Add social media login/authorization UI for LinkedIn, Instagram, Facebook accounts (Account Authorization section in Settings → Social tab with Connect/Reconnect buttons and status badges)

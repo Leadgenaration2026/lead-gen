@@ -731,15 +731,16 @@ function getSignatureHtml(signature: any): string {
     const htmlLines = lines.map((line: string) => {
       const trimmed = line.trim();
       if (!trimmed) return '<br/>';
-      // Detect URLs and make them clickable
-      const urlRegex = /(https?:\/\/[^\s]+)/g;
-      const withLinks = trimmed.replace(urlRegex, '<a href="$1" style="color:#2563eb;text-decoration:none;">$1</a>');
-      // Detect email addresses
-      const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
-      const withEmails = withLinks.replace(emailRegex, '<a href="mailto:$1" style="color:#2563eb;text-decoration:none;">$1</a>');
-      return `<p style="margin:0;padding:0;line-height:1.4;">${withEmails}</p>`;
+      let processed = trimmed;
+      // Detect full URLs (https:// or http://) and make them clickable
+      processed = processed.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      // Detect www. URLs without protocol and make them clickable
+      processed = processed.replace(/(?<!href="https?:\/\/)(?<!\/)\b(www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s]*)/g, '<a href="https://$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      // Detect email addresses (but not ones already in href)
+      processed = processed.replace(/(?<!mailto:)(?<!\/)\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      return `<p style="margin:0;padding:0;line-height:1.6;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${processed}</p>`;
     });
-    return `<br/><br/><div style="font-family:inherit;font-size:inherit;color:#333;padding-top:12px;margin-top:16px;">${htmlLines.join('')}</div>`;
+    return `<br/><br/><div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;padding-top:12px;margin-top:16px;border-top:1px solid #e5e7eb;">${htmlLines.join('')}</div>`;
   }
 
   // Fallback to signatureHtml if no plain text version

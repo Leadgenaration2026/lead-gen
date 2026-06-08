@@ -2078,7 +2078,7 @@ Respond in this exact JSON format:
         let fullBody = result.body;
         if (signature) {
           const sigText = signature.signaturePlainText || signature.signatureHtml.replace(/<[^>]*>/g, "");
-          fullBody += "\n\nLet me know if you have any questions or concerns.\n\nThank you\n\n" + sigText;
+          fullBody += "\n\n" + sigText;
         }
 
         // Add unsubscribe line for bulk templates

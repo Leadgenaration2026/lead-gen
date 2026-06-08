@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink, Shield, KeyRound, Eye, EyeOff, Globe, Linkedin, Instagram, Facebook } from "lucide-react";
 import { toast } from "sonner";
 
@@ -910,6 +911,125 @@ export default function SettingsPage() {
                 {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save Social Profiles
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Social Media Account Authorization */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                Account Authorization
+              </CardTitle>
+              <CardDescription>
+                Connect your social media accounts to enable automated outreach. This allows the system to send connection requests and messages on your behalf.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* LinkedIn Authorization */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Linkedin className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">LinkedIn</p>
+                    <p className="text-xs text-muted-foreground">Send connection requests & messages</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {socialProfiles.linkedinUrl ? (
+                    <Badge variant="outline" className="text-xs gap-1 text-green-700 border-green-300 bg-green-50">
+                      <CheckCircle2 className="w-3 h-3" /> Profile Added
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs gap-1 text-gray-500">
+                      Not Connected
+                    </Badge>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      toast.info("LinkedIn API integration requires a LinkedIn Developer App. Add your profile URL above to use manual outreach with AI-generated messages.");
+                    }}
+                  >
+                    {socialProfiles.linkedinUrl ? "Reconnect" : "Connect"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Instagram Authorization */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-pink-100 rounded-lg">
+                    <Instagram className="w-5 h-5 text-pink-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Instagram</p>
+                    <p className="text-xs text-muted-foreground">Send follow requests & DMs</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {socialProfiles.instagramUrl ? (
+                    <Badge variant="outline" className="text-xs gap-1 text-green-700 border-green-300 bg-green-50">
+                      <CheckCircle2 className="w-3 h-3" /> Profile Added
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs gap-1 text-gray-500">
+                      Not Connected
+                    </Badge>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      toast.info("Instagram API integration requires a Meta Developer App. Add your profile URL above to use manual outreach with AI-generated messages.");
+                    }}
+                  >
+                    {socialProfiles.instagramUrl ? "Reconnect" : "Connect"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Facebook Authorization */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Facebook className="w-5 h-5 text-blue-700" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Facebook</p>
+                    <p className="text-xs text-muted-foreground">Send friend requests & messages</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {socialProfiles.facebookUrl ? (
+                    <Badge variant="outline" className="text-xs gap-1 text-green-700 border-green-300 bg-green-50">
+                      <CheckCircle2 className="w-3 h-3" /> Profile Added
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs gap-1 text-gray-500">
+                      Not Connected
+                    </Badge>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      toast.info("Facebook API integration requires a Meta Developer App. Add your profile URL above to use manual outreach with AI-generated messages.");
+                    }}
+                  >
+                    {socialProfiles.facebookUrl ? "Reconnect" : "Connect"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-xs text-amber-800">
+                  <strong>Note:</strong> Full API automation requires developer apps from LinkedIn, Meta (Instagram/Facebook). Currently, the system generates AI messages and opens the profile for you to send manually. Once API keys are configured, messages will be sent automatically.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
