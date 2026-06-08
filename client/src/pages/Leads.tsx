@@ -1,5 +1,6 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import Papa from "papaparse";
+import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,17 @@ export default function LeadsPage() {
   const [count, setCount] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [filterTag, setFilterTag] = useState<string>("all");
+  const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
+
+  // Support URL param ?setId=123 to pre-filter by lead set
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const setId = params.get("setId");
+    if (setId) {
+      setFilterLeadSet(setId);
+    }
+  }, [searchString]);
   const [searchQuery, setSearchQuery] = useState("");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);

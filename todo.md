@@ -466,3 +466,10 @@
 - [x] Send Facebook friend request/message if facebookUrl exists
 - [x] Log all social outreach attempts in socialOutreach table
 - [x] Show social outreach status in campaign detail and lead timeline
+
+## Batch — Social Outreach UX & Lead Set Fixes
+- [x] Add social profile link input fields on Social Outreach page (LinkedIn, Instagram, Facebook URLs)
+- [x] Add deliverability/rules checks (green checkmarks) before sending social messages
+- [x] Ensure Claude generates the social outreach messages
+- [x] Fix lead sets not showing in bulk campaign creation dropdown (verified working - sets show when data exists)
+- [x] Make lead set names clickable to navigate to leads page filtered by that set

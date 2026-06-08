@@ -1139,6 +1139,16 @@ export default function EmailComposer() {
                         </option>
                       ))}
                     </select>
+                    {selectedLeadSetId && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/leads?setId=${selectedLeadSetId}`)}
+                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                      >
+                        <Users className="w-3 h-3" />
+                        View leads in this set →
+                      </button>
+                    )}
                   </div>
                   <LeadPicker
                     leads={filteredLeads}
