@@ -473,3 +473,12 @@
 - [x] Ensure Claude generates the social outreach messages
 - [x] Fix lead sets not showing in bulk campaign creation dropdown (verified working - sets show when data exists)
 - [x] Make lead set names clickable to navigate to leads page filtered by that set
+
+## Settings — Social Profiles UI
+- [x] Add Social Profiles section to Settings page with LinkedIn, Instagram, Facebook URL inputs
+- [x] Add page/personal profile type toggle for each social platform
+- [x] Wire save to existing settings.update backend procedure
+
+## Social Outreach Analytics
+- [x] Add social outreach stats (sent/accepted/pending per platform) to campaign detail page alongside opened/clicked
+- [x] Add social outreach summary to the main Analytics page

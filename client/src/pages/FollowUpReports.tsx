@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar } from "lucide-react";
+import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe } from "lucide-react";
 
 export default function FollowUpReports() {
   const { user } = useAuth();
@@ -109,7 +109,7 @@ export default function FollowUpReports() {
       {report && (
         <>
           {/* Campaign Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3">
             <Card className="border-gray-200 shadow-sm">
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -180,6 +180,60 @@ export default function FollowUpReports() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Social Outreach Stats */}
+          {(report.summary as any).socialOutreach && (report.summary as any).socialOutreach.totalSent > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <Card className="border-blue-200 shadow-sm bg-blue-50/30">
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Globe className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-medium text-muted-foreground">Social Outreach Sent</span>
+                  </div>
+                  <div className="text-2xl font-bold">{(report.summary as any).socialOutreach.totalSent}</div>
+                </CardContent>
+              </Card>
+              <Card className="border-green-200 shadow-sm bg-green-50/30">
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-xs font-medium text-muted-foreground">Accepted</span>
+                  </div>
+                  <div className="text-2xl font-bold text-green-600">{(report.summary as any).socialOutreach.totalAccepted}</div>
+                </CardContent>
+              </Card>
+              <Card className="border-amber-200 shadow-sm bg-amber-50/30">
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs font-medium text-muted-foreground">Pending</span>
+                  </div>
+                  <div className="text-2xl font-bold text-amber-600">{(report.summary as any).socialOutreach.totalPending}</div>
+                </CardContent>
+              </Card>
+              <Card className="border-gray-200 shadow-sm">
+                <CardContent className="pt-4 pb-3 px-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-medium text-muted-foreground">By Platform</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="flex items-center gap-1 text-xs">
+                      <Linkedin className="w-3 h-3 text-blue-600" />
+                      {(report.summary as any).socialOutreach.byPlatform.linkedin.sent}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <Instagram className="w-3 h-3 text-pink-600" />
+                      {(report.summary as any).socialOutreach.byPlatform.instagram.sent}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      <Facebook className="w-3 h-3 text-blue-700" />
+                      {(report.summary as any).socialOutreach.byPlatform.facebook.sent}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Detailed Tabs */}
           <Tabs defaultValue="all-emails" className="w-full">

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink, Shield, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink, Shield, KeyRound, Eye, EyeOff, Globe, Linkedin, Instagram, Facebook } from "lucide-react";
 import { toast } from "sonner";
 
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -53,6 +53,16 @@ export default function SettingsPage() {
     dayOfWeek: 1,
   });
 
+  // Social profiles state
+  const [socialProfiles, setSocialProfiles] = useState({
+    linkedinUrl: "",
+    linkedinType: "personal" as "personal" | "page",
+    instagramUrl: "",
+    instagramType: "personal" as "personal" | "page",
+    facebookUrl: "",
+    facebookType: "personal" as "personal" | "page",
+  });
+
   // Email deliverability checks state
   const [deliverabilityChecks, setDeliverabilityChecks] = useState<{
     spf: "pending" | "pass" | "fail" | "warning";
@@ -88,6 +98,14 @@ export default function SettingsPage() {
         senderEmail: settingsQuery.data.senderEmail || "",
         senderName: settingsQuery.data.senderName || "",
         seamlessApiKey: "",
+      });
+      setSocialProfiles({
+        linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
+        linkedinType: (settingsQuery.data as any).linkedinType || "personal",
+        instagramUrl: (settingsQuery.data as any).instagramUrl || "",
+        instagramType: (settingsQuery.data as any).instagramType || "personal",
+        facebookUrl: (settingsQuery.data as any).facebookUrl || "",
+        facebookType: (settingsQuery.data as any).facebookType || "personal",
       });
       setPasswordTouched(false);
       setRetellKeyTouched(false);
@@ -304,7 +322,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="integrations" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="integrations" className="flex items-center gap-1 text-xs">
             <Phone className="w-3.5 h-3.5" />
             Retell.AI
@@ -328,6 +346,10 @@ export default function SettingsPage() {
           <TabsTrigger value="webhooks" className="flex items-center gap-1 text-xs">
             <Webhook className="w-3.5 h-3.5" />
             Webhooks
+          </TabsTrigger>
+          <TabsTrigger value="social" className="flex items-center gap-1 text-xs">
+            <Globe className="w-3.5 h-3.5" />
+            Social
           </TabsTrigger>
         </TabsList>
 
@@ -761,6 +783,169 @@ export default function SettingsPage() {
               <Button onClick={handleSaveSeamless} disabled={updateSettingsMutation.isPending} className="gap-2">
                 {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save Seamless.ai Settings
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Social Profiles Tab */}
+        <TabsContent value="social" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="w-5 h-5" />
+                Social Media Profiles
+              </CardTitle>
+              <CardDescription>
+                Configure your social media profiles for automated outreach. These are used when sending connection requests and messages to leads.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* LinkedIn */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center gap-2">
+                  <Linkedin className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-semibold">LinkedIn</h3>
+                </div>
+                <div className="space-y-2">
+                  <Label>Profile / Page URL</Label>
+                  <Input
+                    placeholder="https://linkedin.com/in/your-profile or https://linkedin.com/company/your-company"
+                    value={socialProfiles.linkedinUrl}
+                    onChange={(e) => setSocialProfiles({ ...socialProfiles, linkedinUrl: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Type</Label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="linkedinType"
+                        checked={socialProfiles.linkedinType === "personal"}
+                        onChange={() => setSocialProfiles({ ...socialProfiles, linkedinType: "personal" })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Personal Profile</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="linkedinType"
+                        checked={socialProfiles.linkedinType === "page"}
+                        onChange={() => setSocialProfiles({ ...socialProfiles, linkedinType: "page" })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Company Page</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instagram */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center gap-2">
+                  <Instagram className="w-5 h-5 text-pink-600" />
+                  <h3 className="font-semibold">Instagram</h3>
+                </div>
+                <div className="space-y-2">
+                  <Label>Profile / Page URL</Label>
+                  <Input
+                    placeholder="https://instagram.com/your-handle"
+                    value={socialProfiles.instagramUrl}
+                    onChange={(e) => setSocialProfiles({ ...socialProfiles, instagramUrl: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Type</Label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="instagramType"
+                        checked={socialProfiles.instagramType === "personal"}
+                        onChange={() => setSocialProfiles({ ...socialProfiles, instagramType: "personal" })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Personal Profile</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="instagramType"
+                        checked={socialProfiles.instagramType === "page"}
+                        onChange={() => setSocialProfiles({ ...socialProfiles, instagramType: "page" })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Business Page</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Facebook */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center gap-2">
+                  <Facebook className="w-5 h-5 text-blue-700" />
+                  <h3 className="font-semibold">Facebook</h3>
+                </div>
+                <div className="space-y-2">
+                  <Label>Profile / Page URL</Label>
+                  <Input
+                    placeholder="https://facebook.com/your-profile or https://facebook.com/your-page"
+                    value={socialProfiles.facebookUrl}
+                    onChange={(e) => setSocialProfiles({ ...socialProfiles, facebookUrl: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Type</Label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="facebookType"
+                        checked={socialProfiles.facebookType === "personal"}
+                        onChange={() => setSocialProfiles({ ...socialProfiles, facebookType: "personal" })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Personal Profile</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="facebookType"
+                        checked={socialProfiles.facebookType === "page"}
+                        onChange={() => setSocialProfiles({ ...socialProfiles, facebookType: "page" })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Business Page</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={async () => {
+                  try {
+                    await updateSettingsMutation.mutateAsync({
+                      linkedinUrl: socialProfiles.linkedinUrl || undefined,
+                      linkedinType: socialProfiles.linkedinType,
+                      instagramUrl: socialProfiles.instagramUrl || undefined,
+                      instagramType: socialProfiles.instagramType,
+                      facebookUrl: socialProfiles.facebookUrl || undefined,
+                      facebookType: socialProfiles.facebookType,
+                    });
+                    toast.success("Social profiles saved!");
+                    settingsQuery.refetch();
+                  } catch (error: any) {
+                    toast.error(error?.message || "Failed to save social profiles");
+                  }
+                }}
+                disabled={updateSettingsMutation.isPending}
+                className="gap-2 w-full"
+              >
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Social Profiles
               </Button>
             </CardContent>
           </Card>

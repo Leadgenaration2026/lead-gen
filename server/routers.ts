@@ -1195,6 +1195,41 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const totalCallsPending = report.reduce((sum, r) => sum + r.summary.callsPending, 0);
         const totalEmailsPending = report.reduce((sum, r) => sum + r.summary.emailsPending, 0);
 
+        // Social outreach stats for this campaign
+        let socialOutreachStats = { totalSent: 0, totalAccepted: 0, totalPending: 0, byPlatform: { linkedin: { sent: 0, accepted: 0, pending: 0 }, instagram: { sent: 0, accepted: 0, pending: 0 }, facebook: { sent: 0, accepted: 0, pending: 0 } } };
+        try {
+          const { socialOutreach } = await import("../drizzle/schema");
+          const { eq, and, inArray } = await import("drizzle-orm");
+          const database = await db.getDb();
+          if (database && campaignLeadsList.length > 0) {
+            const clIds = campaignLeadsList.map((cl: any) => cl.id);
+            // Get all social outreach for leads in this campaign
+            const leadIds = campaignLeadsList.map((cl: any) => cl.leadId);
+            const allSocialOutreach = await database.select().from(socialOutreach).where(
+              and(eq(socialOutreach.userId, ctx.user.id), inArray(socialOutreach.leadId, leadIds))
+            );
+            for (const so of allSocialOutreach) {
+              const platform = (so as any).platform as "linkedin" | "instagram" | "facebook";
+              const status = (so as any).status;
+              if (status === "sent") {
+                socialOutreachStats.totalSent++;
+                socialOutreachStats.totalPending++;
+                if (socialOutreachStats.byPlatform[platform]) {
+                  socialOutreachStats.byPlatform[platform].sent++;
+                  socialOutreachStats.byPlatform[platform].pending++;
+                }
+              } else if (status === "accepted") {
+                socialOutreachStats.totalSent++;
+                socialOutreachStats.totalAccepted++;
+                if (socialOutreachStats.byPlatform[platform]) {
+                  socialOutreachStats.byPlatform[platform].sent++;
+                  socialOutreachStats.byPlatform[platform].accepted++;
+                }
+              }
+            }
+          }
+        } catch (e) { /* social outreach stats optional */ }
+
         return {
           campaign: {
             id: campaign.id,
@@ -1210,6 +1245,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             totalCallsMade,
             totalCallsPending,
             totalEmailsPending,
+            socialOutreach: socialOutreachStats,
           },
           leads: report,
         };
@@ -2089,6 +2125,31 @@ Respond in this exact JSON format:
         });
       }
 
+      // Social outreach global stats
+      let socialTotals = { sent: 0, accepted: 0, pending: 0, linkedin: { sent: 0, accepted: 0 }, instagram: { sent: 0, accepted: 0 }, facebook: { sent: 0, accepted: 0 } };
+      try {
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (database) {
+          const allOutreach = await database.select().from(socialOutreach).where(eq(socialOutreach.userId, ctx.user.id));
+          for (const so of allOutreach) {
+            const platform = (so as any).platform as "linkedin" | "instagram" | "facebook";
+            const status = (so as any).status;
+            if (status === "sent" || status === "accepted") {
+              socialTotals.sent++;
+              if (socialTotals[platform]) socialTotals[platform].sent++;
+              if (status === "accepted") {
+                socialTotals.accepted++;
+                if (socialTotals[platform]) socialTotals[platform].accepted++;
+              } else {
+                socialTotals.pending++;
+              }
+            }
+          }
+        }
+      } catch (e) { /* optional */ }
+
       return {
         totals: {
           campaigns: allCampaigns.length,
@@ -2099,6 +2160,7 @@ Respond in this exact JSON format:
           callsMade: totalCalls,
           overallOpenRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
           overallClickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
+          socialOutreach: socialTotals,
         },
         campaigns: campaignMetrics,
       };

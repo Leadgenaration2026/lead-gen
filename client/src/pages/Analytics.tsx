@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, BarChart3, Mail, MousePointerClick, Phone, TrendingUp, Users, Send, Eye } from "lucide-react";
+import { Loader2, BarChart3, Mail, MousePointerClick, Phone, TrendingUp, Users, Send, Eye, Globe, Linkedin, Instagram, Facebook, CheckCircle, Clock } from "lucide-react";
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -92,6 +92,58 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Social Outreach KPIs */}
+      {(overview?.totals as any)?.socialOutreach && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Globe className="w-5 h-5 text-blue-600" />
+              Social Outreach Analytics
+            </CardTitle>
+            <CardDescription>Connection requests and messages sent across platforms</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center p-3 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-2xl font-bold text-blue-700">{(overview?.totals as any).socialOutreach.sent}</p>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1"><Send className="w-3 h-3" /> Total Sent</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-green-50 border border-green-200">
+                <p className="text-2xl font-bold text-green-700">{(overview?.totals as any).socialOutreach.accepted}</p>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1"><CheckCircle className="w-3 h-3" /> Accepted</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-2xl font-bold text-amber-700">{(overview?.totals as any).socialOutreach.pending}</p>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1"><Clock className="w-3 h-3" /> Pending</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg border">
+                <Linkedin className="w-5 h-5 text-blue-600" />
+                <div>
+                  <p className="text-sm font-semibold">{(overview?.totals as any).socialOutreach.linkedin.sent} sent</p>
+                  <p className="text-xs text-green-600">{(overview?.totals as any).socialOutreach.linkedin.accepted} accepted</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg border">
+                <Instagram className="w-5 h-5 text-pink-600" />
+                <div>
+                  <p className="text-sm font-semibold">{(overview?.totals as any).socialOutreach.instagram.sent} sent</p>
+                  <p className="text-xs text-green-600">{(overview?.totals as any).socialOutreach.instagram.accepted} accepted</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg border">
+                <Facebook className="w-5 h-5 text-blue-700" />
+                <div>
+                  <p className="text-sm font-semibold">{(overview?.totals as any).socialOutreach.facebook.sent} sent</p>
+                  <p className="text-xs text-green-600">{(overview?.totals as any).socialOutreach.facebook.accepted} accepted</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Secondary KPIs */}
       <div className="grid grid-cols-3 gap-4">
