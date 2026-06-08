@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock, Globe, Linkedin } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
@@ -103,7 +103,6 @@ export default function EmailComposer() {
   const deliverabilityCheckMutation = trpc.email.checkDeliverability.useMutation();
   const fixDeliverabilityMutation = trpc.email.fixDeliverability.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
-  const sendTestToAllMutation = trpc.email.sendTestToAllAccounts.useMutation();
   const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
 
   // Mutations - Bulk
@@ -399,6 +398,22 @@ export default function EmailComposer() {
                       <span className="font-medium">Status:</span>
                       <Badge variant="outline" className="text-xs capitalize">{selectedLeadData.status}</Badge>
                     </div>
+                    {selectedLeadData.website && (
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">Website:</span>
+                        <a href={selectedLeadData.website.startsWith('http') ? selectedLeadData.website : `https://${selectedLeadData.website}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                          <Globe className="w-3 h-3" />{selectedLeadData.website.replace(/^https?:\/\//, '').slice(0, 25)}
+                        </a>
+                      </div>
+                    )}
+                    {selectedLeadData.linkedinUrl && (
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">LinkedIn:</span>
+                        <a href={selectedLeadData.linkedinUrl.startsWith('http') ? selectedLeadData.linkedinUrl : `https://${selectedLeadData.linkedinUrl}`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                          <Linkedin className="w-3 h-3" />{selectedLeadData.linkedinUrl.replace(/^https?:\/\/(www\.)?linkedin\.com\//, '').slice(0, 25)}
+                        </a>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -833,36 +848,7 @@ export default function EmailComposer() {
                       <p className="text-xs text-amber-700 mt-1.5">Preview how the email looks in your inbox before sending to the lead</p>
                     </div>
 
-                    {/* Send Test to All SMTP Accounts */}
-                    <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Zap className="w-4 h-4 text-blue-600" />
-                          <span className="text-sm font-medium text-blue-900">Test All SMTP Accounts</span>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100 gap-1.5"
-                          disabled={sendTestToAllMutation.isPending || !subject || !emailBody}
-                          onClick={async () => {
-                            try {
-                              const result = await sendTestToAllMutation.mutateAsync({ subject, body: emailBody, testEmail: testEmail || undefined });
-                              toast.success(`Sent via ${result.successCount}/${result.totalAccounts} accounts! Check your inbox.`);
-                              if (result.results.some(r => !r.success)) {
-                                const failed = result.results.filter(r => !r.success);
-                                toast.error(`Failed: ${failed.map(f => f.account).join(", ")}`);
-                              }
-                            } catch (error: any) {
-                              toast.error(error.message || "Failed to send test emails.");
-                            }
-                          }}
-                        >
-                          {sendTestToAllMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <>Send to All</>}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-blue-700 mt-1.5">Send test email through all your SMTP accounts (primary + rotational) to verify deliverability</p>
-                    </div>
+
                   </div>
                 </CardContent>
               </Card>
@@ -885,6 +871,26 @@ export default function EmailComposer() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Sent From - Today's Assigned SMTP Account */}
+                {(() => {
+                  const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+                  const todayAccount = rotationalEmailsQuery.data?.find((re: any) => re.dayOfWeek === dayOfWeek);
+                  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                  return (
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50/50 border border-green-200">
+                      <Mail className="w-4 h-4 text-green-600" />
+                      <span className="text-sm text-green-800">
+                        <strong>Sending from ({dayNames[dayOfWeek]}):</strong>{" "}
+                        {todayAccount ? (
+                          <span className="font-medium">{todayAccount.senderName ? `${todayAccount.senderName} <${todayAccount.email}>` : todayAccount.email}</span>
+                        ) : (
+                          <span className="text-muted-foreground">Primary account (no rotational email set for {dayNames[dayOfWeek]})</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Campaign Name *</Label>
@@ -1210,38 +1216,7 @@ export default function EmailComposer() {
                   </div>
                 )}
 
-                {/* Send Test to All SMTP Accounts - Bulk */}
-                {campaignFormData.emailTemplate && (
-                  <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-900">Test All SMTP Accounts</span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100 gap-1.5"
-                        disabled={sendTestToAllMutation.isPending || !campaignFormData.subject || !campaignFormData.emailTemplate}
-                        onClick={async () => {
-                          try {
-                            const result = await sendTestToAllMutation.mutateAsync({ subject: campaignFormData.subject, body: campaignFormData.emailTemplate, testEmail: bulkTestEmail || undefined });
-                            toast.success(`Sent via ${result.successCount}/${result.totalAccounts} accounts! Check your inbox.`);
-                            if (result.results.some(r => !r.success)) {
-                              const failed = result.results.filter(r => !r.success);
-                              toast.error(`Failed: ${failed.map(f => f.account).join(", ")}`);
-                            }
-                          } catch (error: any) {
-                            toast.error(error.message || "Failed to send test emails.");
-                          }
-                        }}
-                      >
-                        {sendTestToAllMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <>Send to All</>}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-blue-700 mt-1.5">Send test through all SMTP accounts (primary + rotational) to verify deliverability before launch</p>
-                  </div>
-                )}
+
 
                 {/* Schedule Campaign */}
                 <div className="border rounded-lg p-3 bg-purple-50/50 border-purple-200">

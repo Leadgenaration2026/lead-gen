@@ -490,3 +490,10 @@
 
 ## Social Profile Icons in Leads List
 - [x] Show clickable social profile icons (LinkedIn, Instagram, Facebook, Website) in the leads list table
+
+## Batch — Settings & Campaign UX Fixes
+- [x] Remove Signatures tab from Settings (already in email template)
+- [x] Add website and LinkedIn as clickable links in lead details card
+- [x] Remove "Test All SMTP Accounts" button from single and bulk campaigns
+- [x] Add "Test All SMTP" option in Settings under Rotational Email Addresses section
+- [x] Add "Sent from" indicator in bulk campaign showing assigned SMTP account for that day (Mon-Fri rotation)

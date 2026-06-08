@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
   const upsertRotationalMutation = trpc.rotationalEmails.upsert.useMutation();
   const deleteRotationalMutation = trpc.rotationalEmails.delete.useMutation();
+  const sendTestToAllMutation = trpc.email.sendTestToAllAccounts.useMutation();
 
   const [formData, setFormData] = useState({
     retellApiKey: "",
@@ -339,10 +340,7 @@ export default function SettingsPage() {
             <ShieldCheck className="w-3.5 h-3.5" />
             Checks
           </TabsTrigger>
-          <TabsTrigger value="signature" className="flex items-center gap-1 text-xs">
-            <PenTool className="w-3.5 h-3.5" />
-            Signature
-          </TabsTrigger>
+
           <TabsTrigger value="webhooks" className="flex items-center gap-1 text-xs">
             <Webhook className="w-3.5 h-3.5" />
             Webhooks
@@ -568,6 +566,39 @@ export default function SettingsPage() {
                   Save Rotational Email
                 </Button>
               </div>
+
+              {/* Test All SMTP Accounts */}
+              {rotationalEmailsQuery.data && rotationalEmailsQuery.data.length > 0 && (
+                <div className="border-t pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Test All SMTP Accounts</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">Send a test email through all configured accounts (primary + rotational) to verify deliverability</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50"
+                      disabled={sendTestToAllMutation.isPending}
+                      onClick={async () => {
+                        try {
+                          const result = await sendTestToAllMutation.mutateAsync({ subject: "SMTP Test - Deliverability Check", body: "This is a test email to verify your SMTP account is working correctly." });
+                          toast.success(`Sent via ${result.successCount}/${result.totalAccounts} accounts! Check your inbox.`);
+                          if (result.results.some((r: any) => !r.success)) {
+                            const failed = result.results.filter((r: any) => !r.success);
+                            toast.error(`Failed: ${failed.map((f: any) => f.account).join(", ")}`);
+                          }
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to send test emails.");
+                        }
+                      }}
+                    >
+                      {sendTestToAllMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      Test All Accounts
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -663,75 +694,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Signature Tab */}
-        <TabsContent value="signature" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Email Signature</CardTitle>
-              <CardDescription>
-                Your plain text signature is appended to all outgoing emails. Enter your details below.
-                The system uses your plain text signature (not HTML) for clean email formatting.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Plain Text Version - Primary */}
-              <div className="space-y-2">
-                <Label>Signature (Plain Text) — This is what gets appended to emails</Label>
-                <Textarea
-                  value={signaturePlainText}
-                  onChange={(e) => setSignaturePlainText(e.target.value)}
-                  placeholder={"Best regards,\nNitin Sharma\nVirtual Assistant Group\n+1 (571) 470-6684\nnitin@virtualassistant-group.com\nhttps://calendly.com/nitin-virtualassistant/30min"}
-                  rows={6}
-                  className="text-sm"
-                />
-                <p className="text-xs text-muted-foreground">
-                  This plain text signature is what gets appended to all your emails. Keep it simple and professional.
-                </p>
-              </div>
 
-              {/* Signature HTML Editor - Secondary */}
-              <div className="space-y-2">
-                <Label>HTML Signature (Optional — for rich formatting)</Label>
-                <Textarea
-                  value={signatureHtml}
-                  onChange={(e) => setSignatureHtml(e.target.value)}
-                  placeholder="Paste your HTML signature here if you want rich formatting..."
-                  rows={6}
-                  className="font-mono text-xs"
-                />
-              </div>
-
-              {/* Preview */}
-              {(signaturePlainText || signatureHtml) && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Preview</Label>
-                    <Button variant="ghost" size="sm" onClick={() => setShowSignaturePreview(!showSignaturePreview)}>
-                      {showSignaturePreview ? "Hide Preview" : "Show Preview"}
-                    </Button>
-                  </div>
-                  {showSignaturePreview && (
-                    <div className="border rounded-lg p-4 bg-white text-sm">
-                      {signaturePlainText ? (
-                        <pre className="whitespace-pre-wrap font-sans text-gray-700">{signaturePlainText}</pre>
-                      ) : (
-                        <div dangerouslySetInnerHTML={{ __html: signatureHtml }} />
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Save Button */}
-              <div className="pt-4">
-                <Button onClick={handleSaveSignature} disabled={updateSignatureMutation.isPending || (!signatureHtml && !signaturePlainText)} className="gap-2">
-                  {updateSignatureMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Save Signature
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* Webhooks Tab */}
         <TabsContent value="webhooks" className="mt-6 space-y-6">
