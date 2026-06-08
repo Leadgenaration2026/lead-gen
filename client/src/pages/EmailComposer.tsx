@@ -903,6 +903,48 @@ export default function EmailComposer() {
                   );
                 })()}
 
+                <div>
+                  <Label className="mb-2 block">Select Leads *</Label>
+                  <div className="mb-2">
+                    <select
+                      value={selectedLeadSetId || ""}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : null;
+                        setSelectedLeadSetId(val);
+                        if (val) {
+                          const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === val);
+                          setCampaignFormData({ ...campaignFormData, leadIds: setLeads.map((l: any) => l.id) });
+                        } else {
+                          setCampaignFormData({ ...campaignFormData, leadIds: [] });
+                        }
+                      }}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">All Leads (no set filter)</option>
+                      {(leadSetsQuery.data || []).map((set: any) => (
+                        <option key={set.id} value={set.id}>
+                          {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
+                        </option>
+                      ))}
+                    </select>
+                    {selectedLeadSetId && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/leads?setId=${selectedLeadSetId}`)}
+                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                      >
+                        <Users className="w-3 h-3" />
+                        View leads in this set →
+                      </button>
+                    )}
+                  </div>
+                  <LeadPicker
+                    leads={filteredLeads}
+                    selectedIds={campaignFormData.leadIds}
+                    onChange={(ids) => setCampaignFormData({ ...campaignFormData, leadIds: ids })}
+                    isLoading={leadsQuery.isLoading}
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Campaign Name *</Label>
@@ -924,16 +966,6 @@ export default function EmailComposer() {
                   </div>
                 </div>
 
-                <div>
-                  <Label>Email Subject *</Label>
-                  <Input
-                    placeholder="e.g., Quick question about {{companyName}}"
-                    value={campaignFormData.subject}
-                    onChange={(e) => setCampaignFormData({ ...campaignFormData, subject: e.target.value })}
-                    className="mt-1.5"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"} for personalization</p>
-                </div>
 
                 <div>
                   <div className="flex items-center justify-between">
@@ -1133,49 +1165,17 @@ export default function EmailComposer() {
                   )}
                 </div>
 
-                <div>
-                  <Label className="mb-2 block">Select Leads *</Label>
-                  <div className="mb-2">
-                    <select
-                      value={selectedLeadSetId || ""}
-                      onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : null;
-                        setSelectedLeadSetId(val);
-                        if (val) {
-                          const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === val);
-                          setCampaignFormData({ ...campaignFormData, leadIds: setLeads.map((l: any) => l.id) });
-                        } else {
-                          setCampaignFormData({ ...campaignFormData, leadIds: [] });
-                        }
-                      }}
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      <option value="">All Leads (no set filter)</option>
-                      {(leadSetsQuery.data || []).map((set: any) => (
-                        <option key={set.id} value={set.id}>
-                          {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
-                        </option>
-                      ))}
-                    </select>
-                    {selectedLeadSetId && (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/leads?setId=${selectedLeadSetId}`)}
-                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                      >
-                        <Users className="w-3 h-3" />
-                        View leads in this set →
-                      </button>
-                    )}
-                  </div>
-                  <LeadPicker
-                    leads={filteredLeads}
-                    selectedIds={campaignFormData.leadIds}
-                    onChange={(ids) => setCampaignFormData({ ...campaignFormData, leadIds: ids })}
-                    isLoading={leadsQuery.isLoading}
-                  />
-                </div>
 
+                <div>
+                  <Label>Email Subject *</Label>
+                  <Input
+                    placeholder="e.g., Quick question about {{companyName}}"
+                    value={campaignFormData.subject}
+                    onChange={(e) => setCampaignFormData({ ...campaignFormData, subject: e.target.value })}
+                    className="mt-1.5"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"} for personalization</p>
+                </div>
                 {/* Send Test Email to Myself - Bulk Campaign */}
                 {campaignFormData.emailTemplate && (
                   <div className="border rounded-lg p-3 bg-amber-50/50 border-amber-200">
