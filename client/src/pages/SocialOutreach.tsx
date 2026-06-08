@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Linkedin, Instagram, Copy, ExternalLink, MessageSquare, Sparkles, Users } from "lucide-react";
+import { Loader2, Linkedin, Instagram, Facebook, Copy, ExternalLink, MessageSquare, Sparkles, Users } from "lucide-react";
 
 type Platform = "linkedin" | "instagram" | "facebook";
 type MessageType = "connection_request" | "direct_message";
@@ -59,11 +59,14 @@ export default function SocialOutreach() {
 
   const handleOpenProfile = () => {
     if (!selectedLead) return;
-    const url = selectedPlatform === "linkedin" ? selectedLead.linkedinUrl : selectedLead.instagramUrl;
+    const url = selectedPlatform === "linkedin" ? selectedLead.linkedinUrl :
+      selectedPlatform === "instagram" ? selectedLead.instagramUrl :
+      (selectedLead as any).facebookUrl;
     if (url) {
       window.open(url, "_blank");
     } else {
-      toast.error(`No ${selectedPlatform === "linkedin" ? "LinkedIn" : "Instagram"} URL found for this lead`);
+      const platformName = selectedPlatform === "linkedin" ? "LinkedIn" : selectedPlatform === "instagram" ? "Instagram" : "Facebook";
+      toast.error(`No ${platformName} URL found for this lead`);
     }
   };
 
@@ -72,7 +75,7 @@ export default function SocialOutreach() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">Social Outreach</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Generate personalized LinkedIn & Instagram messages for your leads
+          Generate personalized LinkedIn, Instagram & Facebook messages for your leads
         </p>
       </div>
 
@@ -106,6 +109,14 @@ export default function SocialOutreach() {
                 >
                   <Instagram className="w-4 h-4" />
                   Instagram
+                </Button>
+                <Button
+                  variant={selectedPlatform === "facebook" ? "default" : "outline"}
+                  onClick={() => setSelectedPlatform("facebook")}
+                  className="flex-1 gap-2"
+                >
+                  <Facebook className="w-4 h-4" />
+                  Facebook
                 </Button>
               </div>
             </div>
@@ -143,6 +154,11 @@ export default function SocialOutreach() {
                     {selectedLead.instagramUrl && (
                       <Badge variant="outline" className="text-xs gap-1">
                         <Instagram className="w-3 h-3" /> Instagram
+                      </Badge>
+                    )}
+                    {(selectedLead as any).facebookUrl && (
+                      <Badge variant="outline" className="text-xs gap-1">
+                        <Facebook className="w-3 h-3" /> Facebook
                       </Badge>
                     )}
                   </div>
