@@ -400,4 +400,8 @@
 
 ## Batch — Bulk Campaign Parity with Single Email
 - [x] Add Deliverability Checks panel with Fix Issues button to bulk campaign mode
-- [ ] Ensure bulk campaign AI generation uses personalized company references and dynamic case studies
+- [x] Ensure bulk campaign AI generation uses personalized company references and dynamic case studies
+
+## Batch — Bulk Campaign Signature & Unsubscribe Fix
+- [x] Include signature in bulk campaign AI-generated template (same as single email)
+- [x] Fix unsubscribe link visibility in bulk campaign emails

@@ -663,12 +663,20 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               .replace(/{{ctaLink}}/g, trackedCtaUrl)
               .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
 
-            // Convert plain text to HTML if needed, append signature and tracking pixel
-            emailBody = plainTextToHtml(emailBody) + signatureHtml + trackingPixel;
+            // Convert plain text to HTML if needed, append tracking pixel
+            // Note: signature is already included in the template from AI generation
+            emailBody = plainTextToHtml(emailBody) + trackingPixel;
 
-            // Add unsubscribe link
+            // Add unsubscribe link (replaces the plain text unsubscribe placeholder with a proper tracked link)
             const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
-            emailBody += `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+            emailBody = emailBody.replace(
+              /---<br\/?>[\s\S]*?unsubscribe[\s\S]*?$/i,
+              `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`
+            );
+            // If no placeholder was found, append the unsubscribe link
+            if (!emailBody.includes(unsubscribeUrl)) {
+              emailBody += `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+            }
 
             // Get rotational email for today (Mon=1, Tue=2, etc.)
             const todayDow = new Date().getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
@@ -1667,7 +1675,24 @@ Respond in this exact JSON format:
           problemAnalysis,
         });
 
-        return result;
+        // Append signature to the generated template (same as single email)
+        const signature = await db.getEmailSignature(ctx.user.id);
+        let fullBody = result.body;
+        if (signature) {
+          const sigText = signature.signaturePlainText || signature.signatureHtml.replace(/<[^>]*>/g, "");
+          fullBody += "\n\nLet me know if you have any questions or concerns.\n\nThank you\n\n" + sigText;
+        }
+
+        // Add unsubscribe line for bulk templates
+        if (input.includeVariables) {
+          fullBody += "\n\n---\nIf you'd like to opt out of future emails, simply reply with 'unsubscribe'.";
+        }
+
+        return {
+          ...result,
+          body: fullBody,
+          bodyWithoutSignature: result.body,
+        };
       }),
   }),
 
