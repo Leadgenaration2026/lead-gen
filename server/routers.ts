@@ -1729,6 +1729,37 @@ Return JSON with: { "subject": "...", "body": "..." }`,
           // No problem analysis available - continue without it
         }
 
+        // Fetch stored website analysis (competitors, gaps, news)
+        let websiteAnalysisContext = "";
+        try {
+          const storedInsights = await db.getWebsiteInsights(lead.id);
+          if (storedInsights) {
+            const competitors = (storedInsights.competitors as any[]) || [];
+            const gaps = (storedInsights.competitorGaps as any[]) || [];
+            const news = (storedInsights.recentNews as any[]) || [];
+            const industryInsights = (storedInsights.industryInsights as string[]) || [];
+            
+            if (competitors.length > 0 || gaps.length > 0 || news.length > 0) {
+              websiteAnalysisContext = `\nWEBSITE & COMPETITOR INTELLIGENCE (YOU MUST reference competitor names and specific gaps in the email):`;
+              if (competitors.length > 0) {
+                websiteAnalysisContext += `\nTop Competitors: ${competitors.map((c: any) => `${c.name || c.domain} (${c.traffic || "N/A"} monthly visits)`).join(", ")}`;
+              }
+              if (gaps.length > 0) {
+                websiteAnalysisContext += `\nWhat Competitors Do Better: ${gaps.map((g: any) => `${g.competitor || g.competitorName}: ${g.gap || g.description}`).join("; ")}`;
+              }
+              if (news.length > 0) {
+                websiteAnalysisContext += `\nRecent Industry News: ${news.map((n: any) => n.title || n.headline || n).join("; ")}`;
+              }
+              if (industryInsights.length > 0) {
+                websiteAnalysisContext += `\nIndustry Insights: ${industryInsights.join("; ")}`;
+              }
+              if (storedInsights.totalVisits) {
+                websiteAnalysisContext += `\nTheir Website Traffic: ~${storedInsights.totalVisits} monthly visits, Bounce Rate: ${storedInsights.bounceRate || "N/A"}%`;
+              }
+            }
+          }
+        } catch (e) { /* continue without website analysis */ }
+
         // Extract first name from ownerName
         const firstName = lead.ownerName?.split(' ')[0] || lead.ownerName || 'there';
 
@@ -1750,7 +1781,7 @@ Lead Information:
 - Website: ${lead.website || 'Not available'}
 - Phone: ${lead.phoneNumber || 'Not available'}
 - Email: ${lead.email}
-${problemContext}
+${problemContext}${websiteAnalysisContext}
 
 Email Type: ${input.emailType}
 Guidance: ${emailTypePrompts[input.emailType]}
@@ -2124,6 +2155,26 @@ Respond in this exact JSON format:
           }
         }
 
+        // Fetch stored website analysis for bulk template
+        let websiteAnalysis: any = undefined;
+        if (input.leadId) {
+          try {
+            const storedInsights = await db.getWebsiteInsights(input.leadId);
+            if (storedInsights) {
+              websiteAnalysis = {
+                competitors: storedInsights.competitors as any[] || [],
+                competitorGaps: storedInsights.competitorGaps as any[] || [],
+                recentNews: storedInsights.recentNews as any[] || [],
+                industryInsights: storedInsights.industryInsights as string[] || [],
+                insightsSummary: storedInsights.insightsSummary || undefined,
+                totalVisits: storedInsights.totalVisits,
+                bounceRate: storedInsights.bounceRate,
+                topKeywords: storedInsights.topKeywords as any[] || [],
+              };
+            }
+          } catch (e) { /* continue without */ }
+        }
+
         const { generateEmailWithClaude } = await import("./claude");
 
         const result = await generateEmailWithClaude({
@@ -2133,6 +2184,7 @@ Respond in this exact JSON format:
           leadContext: leadContext || undefined,
           includeVariables: input.includeVariables || false,
           problemAnalysis,
+          websiteAnalysis,
         });
 
         // Append Nitin's signature
@@ -2927,11 +2979,30 @@ Use the website data to:
 3. Explain how Virtual Assistant Group's services (SEO content writing, social media management, lead generation, admin support) can directly solve THEIR specific problems
 4. Make it feel like a genuine analysis, not a generic pitch`;
 
+        // Also fetch structured website analysis for richer context
+        let websiteAnalysisData: any = undefined;
+        try {
+          const storedInsights = await db.getWebsiteInsights(lead.id);
+          if (storedInsights) {
+            websiteAnalysisData = {
+              competitors: storedInsights.competitors as any[] || [],
+              competitorGaps: storedInsights.competitorGaps as any[] || [],
+              recentNews: storedInsights.recentNews as any[] || [],
+              industryInsights: storedInsights.industryInsights as string[] || [],
+              insightsSummary: storedInsights.insightsSummary || undefined,
+              totalVisits: storedInsights.totalVisits,
+              bounceRate: storedInsights.bounceRate,
+              topKeywords: storedInsights.topKeywords as any[] || [],
+            };
+          }
+        } catch (e) { /* continue without */ }
+
         const result = await generateEmailWithClaude({
           prompt,
           emailType: input.emailType || "value_prop",
           leadContext,
           includeVariables: input.includeVariables || false,
+          websiteAnalysis: websiteAnalysisData,
         });
 
         // Append Nitin's signature
