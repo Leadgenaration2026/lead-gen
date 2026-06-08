@@ -30,6 +30,7 @@ const createCampaignSchema = z.object({
   emailTemplate: z.string().min(1),
   leadIds: z.array(z.number()),
   templateId: z.number().optional(),
+  scheduledAt: z.string().optional(), // ISO date string for scheduled launch
 });
 
 const generateLeadsSchema = z.object({
@@ -541,8 +542,9 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           subject: input.subject,
           emailTemplate: input.emailTemplate,
           templateId: input.templateId || null,
-          status: "draft",
+          status: input.scheduledAt ? "draft" : "draft",
           totalLeads: input.leadIds.length,
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
         });
 
         // Add leads to campaign
@@ -550,7 +552,32 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           await db.addLeadsToCampaign(campaignId, input.leadIds);
         }
 
-        return { success: true, campaignId };
+        // If scheduled, create a heartbeat cron job to auto-launch at the scheduled time
+        if (input.scheduledAt && campaignId) {
+          try {
+            const { parse: parseCookie } = await import("cookie");
+            const { COOKIE_NAME } = await import("@shared/const");
+            const { createHeartbeatJob } = await import("./_core/heartbeat");
+            const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+            const scheduledDate = new Date(input.scheduledAt);
+            // Create a one-time cron that fires at the scheduled time (6-field: sec min hour dom mon dow)
+            const cronExpression = `0 ${scheduledDate.getUTCMinutes()} ${scheduledDate.getUTCHours()} ${scheduledDate.getUTCDate()} ${scheduledDate.getUTCMonth() + 1} *`;
+            const job = await createHeartbeatJob({
+              name: `campaign-launch-${campaignId}`,
+              cron: cronExpression,
+              path: "/api/scheduled/launch-campaign",
+              payload: { campaignId },
+              description: `Scheduled launch for campaign: ${input.name}`,
+            }, sessionToken);
+            // Save the task UID on the campaign
+            await db.updateCampaign(campaignId, { scheduleCronTaskUid: job.taskUid } as any);
+          } catch (err: any) {
+            console.error("[Campaign Schedule] Failed to create heartbeat job:", err.message);
+            // Campaign is still created, just won't auto-launch
+          }
+        }
+
+        return { success: true, campaignId, scheduled: !!input.scheduledAt };
       }),
 
     update: protectedProcedure
@@ -1630,6 +1657,81 @@ Respond in this exact JSON format:
         }
 
         return { success: true };
+      }),
+
+    // Send test email through ALL SMTP accounts (primary + rotational) to verify deliverability
+    sendTestToAllAccounts: protectedProcedure
+      .input(z.object({
+        subject: z.string().min(1),
+        body: z.string().min(1),
+        testEmail: z.string().email().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your primary SMTP settings first in the Settings page." });
+        }
+        const recipientEmail = input.testEmail || settings.senderEmail || settings.smtpUsername;
+        const signature = await db.getEmailSignature(ctx.user.id);
+        const signatureHtml = getSignatureHtml(signature);
+        const testSubject = `[TEST ALL ACCOUNTS] ${input.subject}`;
+
+        // Collect all SMTP accounts: primary + rotational
+        const accounts: Array<{ label: string; host: string; port: number; username: string; password: string; senderName: string; senderEmail: string }> = [];
+
+        // Primary account
+        accounts.push({
+          label: "Primary",
+          host: settings.smtpHost,
+          port: settings.smtpPort || 587,
+          username: settings.smtpUsername!,
+          password: settings.smtpPassword!,
+          senderName: settings.senderName || "Lead Gen Pro",
+          senderEmail: settings.senderEmail || settings.smtpUsername!,
+        });
+
+        // Rotational accounts
+        const rotationalAccounts = await db.getRotationalEmailsByUser(ctx.user.id);
+        for (const ra of rotationalAccounts) {
+          if (ra.isActive) {
+            accounts.push({
+              label: `${ra.senderName || ra.email} (Day ${ra.dayOfWeek})`,
+              host: ra.smtpHost,
+              port: ra.smtpPort,
+              username: ra.smtpUsername,
+              password: ra.smtpPassword,
+              senderName: ra.senderName || ra.email,
+              senderEmail: ra.email,
+            });
+          }
+        }
+
+        const results: Array<{ account: string; success: boolean; error?: string }> = [];
+
+        for (const account of accounts) {
+          try {
+            const transporter = nodemailer.createTransport({
+              host: account.host,
+              port: account.port,
+              secure: account.port === 465,
+              auth: { user: account.username, pass: account.password },
+            });
+            const accountBanner = `<div style="background:#dbeafe;border:1px solid #3b82f6;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#1e40af;"><strong>\u2709\uFE0F Sent via: ${account.label}</strong> &mdash; ${account.senderEmail}</div>`;
+            const htmlBody = accountBanner + plainTextToHtml(input.body) + signatureHtml;
+            await transporter.sendMail({
+              from: `"${account.senderName}" <${account.senderEmail}>`,
+              to: recipientEmail,
+              subject: `${testSubject} [via ${account.label}]`,
+              html: htmlBody,
+            });
+            results.push({ account: account.label, success: true });
+          } catch (err: any) {
+            results.push({ account: account.label, success: false, error: err.message || "Unknown error" });
+          }
+        }
+
+        const successCount = results.filter(r => r.success).length;
+        return { results, totalAccounts: accounts.length, successCount };
       }),
 
     // AI Write: Generate professional, human-sounding email with problem analysis

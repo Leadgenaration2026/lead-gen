@@ -411,3 +411,13 @@
 
 ## Preview as Recipient in Bulk Campaign
 - [x] Add "Send Test Email to Myself" / "Preview as Recipient" option to bulk campaign tab (matching single campaign functionality)
+
+## Send Test to All SMTP Accounts
+- [x] Add backend procedure to send test email through all configured SMTP accounts simultaneously
+- [x] Add UI button in both single and bulk campaign sections
+
+## Bulk Campaign Scheduling
+- [x] Add scheduledAt column to campaigns table for scheduled launch time
+- [x] Add scheduling UI (date/time picker) to bulk campaign creation form
+- [x] Add heartbeat job to auto-launch scheduled campaigns when time arrives
+- [x] Show scheduled badge with date/time in campaign history list

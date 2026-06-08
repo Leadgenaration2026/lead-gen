@@ -65,6 +65,8 @@ export const campaigns = mysqlTable("campaigns", {
   openCount: int("openCount").default(0).notNull(),
   clickCount: int("clickCount").default(0).notNull(),
   callCount: int("callCount").default(0).notNull(),
+  scheduledAt: timestamp("scheduledAt"),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   launchedAt: timestamp("launchedAt"),

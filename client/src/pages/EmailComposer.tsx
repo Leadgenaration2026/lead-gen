@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
@@ -63,7 +63,9 @@ export default function EmailComposer() {
     subject: "",
     emailTemplate: "",
     leadIds: [] as number[],
+    scheduledAt: "",
   });
+  const [enableScheduling, setEnableScheduling] = useState(false);
   const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
   const [bulkTestEmail, setBulkTestEmail] = useState("");
@@ -101,6 +103,7 @@ export default function EmailComposer() {
   const deliverabilityCheckMutation = trpc.email.checkDeliverability.useMutation();
   const fixDeliverabilityMutation = trpc.email.fixDeliverability.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
+  const sendTestToAllMutation = trpc.email.sendTestToAllAccounts.useMutation();
   const scheduleEmailMutation = trpc.scheduledEmails.schedule.useMutation();
 
   // Mutations - Bulk
@@ -194,12 +197,18 @@ export default function EmailComposer() {
       return;
     }
     try {
-      await createCampaignMutation.mutateAsync({
+      const result = await createCampaignMutation.mutateAsync({
         ...campaignFormData,
         leadIds: campaignFormData.leadIds,
+        scheduledAt: enableScheduling && campaignFormData.scheduledAt ? campaignFormData.scheduledAt : undefined,
       });
-      toast.success(`Campaign created with ${campaignFormData.leadIds.length} leads!`);
-      setCampaignFormData({ name: "", description: "", subject: "", emailTemplate: "", leadIds: [] });
+      if (result.scheduled) {
+        toast.success(`Campaign scheduled for ${new Date(campaignFormData.scheduledAt).toLocaleString()} with ${campaignFormData.leadIds.length} leads!`);
+      } else {
+        toast.success(`Campaign created with ${campaignFormData.leadIds.length} leads!`);
+      }
+      setCampaignFormData({ name: "", description: "", subject: "", emailTemplate: "", leadIds: [], scheduledAt: "" });
+      setEnableScheduling(false);
       campaignsQuery.refetch();
     } catch (error) {
       toast.error("Failed to create campaign");
@@ -816,6 +825,37 @@ export default function EmailComposer() {
                       )}
                       <p className="text-xs text-amber-700 mt-1.5">Preview how the email looks in your inbox before sending to the lead</p>
                     </div>
+
+                    {/* Send Test to All SMTP Accounts */}
+                    <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm font-medium text-blue-900">Test All SMTP Accounts</span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100 gap-1.5"
+                          disabled={sendTestToAllMutation.isPending || !subject || !emailBody}
+                          onClick={async () => {
+                            try {
+                              const result = await sendTestToAllMutation.mutateAsync({ subject, body: emailBody, testEmail: testEmail || undefined });
+                              toast.success(`Sent via ${result.successCount}/${result.totalAccounts} accounts! Check your inbox.`);
+                              if (result.results.some(r => !r.success)) {
+                                const failed = result.results.filter(r => !r.success);
+                                toast.error(`Failed: ${failed.map(f => f.account).join(", ")}`);
+                              }
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to send test emails.");
+                            }
+                          }}
+                        >
+                          {sendTestToAllMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <>Send to All</>}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-blue-700 mt-1.5">Send test email through all your SMTP accounts (primary + rotational) to verify deliverability</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1153,15 +1193,84 @@ export default function EmailComposer() {
                   </div>
                 )}
 
+                {/* Send Test to All SMTP Accounts - Bulk */}
+                {campaignFormData.emailTemplate && (
+                  <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-900">Test All SMTP Accounts</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100 gap-1.5"
+                        disabled={sendTestToAllMutation.isPending || !campaignFormData.subject || !campaignFormData.emailTemplate}
+                        onClick={async () => {
+                          try {
+                            const result = await sendTestToAllMutation.mutateAsync({ subject: campaignFormData.subject, body: campaignFormData.emailTemplate, testEmail: bulkTestEmail || undefined });
+                            toast.success(`Sent via ${result.successCount}/${result.totalAccounts} accounts! Check your inbox.`);
+                            if (result.results.some(r => !r.success)) {
+                              const failed = result.results.filter(r => !r.success);
+                              toast.error(`Failed: ${failed.map(f => f.account).join(", ")}`);
+                            }
+                          } catch (error: any) {
+                            toast.error(error.message || "Failed to send test emails.");
+                          }
+                        }}
+                      >
+                        {sendTestToAllMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <>Send to All</>}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-blue-700 mt-1.5">Send test through all SMTP accounts (primary + rotational) to verify deliverability before launch</p>
+                  </div>
+                )}
+
+                {/* Schedule Campaign */}
+                <div className="border rounded-lg p-3 bg-purple-50/50 border-purple-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CalendarClock className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-medium text-purple-900">Schedule Campaign Launch</span>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enableScheduling}
+                        onChange={(e) => {
+                          setEnableScheduling(e.target.checked);
+                          if (!e.target.checked) setCampaignFormData(prev => ({ ...prev, scheduledAt: "" }));
+                        }}
+                        className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-xs text-purple-700">Enable</span>
+                    </label>
+                  </div>
+                  {enableScheduling && (
+                    <div className="mt-3 space-y-2">
+                      <Input
+                        type="datetime-local"
+                        value={campaignFormData.scheduledAt ? campaignFormData.scheduledAt.slice(0, 16) : ""}
+                        onChange={(e) => setCampaignFormData(prev => ({ ...prev, scheduledAt: e.target.value ? new Date(e.target.value).toISOString() : "" }))}
+                        min={new Date(Date.now() + 5 * 60000).toISOString().slice(0, 16)}
+                        className="text-sm h-9 bg-white"
+                      />
+                      <p className="text-xs text-purple-700">Campaign will auto-launch at the scheduled time. Emails will be sent using your rotational SMTP accounts.</p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3 pt-2 border-t">
                   <Button
                     onClick={handleCreateCampaign}
-                    disabled={createCampaignMutation.isPending}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={createCampaignMutation.isPending || (enableScheduling && !campaignFormData.scheduledAt)}
+                    className={enableScheduling ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"}
                     size="lg"
                   >
                     {createCampaignMutation.isPending ? (
                       <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</>
+                    ) : enableScheduling ? (
+                      <><CalendarClock className="w-4 h-4 mr-2" /> Schedule Campaign ({campaignFormData.leadIds.length} leads)</>
                     ) : (
                       <><Plus className="w-4 h-4 mr-2" /> Create Campaign ({campaignFormData.leadIds.length} leads)</>
                     )}
@@ -1193,13 +1302,21 @@ export default function EmailComposer() {
                             <h3 className="font-semibold cursor-pointer hover:text-primary transition-colors" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>{campaign.name}</h3>
                             <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
                           </div>
-                          <Badge variant={
-                            campaign.status === "active" ? "default" :
-                            campaign.status === "draft" ? "secondary" :
-                            campaign.status === "paused" ? "outline" : "secondary"
-                          }>
-                            {campaign.status}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            {(campaign as any).scheduledAt && campaign.status === "draft" && (
+                              <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50 gap-1">
+                                <CalendarClock className="w-3 h-3" />
+                                {new Date((campaign as any).scheduledAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </Badge>
+                            )}
+                            <Badge variant={
+                              campaign.status === "active" ? "default" :
+                              campaign.status === "draft" ? "secondary" :
+                              campaign.status === "paused" ? "outline" : "secondary"
+                            }>
+                              {campaign.status}
+                            </Badge>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 py-3 border-y border-border">

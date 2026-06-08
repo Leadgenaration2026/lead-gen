@@ -50,6 +50,13 @@
       "when": 1780584031703,
       "tag": "0006_violet_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1780933662010,
+      "tag": "0007_clammy_jack_flag",
+      "breakpoints": true
     }
   ]
 }
