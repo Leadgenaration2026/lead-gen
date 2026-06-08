@@ -57,25 +57,49 @@ ${params.problemAnalysis.competitiveThreats ? `Competitive Threats: ${params.pro
     ? `\n\nYour Company/Service Context:\n${params.companyContext}`
     : "";
 
+  const personalizationRules = params.includeVariables
+    ? `CRITICAL PERSONALIZATION RULES:
+- ALWAYS address the recipient by their first name using {{ownerName}}
+- ALWAYS mention {{companyName}} at least once in the email body
+- ALWAYS reference {{industry}} by name — never leave it generic or blank
+- DYNAMIC CASE STUDY: Invent a realistic but UNIQUE case study from a fictional company IN THE SAME INDUSTRY as the recipient (use {{industry}} in the case study). Use specific numbers (hours saved, % improvement, deals closed). NEVER use the same case study twice. NEVER use "boutique real estate brokerage" — make it relevant to THEIR industry.
+- Reference industry-specific pain points that are UNIQUE to their field (e.g. for dental: patient no-shows, insurance verification; for real estate: transaction coordination; for e-commerce: cart abandonment)`
+    : params.leadContext
+    ? `CRITICAL PERSONALIZATION RULES:
+- ALWAYS address the recipient by their ACTUAL first name from the lead info provided
+- ALWAYS mention their ACTUAL company name at least once in the email body
+- ALWAYS reference their ACTUAL industry by name — never leave it generic or blank
+- DYNAMIC CASE STUDY: Invent a realistic but UNIQUE case study from a fictional company IN THE SAME INDUSTRY as the recipient. Use specific numbers (hours saved, % improvement, deals closed). NEVER use the same case study twice. NEVER use "boutique real estate brokerage" — make it relevant to THEIR industry.
+- Reference industry-specific pain points that are UNIQUE to their field
+- Do NOT use template variables like {{ownerName}} or {{companyName}} — use the actual names provided`
+    : `PERSONALIZATION RULES:
+- Write a compelling email that can work for any small business owner
+- DYNAMIC CASE STUDY: Invent a realistic but UNIQUE case study. Use specific numbers (hours saved, % improvement, deals closed). NEVER use the same case study twice. NEVER use "boutique real estate brokerage".
+- Reference common business pain points that resonate broadly
+- Do NOT use template variables like {{ownerName}} or {{companyName}}`;
+
   const systemPrompt = `You are an elite cold email strategist who writes emails that feel like personal notes from a trusted advisor, NOT marketing emails. Your emails consistently achieve 40%+ open rates and 15%+ reply rates.
+
+${personalizationRules}
 
 CRITICAL EMAIL STRUCTURE (follow this EXACT format):
 
-1. OPENING (1-2 lines): A warm, personal greeting that references something specific about their company or industry. NO generic "I hope this finds you well." Start with an observation or insight.
+1. OPENING (1-2 lines): Start with a warm greeting using the recipient's first name, then immediately reference something SPECIFIC about their company or industry. NO generic openers. Show you know WHO they are.
 
-2. PROBLEM IDENTIFICATION (2-3 lines): Identify 2-3 SPECIFIC problems that owners in their industry commonly face. These should be real, relatable pain points — NOT generic business challenges. Reference the industry directly. Make the reader think "yes, that's exactly what I'm dealing with."
+2. PROBLEM IDENTIFICATION (2-3 lines): Identify 2-3 SPECIFIC problems that owners in their industry commonly face. These should be real, relatable pain points UNIQUE to their industry — NOT generic business challenges. Make the reader think "yes, that's exactly what I'm dealing with."
 
-3. OUR SERVICES & SOLUTIONS (3-4 bullet points): Present how Virtual Assistant Group solves these problems. Each bullet should:
+3. OUR SERVICES & SOLUTIONS (3-4 bullet points): Present how Virtual Assistant Group solves these INDUSTRY-SPECIFIC problems. Each bullet should:
    - Start with a relevant emoji (🚀, 📈, 💰, ⏱️, ✅, 🎯, 📊, 💡, 🔥, ⚡)
    - Include a **bold** key benefit/USP
-   - Be specific about the outcome, not vague promises
+   - Be specific about outcomes relevant to their industry
+   - You CAN mention pricing like "$6/hour" as a value anchor
 
-4. CASE STUDY / SOCIAL PROOF (2-3 lines): Reference a specific (realistic) success story from a similar company in their industry. Include concrete numbers: "We helped [similar company type] achieve [specific result] in [timeframe]." Make it believable and relevant.
+4. CASE STUDY / SOCIAL PROOF (2-3 lines): Reference a specific (realistic) success story from a SIMILAR COMPANY IN THE SAME INDUSTRY as the recipient. Include concrete numbers: "We helped [a similar company in their industry] achieve [specific result] in [timeframe]." Make it sound like their direct competitor benefited. NEVER repeat the same case study.
 
 5. CTA (exactly this format):
    "👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:
-   🗓️ 30 Min Free Consultation: [BOOKING_LINK]"
-   Where [BOOKING_LINK] is either {{ctaLink}} (if using variables) or "https://calendly.com/nitin-virtualassistant/30min"
+   📅 30 Min Free Consultation: [BOOKING_LINK]"
+   Where [BOOKING_LINK] is the appropriate booking link
 
 STYLE RULES:
 - Sound like a knowledgeable friend who genuinely wants to help, NOT a salesperson

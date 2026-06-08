@@ -395,5 +395,9 @@
 - [x] Add Email Deliverability Checks under Email Composer that auto-validates each generated email
 - [x] Add AI-powered "Fix Issues" button that rewrites email to resolve failed deliverability checks
 - [x] Fix AI email generation: reference company name, make case studies dynamic based on industry/competitors
-- [ ] Add "Preview as recipient" mode showing how email appears in lead's inbox
-- [ ] Set up user's signature to auto-append to generated emails in same font style
+- [x] Add "Preview as recipient" mode showing how email appears in lead's inbox
+- [x] Set up user's signature to auto-append to generated emails in same font style
+
+## Batch — Bulk Campaign Parity with Single Email
+- [x] Add Deliverability Checks panel with Fix Issues button to bulk campaign mode
+- [ ] Ensure bulk campaign AI generation uses personalized company references and dynamic case studies

@@ -52,8 +52,9 @@ export default function EmailComposer() {
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [deliverabilityResult, setDeliverabilityResult] = useState<{ allPassed: boolean; score: number; checks: Array<{ name: string; status: "pass" | "fail" | "warning"; message: string; category: string }> } | null>(null);
-  const [showDeliverabilityDetails, setShowDeliverabilityDetails] = useState(false);
-
+    const [showDeliverabilityDetails, setShowDeliverabilityDetails] = useState(false);
+  const [bulkDeliverabilityResult, setBulkDeliverabilityResult] = useState<{ allPassed: boolean; score: number; checks: Array<{ name: string; status: "pass" | "fail" | "warning"; message: string; category: string }> } | null>(null);
+  const [showBulkDeliverabilityDetails, setShowBulkDeliverabilityDetails] = useState(false);
   // Bulk campaign state
   const [selectedLeadSetId, setSelectedLeadSetId] = useState<number | null>(null);
   const [campaignFormData, setCampaignFormData] = useState({
@@ -927,6 +928,140 @@ export default function EmailComposer() {
                         </div>
                         <RefreshCw className="w-4 h-4 text-purple-500" />
                       </div>
+                    </div>
+                  )}
+                  {/* Bulk Email Deliverability Checks */}
+                  {(campaignFormData.subject || campaignFormData.emailTemplate) && (
+                    <div className="border rounded-lg overflow-hidden mt-3">
+                      <button
+                        onClick={async () => {
+                          setShowBulkDeliverabilityDetails(!showBulkDeliverabilityDetails);
+                          if (!bulkDeliverabilityResult) {
+                            try {
+                              const result = await deliverabilityCheckMutation.mutateAsync({ subject: campaignFormData.subject, body: campaignFormData.emailTemplate });
+                              setBulkDeliverabilityResult(result);
+                            } catch { /* silent */ }
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-primary" />
+                          <span className="text-sm font-medium">Deliverability Score</span>
+                          {deliverabilityCheckMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                          {bulkDeliverabilityResult && !deliverabilityCheckMutation.isPending && (
+                            <Badge variant="outline" className={`text-xs ${
+                              bulkDeliverabilityResult.score >= 80
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : bulkDeliverabilityResult.score >= 50
+                                  ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                  : "bg-red-50 text-red-700 border-red-200"
+                            }`}>
+                              {bulkDeliverabilityResult.score}/100
+                            </Badge>
+                          )}
+                          {bulkDeliverabilityResult && (
+                            <span className="text-xs text-muted-foreground">
+                              {bulkDeliverabilityResult.checks.filter(c => c.status === "pass").length}/{bulkDeliverabilityResult.checks.length} checks passed
+                            </span>
+                          )}
+                        </div>
+                        {showBulkDeliverabilityDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                      {showBulkDeliverabilityDetails && (
+                        <div className="p-3 border-t space-y-3">
+                          {bulkDeliverabilityResult ? (
+                            <>
+                              {/* Score bar */}
+                              <div className="space-y-1">
+                                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      bulkDeliverabilityResult.score >= 80 ? "bg-green-500" : bulkDeliverabilityResult.score >= 50 ? "bg-yellow-500" : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${bulkDeliverabilityResult.score}%` }}
+                                  />
+                                </div>
+                              </div>
+                              {/* Grouped checks */}
+                              {["infrastructure", "content", "personalization", "compliance"].map(category => {
+                                const categoryChecks = bulkDeliverabilityResult.checks.filter(c => c.category === category);
+                                if (categoryChecks.length === 0) return null;
+                                const categoryLabels: Record<string, string> = { infrastructure: "Infrastructure", content: "Content Quality", personalization: "Personalization", compliance: "Compliance" };
+                                return (
+                                  <div key={category} className="space-y-1">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{categoryLabels[category]}</p>
+                                    {categoryChecks.map((check, i) => (
+                                      <div key={i} className="flex items-start gap-2 py-1 pl-1">
+                                        {check.status === "pass" ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
+                                        ) : check.status === "warning" ? (
+                                          <AlertTriangle className="w-3.5 h-3.5 text-yellow-600 mt-0.5 shrink-0" />
+                                        ) : (
+                                          <XCircle className="w-3.5 h-3.5 text-red-600 mt-0.5 shrink-0" />
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm leading-tight">{check.name}</p>
+                                          <p className="text-xs text-muted-foreground leading-tight">{check.message}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })}
+                              <div className="pt-2 border-t mt-2 space-y-2">
+                                {bulkDeliverabilityResult.checks.some(c => c.status === "fail" || c.status === "warning") && (
+                                  <Button
+                                    size="sm"
+                                    className="w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                                    onClick={async () => {
+                                      const failedChecks = bulkDeliverabilityResult.checks.filter(c => c.status === "fail" || c.status === "warning");
+                                      try {
+                                        const fixed = await fixDeliverabilityMutation.mutateAsync({
+                                          subject: campaignFormData.subject,
+                                          body: campaignFormData.emailTemplate,
+                                          failedChecks: failedChecks.map(c => ({ name: c.name, status: c.status as "fail" | "warning", message: c.message, category: c.category })),
+                                        });
+                                        setCampaignFormData({ ...campaignFormData, subject: fixed.subject, emailTemplate: fixed.body });
+                                        toast.success("Template rewritten to fix deliverability issues");
+                                        const newResult = await deliverabilityCheckMutation.mutateAsync({ subject: fixed.subject, body: fixed.body });
+                                        setBulkDeliverabilityResult(newResult);
+                                      } catch {
+                                        toast.error("Failed to fix template. Please try again.");
+                                      }
+                                    }}
+                                    disabled={fixDeliverabilityMutation.isPending}
+                                  >
+                                    {fixDeliverabilityMutation.isPending ? (
+                                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Fixing Issues...</>
+                                    ) : (
+                                      <><Wand2 className="w-3.5 h-3.5" /> Fix Issues with AI</>
+                                    )}
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full gap-2"
+                                  onClick={async () => {
+                                    try {
+                                      const result = await deliverabilityCheckMutation.mutateAsync({ subject: campaignFormData.subject, body: campaignFormData.emailTemplate });
+                                      setBulkDeliverabilityResult(result);
+                                      toast.success("Deliverability checks refreshed");
+                                    } catch { toast.error("Failed to run checks"); }
+                                  }}
+                                  disabled={deliverabilityCheckMutation.isPending}
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${deliverabilityCheckMutation.isPending ? "animate-spin" : ""}`} />
+                                  Re-run All Checks
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-2">Click to run deliverability checks</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
