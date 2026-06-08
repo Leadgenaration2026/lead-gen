@@ -2830,5 +2830,70 @@ Website: ${lead.website || "N/A"}` },
         return { success: true };
       }),
   }),
+
+  // ============ Website Analysis Router (SimilarWeb Integration) ============
+  websiteAnalysis: router({
+    analyze: protectedProcedure
+      .input(z.object({
+        domain: z.string().min(3), // Domain or URL to analyze
+      }))
+      .mutation(async ({ input }) => {
+        const { analyzeWebsite, generateInsightsSummary } = await import("./websiteAnalysis");
+        const insights = await analyzeWebsite(input.domain);
+        const summary = generateInsightsSummary(insights);
+        return { insights, summary };
+      }),
+
+    // Generate a personalized email using website insights
+    generatePersonalizedEmail: protectedProcedure
+      .input(z.object({
+        leadId: z.number(),
+        websiteInsightsSummary: z.string(), // Pre-analyzed summary
+        emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]).optional(),
+        includeVariables: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lead not found" });
+        }
+
+        const leadContext = `Name: ${lead.ownerName}, Company: ${lead.companyName}, Industry: ${lead.industry || "Not specified"}, Email: ${lead.email}, Website: ${lead.website || "Not provided"}`;
+
+        const { generateEmailWithClaude } = await import("./claude");
+
+        const prompt = `Write a highly personalized cold email to ${lead.ownerName} at ${lead.companyName} based on their ACTUAL website data analysis below. Reference specific metrics and issues from their website to show we've done our homework.
+
+WEBSITE ANALYSIS DATA:
+${input.websiteInsightsSummary}
+
+Use the website data to:
+1. Reference their actual traffic numbers or ranking
+2. Identify specific problems their website has (high bounce rate, low organic traffic, missing keywords, etc.)
+3. Explain how Virtual Assistant Group's services (SEO content writing, social media management, lead generation, admin support) can directly solve THEIR specific problems
+4. Make it feel like a genuine analysis, not a generic pitch`;
+
+        const result = await generateEmailWithClaude({
+          prompt,
+          emailType: input.emailType || "value_prop",
+          leadContext,
+          includeVariables: input.includeVariables || false,
+        });
+
+        // Append signature
+        const signature = await db.getEmailSignature(ctx.user.id);
+        let fullBody = result.body;
+        if (signature) {
+          const sigText = signature.signaturePlainText || signature.signatureHtml.replace(/<[^>]*>/g, "");
+          fullBody += "\n\n" + sigText;
+        }
+
+        return {
+          ...result,
+          body: fullBody,
+          bodyWithoutSignature: result.body,
+        };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;

@@ -507,3 +507,11 @@
 - [x] Make website (www.virtualassistant-group.com) and LinkedIn clickable links in signature
 - [x] Ensure signature uses same font as email body for both single and bulk campaigns
 - [x] Add social media login/authorization UI for LinkedIn, Instagram, Facebook accounts (Account Authorization section in Settings → Social tab with Connect/Reconnect buttons and status badges)
+
+## Website Analysis & Personalized Outreach (SimilarWeb/Ubersuggest Integration)
+- [x] Backend: Create website analysis tRPC procedure that fetches traffic, keywords, bounce rate, and traffic sources for a lead's domain
+- [x] Backend: Integrate website insights into Claude AI email generation to craft personalized outreach highlighting how VAG can help
+- [x] Frontend: Add "Analyze Website" button in Email Composer that pulls insights before generating email
+- [x] Frontend: Show website insights panel (traffic, keywords, SEO gaps) in Lead Detail Drawer
+- [x] Frontend: Display analysis results with actionable recommendations before email generation
+- [x] Testing: Write tests for website analysis procedure and AI integration (7 tests passing)

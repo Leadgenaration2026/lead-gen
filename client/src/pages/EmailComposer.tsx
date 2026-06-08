@@ -16,6 +16,7 @@ import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
+import { WebsiteInsightsPanel } from "@/components/WebsiteInsightsPanel";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -416,6 +417,15 @@ export default function EmailComposer() {
                     )}
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Website Analysis Panel */}
+              {selectedLeadData?.website && (
+                <WebsiteInsightsPanel
+                  domain={selectedLeadData.website}
+                  leadId={selectedLead || undefined}
+                  onGenerateEmail={(s, b) => { setSubject(s); setEmailBody(b); setShowPreview(true); }}
+                />
               )}
             </div>
 

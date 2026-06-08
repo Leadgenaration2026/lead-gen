@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Mail, MailOpen, MousePointerClick, Phone, MessageCircle, Globe, Linkedin, Instagram, Facebook, Send, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { WebsiteInsightsPanel } from "@/components/WebsiteInsightsPanel";
 
 interface LeadDetailDrawerProps {
   leadId: number | null;
@@ -119,6 +120,11 @@ export function LeadDetailDrawer({ leadId, open, onClose }: LeadDetailDrawerProp
                 </div>
               </CardContent>
             </Card>
+
+            {/* Website Insights */}
+            {lead?.website && (
+              <WebsiteInsightsPanel domain={lead.website} compact />
+            )}
 
             {/* Stats Summary */}
             {stats && (
