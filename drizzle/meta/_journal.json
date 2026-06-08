@@ -64,6 +64,13 @@
       "when": 1780934915027,
       "tag": "0008_open_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1780946307313,
+      "tag": "0009_lean_patch",
+      "breakpoints": true
     }
   ]
 }

@@ -346,3 +346,266 @@ export function generateInsightsSummary(insights: WebsiteInsights): string {
 
   return parts.join("\n");
 }
+
+
+export interface CompetitorData {
+  domain: string;
+  totalVisits: number | null;
+  bounceRate: number | null;
+  topKeywords: string[];
+}
+
+export interface CompetitorGap {
+  area: string;
+  competitorAdvantage: string;
+  vagSolution: string;
+}
+
+/**
+ * Analyze competitors for a given domain using SimilarWeb's similar sites API
+ */
+export async function analyzeCompetitors(domain: string): Promise<{
+  competitors: CompetitorData[];
+  gaps: CompetitorGap[];
+}> {
+  const cleanDomain = extractDomain(domain);
+  const competitors: CompetitorData[] = [];
+  const gaps: CompetitorGap[] = [];
+
+  try {
+    // Get similar/competing websites
+    const similarResult = await callDataApi("Similarweb/get_similar_sites", {
+      pathParams: { domain: cleanDomain },
+      query: {
+        main_domain_only: false,
+      },
+    }) as any;
+
+    let competitorDomains: string[] = [];
+    if (similarResult && Array.isArray(similarResult)) {
+      competitorDomains = similarResult.slice(0, 3).map((s: any) => s.url || s.domain || s.site || "");
+    } else if (similarResult?.similar_sites && Array.isArray(similarResult.similar_sites)) {
+      competitorDomains = similarResult.similar_sites.slice(0, 3).map((s: any) => s.url || s.domain || s.site || "");
+    }
+
+    // Get basic metrics for each competitor
+    for (const compDomain of competitorDomains.filter(d => d)) {
+      try {
+        const now = new Date();
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const startDate = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
+
+        const visitsResult = await callDataApi("Similarweb/get_visits_total", {
+          pathParams: { domain: compDomain },
+          query: {
+            country: "world",
+            granularity: "monthly",
+            main_domain_only: false,
+            start_date: startDate,
+            end_date: startDate,
+          },
+        }) as any;
+
+        let visits: number | null = null;
+        if (visitsResult && Array.isArray(visitsResult)) {
+          visits = visitsResult[0]?.visits || null;
+        } else if (visitsResult?.visits) {
+          visits = visitsResult.visits;
+        }
+
+        competitors.push({
+          domain: compDomain,
+          totalVisits: visits,
+          bounceRate: null,
+          topKeywords: [],
+        });
+      } catch {
+        competitors.push({
+          domain: compDomain,
+          totalVisits: null,
+          bounceRate: null,
+          topKeywords: [],
+        });
+      }
+    }
+  } catch {
+    // If similar sites API fails, we'll still return empty arrays
+  }
+
+  // Generate gaps based on competitor data vs the lead's site
+  if (competitors.length > 0) {
+    const topCompetitor = competitors.reduce((best, c) => 
+      (c.totalVisits || 0) > (best.totalVisits || 0) ? c : best
+    , competitors[0]);
+
+    if (topCompetitor.totalVisits && topCompetitor.totalVisits > 0) {
+      gaps.push({
+        area: "Traffic Volume",
+        competitorAdvantage: `${topCompetitor.domain} gets ~${formatTraffic(topCompetitor.totalVisits)} monthly visits`,
+        vagSolution: "SEO content strategy + social media management to close the traffic gap",
+      });
+    }
+
+    gaps.push({
+      area: "Content Marketing",
+      competitorAdvantage: `Competitors maintain active blogs and social presence driving organic traffic`,
+      vagSolution: "Virtual assistants can manage blog writing, social media posting, and content scheduling at $6/hr",
+    });
+
+    gaps.push({
+      area: "Lead Generation",
+      competitorAdvantage: `Competitors use optimized landing pages and lead magnets to capture visitors`,
+      vagSolution: "Our VAs can build landing pages, create lead magnets, and manage email nurture sequences",
+    });
+  }
+
+  return { competitors, gaps };
+}
+
+/**
+ * Fetch recent news and industry insights for a domain/company using LLM
+ */
+export async function fetchIndustryInsights(companyName: string, industry: string, domain: string): Promise<{
+  recentNews: Array<{ title: string; relevance: string; angle: string }>;
+  industryInsights: string[];
+}> {
+  try {
+    const { invokeLLM } = await import("./_core/llm");
+
+    const response = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: `You are a business intelligence analyst. Generate realistic and relevant recent industry news and insights that would be applicable to a company in the ${industry} industry. These will be used to personalize outreach emails. Make them specific, timely, and actionable.`
+        },
+        {
+          role: "user",
+          content: `Generate 3 recent industry news items and 3 key industry insights for ${companyName} (${domain}) in the ${industry} industry.
+
+Return a JSON object with:
+- "recentNews": array of 3 objects with "title" (headline), "relevance" (why it matters to them), "angle" (how VAG can help them respond to this trend)
+- "industryInsights": array of 3 strings describing current challenges/opportunities in their industry that a virtual assistant service could help address
+
+Focus on:
+- Digital transformation trends in their industry
+- Common operational inefficiencies
+- Growth opportunities they might be missing
+- Recent regulatory or market changes
+
+Return ONLY valid JSON, no markdown.`
+        }
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "industry_insights",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              recentNews: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    relevance: { type: "string" },
+                    angle: { type: "string" },
+                  },
+                  required: ["title", "relevance", "angle"],
+                  additionalProperties: false,
+                },
+              },
+              industryInsights: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: ["recentNews", "industryInsights"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    const content = response.choices?.[0]?.message?.content;
+    if (content && typeof content === "string") {
+      const parsed = JSON.parse(content);
+      return {
+        recentNews: parsed.recentNews || [],
+        industryInsights: parsed.industryInsights || [],
+      };
+    }
+  } catch (e: any) {
+    console.warn("[WebsiteAnalysis] Failed to fetch industry insights:", e.message);
+  }
+
+  return { recentNews: [], industryInsights: [] };
+}
+
+/**
+ * Full analysis: website + competitors + news (for auto-analyze on lead import)
+ */
+export async function fullWebsiteAnalysis(domain: string, companyName: string, industry: string): Promise<{
+  insights: WebsiteInsights;
+  competitors: CompetitorData[];
+  competitorGaps: CompetitorGap[];
+  recentNews: Array<{ title: string; relevance: string; angle: string }>;
+  industryInsights: string[];
+  summary: string;
+}> {
+  // Run all analyses in parallel
+  const [insights, competitorResult, newsResult] = await Promise.all([
+    analyzeWebsite(domain),
+    analyzeCompetitors(domain),
+    fetchIndustryInsights(companyName, industry || "general business", domain),
+  ]);
+
+  // Generate enhanced summary including competitor and news data
+  const baseSummary = generateInsightsSummary(insights);
+  
+  let enhancedSummary = baseSummary;
+
+  if (competitorResult.competitors.length > 0) {
+    enhancedSummary += "\n\nCOMPETITOR ANALYSIS:";
+    for (const comp of competitorResult.competitors) {
+      enhancedSummary += `\n- ${comp.domain}: ~${formatTraffic(comp.totalVisits)} monthly visits`;
+    }
+    if (competitorResult.gaps.length > 0) {
+      enhancedSummary += "\n\nCOMPETITOR GAPS (what competitors do that this company doesn't):";
+      for (const gap of competitorResult.gaps) {
+        enhancedSummary += `\n- ${gap.area}: ${gap.competitorAdvantage} → VAG Solution: ${gap.vagSolution}`;
+      }
+    }
+  }
+
+  if (newsResult.recentNews.length > 0) {
+    enhancedSummary += "\n\nRECENT INDUSTRY NEWS & TRENDS:";
+    for (const news of newsResult.recentNews) {
+      enhancedSummary += `\n- ${news.title} (Relevance: ${news.relevance}) → Angle: ${news.angle}`;
+    }
+  }
+
+  if (newsResult.industryInsights.length > 0) {
+    enhancedSummary += "\n\nINDUSTRY INSIGHTS:";
+    for (const insight of newsResult.industryInsights) {
+      enhancedSummary += `\n- ${insight}`;
+    }
+  }
+
+  return {
+    insights,
+    competitors: competitorResult.competitors,
+    competitorGaps: competitorResult.gaps,
+    recentNews: newsResult.recentNews,
+    industryInsights: newsResult.industryInsights,
+    summary: enhancedSummary,
+  };
+}
+
+function formatTraffic(visits: number | null): string {
+  if (!visits) return "unknown";
+  if (visits >= 1000000) return `${(visits / 1000000).toFixed(1)}M`;
+  if (visits >= 1000) return `${(visits / 1000).toFixed(1)}K`;
+  return visits.toString();
+}

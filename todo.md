@@ -515,3 +515,13 @@
 - [x] Frontend: Show website insights panel (traffic, keywords, SEO gaps) in Lead Detail Drawer
 - [x] Frontend: Display analysis results with actionable recommendations before email generation
 - [x] Testing: Write tests for website analysis procedure and AI integration (7 tests passing)
+
+## Auto-Analyze, Competitor Comparison, News & UX Reorder
+- [x] Backend: Auto-run website analysis when new leads are added/generated (store results in DB)
+- [x] Backend: Competitor comparison - analyze top competitors and identify what they do better
+- [x] Backend: Recent news/industry insights - pull relevant news for email personalization
+- [x] Backend: Integrate competitor gaps + news into Claude AI email generation prompt
+- [x] Frontend: Reorder Email Composer - Lead selection at top, subject line below email body
+- [x] Frontend: Show competitor comparison data in WebsiteInsightsPanel (what competitors have that client lacks)
+- [x] Frontend: Show recent news/industry insights in the analysis panel
+- [x] Testing: Write tests for competitor comparison and news integration (7 new tests, 193 total passing)

@@ -1,0 +1,21 @@
+CREATE TABLE `websiteInsights` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`leadId` int NOT NULL,
+	`domain` varchar(255) NOT NULL,
+	`totalVisits` int,
+	`bounceRate` decimal(5,2),
+	`globalRank` int,
+	`topKeywords` json,
+	`trafficSources` json,
+	`topLandingPages` json,
+	`competitors` json,
+	`competitorGaps` json,
+	`recentNews` json,
+	`industryInsights` json,
+	`insightsSummary` text,
+	`analyzedAt` timestamp NOT NULL DEFAULT (now()),
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `websiteInsights_id` PRIMARY KEY(`id`),
+	CONSTRAINT `websiteInsights_leadId_unique` UNIQUE(`leadId`)
+);

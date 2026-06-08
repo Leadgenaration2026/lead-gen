@@ -809,3 +809,55 @@ export async function getWebhookStats(userId: number) {
     retellLast: lastRetell[0]?.createdAt || null,
   };
 }
+
+
+// Website Insights queries
+export async function getWebsiteInsights(leadId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { websiteInsights } = await import("../drizzle/schema");
+  const result = await db.select().from(websiteInsights).where(eq(websiteInsights.leadId, leadId)).limit(1);
+  return result[0];
+}
+
+export async function upsertWebsiteInsights(leadId: number, data: {
+  domain: string;
+  totalVisits?: number | null;
+  bounceRate?: number | null;
+  globalRank?: number | null;
+  topKeywords?: any;
+  trafficSources?: any;
+  topLandingPages?: any;
+  competitors?: any;
+  competitorGaps?: any;
+  recentNews?: any;
+  industryInsights?: any;
+  insightsSummary?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { websiteInsights } = await import("../drizzle/schema");
+
+  const existing = await getWebsiteInsights(leadId);
+  const values: any = {
+    leadId,
+    domain: data.domain,
+    totalVisits: data.totalVisits ?? null,
+    bounceRate: data.bounceRate !== null && data.bounceRate !== undefined ? String(data.bounceRate) : null,
+    globalRank: data.globalRank ?? null,
+    topKeywords: data.topKeywords ?? null,
+    trafficSources: data.trafficSources ?? null,
+    topLandingPages: data.topLandingPages ?? null,
+    competitors: data.competitors ?? null,
+    competitorGaps: data.competitorGaps ?? null,
+    recentNews: data.recentNews ?? null,
+    industryInsights: data.industryInsights ?? null,
+    insightsSummary: data.insightsSummary ?? null,
+    analyzedAt: new Date(),
+  };
+
+  if (existing) {
+    return db.update(websiteInsights).set({ ...values, updatedAt: new Date() }).where(eq(websiteInsights.leadId, leadId));
+  }
+  return db.insert(websiteInsights).values(values);
+}

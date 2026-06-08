@@ -380,3 +380,31 @@ export const socialOutreach = mysqlTable("socialOutreach", {
 
 export type SocialOutreach = typeof socialOutreach.$inferSelect;
 export type InsertSocialOutreach = typeof socialOutreach.$inferInsert;
+
+
+// Website Insights - stores auto-analyzed website data and competitor comparison
+export const websiteInsights = mysqlTable("websiteInsights", {
+  id: int("id").autoincrement().primaryKey(),
+  leadId: int("leadId").notNull().unique(),
+  domain: varchar("domain", { length: 255 }).notNull(),
+  totalVisits: int("totalVisits"),
+  bounceRate: decimal("bounceRate", { precision: 5, scale: 2 }),
+  globalRank: int("globalRank"),
+  topKeywords: json("topKeywords"), // Array of keyword objects
+  trafficSources: json("trafficSources"), // Traffic source breakdown
+  topLandingPages: json("topLandingPages"), // Top pages
+  // Competitor comparison data
+  competitors: json("competitors"), // Array of competitor domains with their metrics
+  competitorGaps: json("competitorGaps"), // What competitors do better (actionable insights)
+  // Recent news/industry insights
+  recentNews: json("recentNews"), // Array of recent news items relevant to the lead
+  industryInsights: json("industryInsights"), // Industry-specific insights from news
+  // Summary for email generation
+  insightsSummary: text("insightsSummary"), // Pre-generated summary for Claude
+  analyzedAt: timestamp("analyzedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WebsiteInsight = typeof websiteInsights.$inferSelect;
+export type InsertWebsiteInsight = typeof websiteInsights.$inferInsert;

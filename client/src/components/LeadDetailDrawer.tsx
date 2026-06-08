@@ -123,7 +123,13 @@ export function LeadDetailDrawer({ leadId, open, onClose }: LeadDetailDrawerProp
 
             {/* Website Insights */}
             {lead?.website && (
-              <WebsiteInsightsPanel domain={lead.website} compact />
+              <WebsiteInsightsPanel
+                domain={lead.website}
+                leadId={lead.id}
+                companyName={lead.companyName}
+                industry={lead.industry || undefined}
+                compact
+              />
             )}
 
             {/* Stats Summary */}

@@ -136,11 +136,45 @@ export const appRouter = router({
     }),
 
     create: protectedProcedure.input(createLeadSchema).mutation(async ({ input, ctx }) => {
-      return db.createLead({
+      const result = await db.createLead({
         ...input,
         userId: ctx.user.id,
         status: "new",
       });
+      // Auto-analyze website in background (non-blocking)
+      if (input.website) {
+        const leadId = (result as any)[0]?.insertId;
+        if (leadId) {
+          setImmediate(async () => {
+            try {
+              const { fullWebsiteAnalysis } = await import("./websiteAnalysis");
+              const analysis = await fullWebsiteAnalysis(
+                input.website!,
+                input.companyName,
+                input.industry || "general business"
+              );
+              await db.upsertWebsiteInsights(leadId, {
+                domain: analysis.insights.domain,
+                totalVisits: analysis.insights.totalVisits,
+                bounceRate: analysis.insights.bounceRate,
+                globalRank: analysis.insights.globalRank,
+                topKeywords: analysis.insights.topKeywords,
+                trafficSources: analysis.insights.trafficSources,
+                topLandingPages: analysis.insights.topLandingPages,
+                competitors: analysis.competitors,
+                competitorGaps: analysis.competitorGaps,
+                recentNews: analysis.recentNews,
+                industryInsights: analysis.industryInsights,
+                insightsSummary: analysis.summary,
+              });
+              console.log(`[AutoAnalyze] Website analysis complete for lead ${leadId}: ${input.website}`);
+            } catch (e: any) {
+              console.warn(`[AutoAnalyze] Failed for lead ${leadId}:`, e.message);
+            }
+          });
+        }
+      }
+      return result;
     }),
 
     update: protectedProcedure
@@ -322,6 +356,47 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             console.error("Failed to create lead:", e);
           }
         }
+
+        // Auto-analyze websites for generated leads in background
+        setImmediate(async () => {
+          try {
+            const { fullWebsiteAnalysis } = await import("./websiteAnalysis");
+            for (const leadData of leadsData) {
+              if (leadData.website) {
+                const createdLead = await db.getLeadsByUserId(ctx.user.id);
+                const matchingLead = createdLead.find(l => l.email === leadData.email && l.website === leadData.website);
+                if (matchingLead) {
+                  try {
+                    const analysis = await fullWebsiteAnalysis(
+                      leadData.website,
+                      leadData.companyName || "Unknown",
+                      leadData.industry || "general business"
+                    );
+                    await db.upsertWebsiteInsights(matchingLead.id, {
+                      domain: analysis.insights.domain,
+                      totalVisits: analysis.insights.totalVisits,
+                      bounceRate: analysis.insights.bounceRate,
+                      globalRank: analysis.insights.globalRank,
+                      topKeywords: analysis.insights.topKeywords,
+                      trafficSources: analysis.insights.trafficSources,
+                      topLandingPages: analysis.insights.topLandingPages,
+                      competitors: analysis.competitors,
+                      competitorGaps: analysis.competitorGaps,
+                      recentNews: analysis.recentNews,
+                      industryInsights: analysis.industryInsights,
+                      insightsSummary: analysis.summary,
+                    });
+                    console.log(`[AutoAnalyze] Complete for generated lead: ${leadData.website}`);
+                  } catch (e: any) {
+                    console.warn(`[AutoAnalyze] Failed for ${leadData.website}:`, e.message);
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            console.warn("[AutoAnalyze] Batch analysis failed:", e.message);
+          }
+        });
 
         return {
           success: true,

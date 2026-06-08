@@ -424,6 +424,8 @@ export default function EmailComposer() {
                 <WebsiteInsightsPanel
                   domain={selectedLeadData.website}
                   leadId={selectedLead || undefined}
+                  companyName={selectedLeadData.companyName}
+                  industry={selectedLeadData.industry || undefined}
                   onGenerateEmail={(s, b) => { setSubject(s); setEmailBody(b); setShowPreview(true); }}
                 />
               )}
