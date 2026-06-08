@@ -65,6 +65,10 @@ export default function LeadsPage() {
     phoneNumber: "",
     industry: "",
     companySize: "",
+    website: "",
+    linkedinUrl: "",
+    instagramUrl: "",
+    facebookUrl: "",
   });
 
   // Lead set name for AI generation and CSV import
@@ -211,9 +215,13 @@ export default function LeadsPage() {
         phoneNumber: manualLead.phoneNumber,
         industry: manualLead.industry || "Unknown",
         companySize: manualLead.companySize || "Unknown",
+        website: manualLead.website || undefined,
+        linkedinUrl: manualLead.linkedinUrl || undefined,
+        instagramUrl: manualLead.instagramUrl || undefined,
+        facebookUrl: manualLead.facebookUrl || undefined,
       });
       toast.success("Lead added successfully");
-      setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "" });
+      setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
       leadsQuery.refetch();
     } catch (error) {
       toast.error("Failed to add lead");
@@ -270,7 +278,7 @@ export default function LeadsPage() {
           companySize: lead.companySize || "Unknown",
         });
         toast.success("Lead updated (existing record overwritten)");
-        setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "" });
+        setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
         leadsQuery.refetch();
       } catch (error) {
         toast.error("Failed to overwrite lead");
@@ -708,6 +716,29 @@ export default function LeadsPage() {
                       <Input placeholder="e.g., 50-100" value={manualLead.companySize} onChange={(e) => setManualLead({ ...manualLead, companySize: e.target.value })} className="mt-1" />
                     </div>
                   </div>
+                  <div className="border-t pt-3 mt-1">
+                    <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Social Profiles (Optional)</p>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-sm font-medium">Website</label>
+                        <Input placeholder="e.g., https://acme.com" value={manualLead.website} onChange={(e) => setManualLead({ ...manualLead, website: e.target.value })} className="mt-1" />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">LinkedIn Profile</label>
+                        <Input placeholder="e.g., https://linkedin.com/in/johnsmith" value={manualLead.linkedinUrl} onChange={(e) => setManualLead({ ...manualLead, linkedinUrl: e.target.value })} className="mt-1" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-sm font-medium">Instagram</label>
+                          <Input placeholder="e.g., https://instagram.com/john" value={manualLead.instagramUrl} onChange={(e) => setManualLead({ ...manualLead, instagramUrl: e.target.value })} className="mt-1" />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">Facebook</label>
+                          <Input placeholder="e.g., https://facebook.com/john" value={manualLead.facebookUrl} onChange={(e) => setManualLead({ ...manualLead, facebookUrl: e.target.value })} className="mt-1" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <Button onClick={handleAddManualLead} disabled={addLeadMutation.isPending} className="w-full">
                     {addLeadMutation.isPending ? (<><Loader2 className="w-4 h-4 animate-spin mr-2" />Adding...</>) : "Add Lead"}
                   </Button>
@@ -725,6 +756,22 @@ export default function LeadsPage() {
               <Upload className="w-6 h-6 text-green-600" />
               <span className="text-sm font-medium">Import from CSV</span>
             </Button>
+            <button
+              type="button"
+              onClick={() => {
+                const csvContent = `companyName,ownerName,email,phoneNumber,industry,companySize,website,linkedinUrl,instagramUrl,facebookUrl,tag\nAcme Corp,John Smith,john@acme.com,+1-555-123-4567,SaaS,50-100,https://acme.com,https://linkedin.com/in/johnsmith,https://instagram.com/johnsmith,https://facebook.com/johnsmith,hot\nGlobal Tech,Jane Doe,jane@globaltech.io,+1-555-987-6543,Technology,100-500,https://globaltech.io,https://linkedin.com/in/janedoe,,,warm\nStartup Inc,Bob Wilson,bob@startup.co,+44-20-1234-5678,Fintech,10-50,,https://linkedin.com/in/bobwilson,,,none`;
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'sample-leads.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="text-xs text-green-600 hover:text-green-700 hover:underline mt-1 cursor-pointer"
+            >
+              Download sample CSV format
+            </button>
           </CardContent>
         </Card>
 
@@ -809,6 +856,9 @@ export default function LeadsPage() {
                       Generated leads will be added to set: <span className="font-medium">{generateLeadSetName}</span>
                     </p>
                   )}
+                  <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+                    AI will also extract <strong>website</strong>, <strong>LinkedIn</strong>, <strong>Instagram</strong>, and <strong>Facebook</strong> profile URLs when available.
+                  </p>
                   <Button onClick={handleGenerateLeads} disabled={isGenerating} className="w-full gap-2">
                     {isGenerating ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating...</>) : (<><Wand2 className="w-4 h-4" />Generate Leads</>)}
                   </Button>

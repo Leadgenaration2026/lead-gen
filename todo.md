@@ -482,3 +482,8 @@
 ## Social Outreach Analytics
 - [x] Add social outreach stats (sent/accepted/pending per platform) to campaign detail page alongside opened/clicked
 - [x] Add social outreach summary to the main Analytics page
+
+## Batch — Social Profile Fields in Lead Forms & Sample CSV
+- [x] Add website, LinkedIn, Instagram, Facebook URL fields to manual lead add form UI
+- [x] Add social profile fields to AI lead generation form/results display
+- [x] Add downloadable sample CSV file showing correct data format including social profile columns
