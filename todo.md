@@ -408,3 +408,6 @@
 - [x] Fix Name Personalization check — detect greeting patterns and {{ownerName}}/{{firstName}} variables in both single and bulk emails
 - [x] Fix Company Reference check — detect company name mentions and {{companyName}} variable in both single and bulk emails
 - [x] Fix Unsubscribe Link check for single emails — add unsubscribe opt-out text to single email generation
+
+## Preview as Recipient in Bulk Campaign
+- [x] Add "Send Test Email to Myself" / "Preview as Recipient" option to bulk campaign tab (matching single campaign functionality)

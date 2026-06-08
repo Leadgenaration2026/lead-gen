@@ -66,6 +66,8 @@ export default function EmailComposer() {
   });
   const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
+  const [bulkTestEmail, setBulkTestEmail] = useState("");
+  const [showBulkTestEmailInput, setShowBulkTestEmailInput] = useState(false);
 
   // Pre-fill from URL params (template quick-launch)
   useEffect(() => {
@@ -1098,6 +1100,58 @@ export default function EmailComposer() {
                     isLoading={leadsQuery.isLoading}
                   />
                 </div>
+
+                {/* Send Test Email to Myself - Bulk Campaign */}
+                {campaignFormData.emailTemplate && (
+                  <div className="border rounded-lg p-3 bg-amber-50/50 border-amber-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <TestTube className="w-4 h-4 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-900">Send Test Email to Myself</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <EmailPreviewDialog
+                          subject={campaignFormData.subject || "(No subject)"}
+                          body={campaignFormData.emailTemplate}
+                          recipientName="{{ownerName}}"
+                          recipientEmail="lead@company.com"
+                          recipientCompany="{{companyName}}"
+                          trigger={
+                            <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50">
+                              <Inbox className="w-3.5 h-3.5" />
+                              Preview as Recipient
+                            </Button>
+                          }
+                        />
+                        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowBulkTestEmailInput(!showBulkTestEmailInput)}>
+                          {showBulkTestEmailInput ? "Hide" : "Show"}
+                        </Button>
+                      </div>
+                    </div>
+                    {showBulkTestEmailInput && (
+                      <div className="flex gap-2">
+                        <Input type="email" placeholder="your-email@example.com" value={bulkTestEmail} onChange={(e) => setBulkTestEmail(e.target.value)} className="text-sm h-9 bg-white" />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 h-9 border-amber-300 text-amber-700 hover:bg-amber-100"
+                          disabled={sendTestEmailMutation.isPending || !campaignFormData.subject || !campaignFormData.emailTemplate || !bulkTestEmail}
+                          onClick={async () => {
+                            try {
+                              await sendTestEmailMutation.mutateAsync({ subject: campaignFormData.subject, body: campaignFormData.emailTemplate, testEmail: bulkTestEmail });
+                              toast.success(`Test email sent to ${bulkTestEmail}! Check your inbox.`);
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to send test email. Check SMTP settings.");
+                            }
+                          }}
+                        >
+                          {sendTestEmailMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <>Send Test</>}
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-amber-700 mt-1.5">Preview how the bulk email template looks in your inbox before launching the campaign</p>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-2 border-t">
                   <Button
