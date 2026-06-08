@@ -589,6 +589,145 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           suggestedEmailTypes: weakPoints.suggestedEmailTypes as string[] || [],
         };
       }),
+
+    // Get full engagement timeline for a lead
+    timeline: protectedProcedure
+      .input(z.number())
+      .query(async ({ input: leadId, ctx }) => {
+        const lead = await db.getLeadById(leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const { followUpEmails, followUpCalls, socialOutreach, campaignLeads, emailTrackingEvents } = await import("../drizzle/schema");
+        const { eq, desc, inArray } = await import("drizzle-orm");
+        const { getDb } = await import("./db");
+        const database = (await getDb())!;
+
+        // Get all campaign leads for this lead
+        const cLeads = await database.select().from(campaignLeads).where(eq(campaignLeads.leadId, leadId));
+        const cLeadIds = cLeads.map(cl => cl.id);
+
+        // Get email tracking events
+        const trackingEvents = cLeadIds.length > 0
+          ? await database.select().from(emailTrackingEvents).where(
+              inArray(emailTrackingEvents.campaignLeadId, cLeadIds)
+            ).orderBy(desc(emailTrackingEvents.createdAt))
+          : [];
+
+        // Get follow-up emails
+        const fEmails = cLeadIds.length > 0
+          ? await database.select().from(followUpEmails).where(
+              inArray(followUpEmails.campaignLeadId, cLeadIds)
+            ).orderBy(desc(followUpEmails.createdAt))
+          : [];
+
+        // Get follow-up calls
+        const fCalls = cLeadIds.length > 0
+          ? await database.select().from(followUpCalls).where(
+              inArray(followUpCalls.campaignLeadId, cLeadIds)
+            ).orderBy(desc(followUpCalls.createdAt))
+          : [];
+
+        // Get social outreach
+        const socialMessages = await database.select().from(socialOutreach).where(eq(socialOutreach.leadId, leadId)).orderBy(desc(socialOutreach.createdAt));
+
+        // Build unified timeline
+        const timeline: Array<{ type: string; date: string; title: string; detail: string; status: string }> = [];
+
+        // Initial emails sent
+        for (const cl of cLeads) {
+          if (cl.emailSent) {
+            timeline.push({
+              type: "email_sent",
+              date: cl.emailSentAt ? new Date(cl.emailSentAt).toISOString() : new Date(cl.createdAt!).toISOString(),
+              title: "Initial Email Sent",
+              detail: `Campaign email sent`,
+              status: cl.emailOpened ? "opened" : cl.emailClicked ? "clicked" : "sent",
+            });
+          }
+          if (cl.emailOpened && cl.emailOpenedAt) {
+            timeline.push({
+              type: "email_opened",
+              date: new Date(cl.emailOpenedAt).toISOString(),
+              title: "Email Opened",
+              detail: "Recipient opened the initial email",
+              status: "open",
+            });
+          }
+          if (cl.emailClicked && cl.emailClickedAt) {
+            timeline.push({
+              type: "email_clicked",
+              date: new Date(cl.emailClickedAt).toISOString(),
+              title: "Link Clicked",
+              detail: "Recipient clicked a link in the email",
+              status: "click",
+            });
+          }
+        }
+
+        // Email tracking events (opens, clicks)
+        for (const ev of trackingEvents) {
+          timeline.push({
+            type: ev.eventType === "open" ? "email_opened" : "email_clicked",
+            date: new Date(ev.createdAt!).toISOString(),
+            title: ev.eventType === "open" ? "Email Opened" : "Link Clicked",
+            detail: ev.eventType === "click" ? `Clicked: ${ev.clickUrl || "CTA link"}` : "Recipient opened the email",
+            status: ev.eventType,
+          });
+        }
+
+        // Follow-up emails
+        for (const fe of fEmails) {
+          timeline.push({
+            type: "followup_email",
+            date: fe.sentAt ? new Date(fe.sentAt).toISOString() : new Date(fe.createdAt!).toISOString(),
+            title: `Follow-up Email #${fe.sequenceNumber}`,
+            detail: fe.subject || "Follow-up email",
+            status: fe.status,
+          });
+        }
+
+        // Follow-up calls
+        for (const fc of fCalls) {
+          timeline.push({
+            type: "call",
+            date: fc.initiatedAt ? new Date(fc.initiatedAt).toISOString() : new Date(fc.createdAt!).toISOString(),
+            title: `Call Attempt #${fc.attemptNumber}`,
+            detail: fc.status || "Scheduled",
+            status: fc.status,
+          });
+        }
+
+        // Social outreach
+        for (const so of socialMessages) {
+          timeline.push({
+            type: "social_outreach",
+            date: so.sentAt ? new Date(so.sentAt).toISOString() : new Date(so.createdAt!).toISOString(),
+            title: `${so.platform} ${so.messageType === "connection_request" ? "Connection Request" : "Message"}`,
+            detail: so.message?.slice(0, 100) || "",
+            status: so.status,
+          });
+        }
+
+        // Sort by date descending
+        timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        return {
+          lead,
+          timeline,
+          stats: {
+            emailsSent: cLeads.filter(cl => cl.emailSent).length,
+            emailsOpened: cLeads.filter(cl => cl.emailOpened).length,
+            emailsClicked: cLeads.filter(cl => cl.emailClicked).length,
+            followUpsSent: fEmails.filter(fe => fe.status === "sent").length,
+            followUpsPending: fEmails.filter(fe => fe.status === "draft" || fe.status === "scheduled").length,
+            callsMade: fCalls.filter(fc => fc.status === "completed").length,
+            callsPending: fCalls.filter(fc => fc.status === "scheduled" || fc.status === "initiated").length,
+            socialSent: socialMessages.filter(s => s.status === "sent").length,
+            socialPending: socialMessages.filter(s => s.status === "sent" || s.status === "failed").length === 0 ? socialMessages.length : 0,
+          },
+        };
+      }),
   }),
 
   // Campaigns router

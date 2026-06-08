@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
 
 const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   hot: { bg: "bg-red-100 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400", label: "Hot" },
@@ -42,6 +43,8 @@ export default function LeadsPage() {
   const [count, setCount] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
   const [filterTag, setFilterTag] = useState<string>("all");
+  const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
 
@@ -1043,7 +1046,7 @@ export default function LeadsPage() {
                     toast.error("No leads to export");
                     return;
                   }
-                  const headers = ["Company", "Owner", "Email", "Phone", "Industry", "Tag", "Lead Set"];
+                  const headers = ["Company", "Owner", "Email", "Phone", "Industry", "Tag", "Lead Set", "Status", "Website", "LinkedIn", "Instagram", "Facebook", "Timezone"];
                   const rows = filteredLeads.map((lead: any) => [
                     lead.companyName || "",
                     lead.ownerName || "",
@@ -1052,6 +1055,12 @@ export default function LeadsPage() {
                     lead.industry || "",
                     lead.tag || "",
                     leadSets.find((s: any) => s.id === lead.leadSetId)?.name || "Unassigned",
+                    lead.status || "",
+                    lead.website || "",
+                    lead.linkedinUrl || "",
+                    lead.instagramUrl || "",
+                    lead.facebookUrl || "",
+                    lead.timezone || "",
                   ]);
                   const csvContent = [headers, ...rows]
                     .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
@@ -1108,8 +1117,8 @@ export default function LeadsPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredLeads.map((lead: any) => (
-                    <TableRow key={lead.id} className={`group ${selectedLeadIds.has(lead.id) ? "bg-primary/5" : ""}`}>
-                      <TableCell>
+                    <TableRow key={lead.id} className={`group cursor-pointer hover:bg-muted/50 ${selectedLeadIds.has(lead.id) ? "bg-primary/5" : ""}`} onClick={() => { setDrawerLeadId(lead.id); setDrawerOpen(true); }}>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selectedLeadIds.has(lead.id)}
                           onCheckedChange={() => handleToggleSelect(lead.id)}
@@ -1332,6 +1341,11 @@ export default function LeadsPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <LeadDetailDrawer
+        leadId={drawerLeadId}
+        open={drawerOpen}
+        onClose={() => { setDrawerOpen(false); setDrawerLeadId(null); }}
+      />
     </div>
   );
 }

@@ -497,3 +497,7 @@
 - [x] Remove "Test All SMTP Accounts" button from single and bulk campaigns
 - [x] Add "Test All SMTP" option in Settings under Rotational Email Addresses section
 - [x] Add "Sent from" indicator in bulk campaign showing assigned SMTP account for that day (Mon-Fri rotation)
+
+## Export Leads & Lead Detail Drawer
+- [x] Add "Export Leads" button to Leads page that downloads filtered leads as CSV with all fields including social profiles
+- [x] Create Lead Detail Drawer/page showing full engagement timeline (emails sent/opened/clicked, calls, social outreach) when clicking a lead row
