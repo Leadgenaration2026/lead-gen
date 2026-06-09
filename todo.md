@@ -542,7 +542,7 @@
 - [x] Backend: Create socialMessages table and procedures for queue management (using existing socialOutreach table)
 
 ## Social Message Notification Email
-- [ ] Add notification email field in Settings Social Media tab
-- [ ] Backend: Save notification email preference in DB (settings table)
-- [ ] Backend: Trigger email notification when social message is due after 1st follow-up
-- [ ] Use notifyOwner or SMTP to send reminder email with message details and profile link
+- [x] Add notification email field in Settings Social Media tab
+- [x] Backend: Save notification email preference in DB (settings table)
+- [x] Backend: Trigger email notification when social message is due after 1st follow-up
+- [x] Use notifyOwner or SMTP to send reminder email with message details and profile link
