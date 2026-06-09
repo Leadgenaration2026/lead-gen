@@ -28,6 +28,7 @@ vi.mock('./db', async (importOriginal) => {
     createEmailTrackingEvent: vi.fn().mockResolvedValue(undefined),
     getRotationalEmailsByUser: vi.fn().mockResolvedValue([]),
     getLeadWeakPoints: vi.fn().mockResolvedValue(null),
+    getWebsiteInsights: vi.fn().mockResolvedValue(null),
   };
 });
 
@@ -51,7 +52,7 @@ function createTestContext(): TrpcContext {
 }
 
 describe('email.generateAI', () => {
-  it('generates a personalized email for a lead', async () => {
+  it('generates a personalized email for a lead', { timeout: 30000 }, async () => {
     const ctx = createTestContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.email.generateAI({

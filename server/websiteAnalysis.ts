@@ -1,4 +1,4 @@
-import { callDataApi } from "./_core/dataApi";
+import { invokeLLM } from "./_core/llm";
 
 export interface WebsiteInsights {
   domain: string;
@@ -30,228 +30,153 @@ export interface WebsiteInsights {
   errors: string[];
 }
 
+export interface CompetitorData {
+  domain: string;
+  totalVisits: number | null;
+  bounceRate: number | null;
+  topKeywords: string[];
+}
+
+export interface CompetitorGap {
+  area: string;
+  competitorAdvantage: string;
+  vagSolution: string;
+}
+
 /**
  * Extract clean domain from a URL (removes protocol, www, path)
  */
 function extractDomain(urlOrDomain: string): string {
   let domain = urlOrDomain.trim().toLowerCase();
-  // Remove protocol
   domain = domain.replace(/^https?:\/\//, "");
-  // Remove www.
   domain = domain.replace(/^www\./, "");
-  // Remove path, query, hash
   domain = domain.split("/")[0].split("?")[0].split("#")[0];
   return domain;
 }
 
 /**
- * Analyze a website using SimilarWeb APIs and return comprehensive insights
+ * AI-powered website analysis using LLM to research and analyze a website.
+ * Replaces SimilarWeb API dependency - works for any website regardless of traffic level.
  */
 export async function analyzeWebsite(websiteUrl: string): Promise<WebsiteInsights> {
   const domain = extractDomain(websiteUrl);
   const errors: string[] = [];
 
-  const now = new Date();
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-  const startDate = `${threeMonthsAgo.getFullYear()}-${String(threeMonthsAgo.getMonth() + 1).padStart(2, "0")}`;
-  const endDate = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
-
-  let totalVisits: number | null = null;
-  let uniqueVisitors: number | null = null;
-  let bounceRate: number | null = null;
-  let globalRank: number | null = null;
-  let topKeywords: WebsiteInsights["topKeywords"] = [];
-  let trafficSources: WebsiteInsights["trafficSources"] = null;
-  let topLandingPages: WebsiteInsights["topLandingPages"] = [];
-
-  // 1. Get total visits
   try {
-    const visitsResult = await callDataApi("Similarweb/get_visits_total", {
-      pathParams: { domain },
-      query: {
-        country: "world",
-        granularity: "monthly",
-        main_domain_only: false,
-        start_date: startDate,
-        end_date: endDate,
-      },
-    }) as any;
+    const response = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert digital marketing analyst and SEO specialist. Analyze the given website domain and provide realistic estimates based on your knowledge of the industry, company size, and typical metrics for similar businesses. Be specific and data-driven in your estimates. If you know the company, use real data. If not, provide reasonable estimates based on the industry and company type.`
+        },
+        {
+          role: "user",
+          content: `Analyze the website: ${domain}
 
-    if (visitsResult && Array.isArray(visitsResult)) {
-      // Get the most recent month's data
-      const latest = visitsResult[visitsResult.length - 1];
-      totalVisits = latest?.visits || null;
-    } else if (visitsResult?.visits) {
-      totalVisits = visitsResult.visits;
-    }
-  } catch (e: any) {
-    errors.push(`Total visits: ${e.message}`);
-  }
+Based on your knowledge of this company/website, provide:
+1. Estimated monthly traffic (total visits and unique visitors)
+2. Estimated bounce rate (as decimal 0-1)
+3. Estimated global rank
+4. Top 5 likely keywords they rank for (with estimated positions and traffic share)
+5. Traffic source breakdown (organic, paid, direct, referral, social, email, display - as percentages totaling 100)
+6. Top 3 landing pages
 
-  // 2. Get bounce rate
-  try {
-    const bounceResult = await callDataApi("Similarweb/get_bounce_rate", {
-      pathParams: { domain },
-      query: {
-        country: "world",
-        granularity: "monthly",
-        main_domain_only: false,
-        start_date: startDate,
-        end_date: endDate,
-      },
-    }) as any;
-
-    if (bounceResult && Array.isArray(bounceResult)) {
-      const latest = bounceResult[bounceResult.length - 1];
-      bounceRate = latest?.bounce_rate || latest?.value || null;
-    } else if (bounceResult?.bounce_rate !== undefined) {
-      bounceRate = bounceResult.bounce_rate;
-    }
-  } catch (e: any) {
-    errors.push(`Bounce rate: ${e.message}`);
-  }
-
-  // 3. Get global rank
-  try {
-    const rankResult = await callDataApi("Similarweb/get_global_rank", {
-      pathParams: { domain },
-      query: {
-        main_domain_only: false,
-        start_date: startDate,
-        end_date: endDate,
-      },
-    }) as any;
-
-    if (rankResult && Array.isArray(rankResult)) {
-      const latest = rankResult[rankResult.length - 1];
-      globalRank = latest?.global_rank || latest?.rank || null;
-    } else if (rankResult?.global_rank !== undefined) {
-      globalRank = rankResult.global_rank;
-    }
-  } catch (e: any) {
-    errors.push(`Global rank: ${e.message}`);
-  }
-
-  // 4. Get top keywords
-  try {
-    const keywordsResult = await callDataApi("Similarweb/website_analysis_keywords", {
-      pathParams: { domain },
-      query: {
-        domain,
-        country: "ww",
-        web_source: "total",
-        traffic_source: "all",
-        branded_type: "all",
-        granularity: "monthly",
-        limit: "10",
-        offset: "0",
-        start_date: startDate,
-        end_date: endDate,
-      },
-    }) as any;
-
-    if (keywordsResult && Array.isArray(keywordsResult)) {
-      topKeywords = keywordsResult.slice(0, 10).map((kw: any) => ({
-        keyword: kw.keyword || kw.search_term || "",
-        trafficShare: kw.traffic_share || kw.share || 0,
-        position: kw.position || kw.avg_position || 0,
-        source: kw.traffic_source === "paid" ? "paid" as const : "organic" as const,
-      }));
-    } else if (keywordsResult?.data && Array.isArray(keywordsResult.data)) {
-      topKeywords = keywordsResult.data.slice(0, 10).map((kw: any) => ({
-        keyword: kw.keyword || kw.search_term || "",
-        trafficShare: kw.traffic_share || kw.share || 0,
-        position: kw.position || kw.avg_position || 0,
-        source: kw.traffic_source === "paid" ? "paid" as const : "organic" as const,
-      }));
-    }
-  } catch (e: any) {
-    errors.push(`Keywords: ${e.message}`);
-  }
-
-  // 5. Get traffic sources breakdown
-  try {
-    const sourcesResult = await callDataApi("Similarweb/get_traffic_sources_desktop", {
-      pathParams: { domain },
-      query: {
-        country: "world",
-        granularity: "monthly",
-        main_domain_only: false,
-        start_date: startDate,
-        end_date: endDate,
-      },
-    }) as any;
-
-    if (sourcesResult) {
-      // SimilarWeb returns traffic sources as an object or array
-      const parseSource = (data: any) => {
-        if (Array.isArray(data)) {
-          // Get the latest month
-          const latest = data[data.length - 1];
-          return latest;
+Return ONLY valid JSON. If you cannot determine specific data, provide your best estimates. Never return all nulls.`
         }
-        return data;
-      };
-
-      const sources = parseSource(sourcesResult);
-      if (sources) {
-        trafficSources = {
-          organic: sources.organic_search || sources["Organic Search"] || 0,
-          paid: sources.paid_search || sources["Paid Search"] || 0,
-          direct: sources.direct || sources["Direct"] || 0,
-          referral: sources.referrals || sources["Referrals"] || 0,
-          social: sources.social || sources["Social"] || 0,
-          email: sources.email || sources["Email"] || 0,
-          display: sources.display_ads || sources["Display Ads"] || 0,
-        };
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "website_analysis",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              totalVisits: { type: "number", description: "Estimated monthly visits" },
+              uniqueVisitors: { type: "number", description: "Estimated unique monthly visitors" },
+              bounceRate: { type: "number", description: "Bounce rate as decimal 0-1" },
+              globalRank: { type: "number", description: "Estimated global rank" },
+              topKeywords: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    keyword: { type: "string" },
+                    trafficShare: { type: "number" },
+                    position: { type: "number" },
+                    source: { type: "string" }
+                  },
+                  required: ["keyword", "trafficShare", "position", "source"],
+                  additionalProperties: false
+                }
+              },
+              trafficSources: {
+                type: "object",
+                properties: {
+                  organic: { type: "number" },
+                  paid: { type: "number" },
+                  direct: { type: "number" },
+                  referral: { type: "number" },
+                  social: { type: "number" },
+                  email: { type: "number" },
+                  display: { type: "number" }
+                },
+                required: ["organic", "paid", "direct", "referral", "social", "email", "display"],
+                additionalProperties: false
+              },
+              topLandingPages: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    url: { type: "string" },
+                    trafficShare: { type: "number" },
+                    keywords: { type: "number" }
+                  },
+                  required: ["url", "trafficShare", "keywords"],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ["totalVisits", "uniqueVisitors", "bounceRate", "globalRank", "topKeywords", "trafficSources", "topLandingPages"],
+            additionalProperties: false
+          }
+        }
       }
-    }
-  } catch (e: any) {
-    errors.push(`Traffic sources: ${e.message}`);
-  }
+    });
 
-  // 6. Get top landing pages
-  try {
-    const landingResult = await callDataApi("Similarweb/keywords_landing_pages", {
-      query: {
+    const content = response.choices?.[0]?.message?.content;
+    if (content && typeof content === "string") {
+      const parsed = JSON.parse(content);
+      return {
         domain,
-        country: "ww",
-        web_source: "total",
-        traffic_source: "organic",
-        limit: "5",
-        granularity: "monthly",
-        start_date: endDate,
-        end_date: endDate,
-      },
-    }) as any;
-
-    if (landingResult && Array.isArray(landingResult)) {
-      topLandingPages = landingResult.slice(0, 5).map((page: any) => ({
-        url: page.url || page.page || "",
-        trafficShare: page.traffic_share || page.share || 0,
-        keywords: page.keywords || page.keyword_count || 0,
-      }));
-    } else if (landingResult?.data && Array.isArray(landingResult.data)) {
-      topLandingPages = landingResult.data.slice(0, 5).map((page: any) => ({
-        url: page.url || page.page || "",
-        trafficShare: page.traffic_share || page.share || 0,
-        keywords: page.keywords || page.keyword_count || 0,
-      }));
+        totalVisits: parsed.totalVisits,
+        uniqueVisitors: parsed.uniqueVisitors,
+        bounceRate: parsed.bounceRate,
+        globalRank: parsed.globalRank,
+        topKeywords: (parsed.topKeywords || []).map((kw: any) => ({
+          ...kw,
+          source: kw.source === "paid" ? "paid" as const : "organic" as const,
+        })),
+        trafficSources: parsed.trafficSources || null,
+        topLandingPages: parsed.topLandingPages || [],
+        analysisDate: new Date().toISOString(),
+        errors: [],
+      };
     }
   } catch (e: any) {
-    errors.push(`Landing pages: ${e.message}`);
+    errors.push(`AI analysis failed: ${e.message}`);
   }
 
   return {
     domain,
-    totalVisits,
-    uniqueVisitors,
-    bounceRate,
-    globalRank,
-    topKeywords,
-    trafficSources,
-    topLandingPages,
+    totalVisits: null,
+    uniqueVisitors: null,
+    bounceRate: null,
+    globalRank: null,
+    topKeywords: [],
+    trafficSources: null,
+    topLandingPages: [],
     analysisDate: new Date().toISOString(),
     errors,
   };
@@ -307,7 +232,7 @@ export function generateInsightsSummary(insights: WebsiteInsights): string {
   if (insights.topKeywords.length > 0) {
     const kwList = insights.topKeywords.slice(0, 5).map(kw => kw.keyword).join(", ");
     parts.push(`Top Keywords: ${kwList}`);
-    
+
     // Check if they're ranking well
     const lowRanking = insights.topKeywords.filter(kw => kw.position > 10);
     if (lowRanking.length > 0) {
@@ -347,152 +272,126 @@ export function generateInsightsSummary(insights: WebsiteInsights): string {
   return parts.join("\n");
 }
 
-
-export interface CompetitorData {
-  domain: string;
-  totalVisits: number | null;
-  bounceRate: number | null;
-  topKeywords: string[];
-}
-
-export interface CompetitorGap {
-  area: string;
-  competitorAdvantage: string;
-  vagSolution: string;
-}
-
 /**
- * Analyze competitors for a given domain using SimilarWeb's similar sites API
+ * AI-powered competitor analysis - identifies real competitors and analyzes gaps.
+ * No paid API dependency - uses LLM knowledge to identify competitors.
  */
 export async function analyzeCompetitors(domain: string): Promise<{
   competitors: CompetitorData[];
   gaps: CompetitorGap[];
 }> {
   const cleanDomain = extractDomain(domain);
-  const competitors: CompetitorData[] = [];
-  const gaps: CompetitorGap[] = [];
 
   try {
-    // Get similar/competing websites
-    const similarResult = await callDataApi("Similarweb/get_similar_sites", {
-      pathParams: { domain: cleanDomain },
-      query: {
-        main_domain_only: false,
-      },
-    }) as any;
+    const response = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: `You are a competitive intelligence analyst. Given a company's website domain, identify their top 3 direct competitors and analyze competitive gaps. Be specific - use real competitor names and domains that actually compete in the same market. Provide realistic traffic estimates.`
+        },
+        {
+          role: "user",
+          content: `Analyze competitors for: ${cleanDomain}
 
-    let competitorDomains: string[] = [];
-    if (similarResult && Array.isArray(similarResult)) {
-      competitorDomains = similarResult.slice(0, 3).map((s: any) => s.url || s.domain || s.site || "");
-    } else if (similarResult?.similar_sites && Array.isArray(similarResult.similar_sites)) {
-      competitorDomains = similarResult.similar_sites.slice(0, 3).map((s: any) => s.url || s.domain || s.site || "");
-    }
+Identify their top 3 direct competitors (real companies that compete for the same customers).
+For each competitor, provide:
+- Their actual domain name
+- Estimated monthly traffic
+- Estimated bounce rate (decimal 0-1)
+- Their top 3 keywords they rank for
 
-    // Get basic metrics for each competitor
-    for (const compDomain of competitorDomains.filter(d => d)) {
-      try {
-        const now = new Date();
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const startDate = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
+Also identify 3 specific competitive gaps where competitors have an advantage over ${cleanDomain}.
+For each gap, explain what the competitor does better and how a virtual assistant/growth service could help close it.
 
-        const visitsResult = await callDataApi("Similarweb/get_visits_total", {
-          pathParams: { domain: compDomain },
-          query: {
-            country: "world",
-            granularity: "monthly",
-            main_domain_only: false,
-            start_date: startDate,
-            end_date: startDate,
-          },
-        }) as any;
-
-        let visits: number | null = null;
-        if (visitsResult && Array.isArray(visitsResult)) {
-          visits = visitsResult[0]?.visits || null;
-        } else if (visitsResult?.visits) {
-          visits = visitsResult.visits;
+Return ONLY valid JSON.`
         }
-
-        competitors.push({
-          domain: compDomain,
-          totalVisits: visits,
-          bounceRate: null,
-          topKeywords: [],
-        });
-      } catch {
-        competitors.push({
-          domain: compDomain,
-          totalVisits: null,
-          bounceRate: null,
-          topKeywords: [],
-        });
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "competitor_analysis",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              competitors: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    domain: { type: "string" },
+                    totalVisits: { type: "number" },
+                    bounceRate: { type: "number" },
+                    topKeywords: { type: "array", items: { type: "string" } }
+                  },
+                  required: ["domain", "totalVisits", "bounceRate", "topKeywords"],
+                  additionalProperties: false
+                }
+              },
+              gaps: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    area: { type: "string" },
+                    competitorAdvantage: { type: "string" },
+                    vagSolution: { type: "string" }
+                  },
+                  required: ["area", "competitorAdvantage", "vagSolution"],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ["competitors", "gaps"],
+            additionalProperties: false
+          }
+        }
       }
-    }
-  } catch {
-    // If similar sites API fails, we'll still return empty arrays
-  }
-
-  // Generate gaps based on competitor data vs the lead's site
-  if (competitors.length > 0) {
-    const topCompetitor = competitors.reduce((best, c) => 
-      (c.totalVisits || 0) > (best.totalVisits || 0) ? c : best
-    , competitors[0]);
-
-    if (topCompetitor.totalVisits && topCompetitor.totalVisits > 0) {
-      gaps.push({
-        area: "Traffic Volume",
-        competitorAdvantage: `${topCompetitor.domain} gets ~${formatTraffic(topCompetitor.totalVisits)} monthly visits`,
-        vagSolution: "SEO content strategy + social media management to close the traffic gap",
-      });
-    }
-
-    gaps.push({
-      area: "Content Marketing",
-      competitorAdvantage: `Competitors maintain active blogs and social presence driving organic traffic`,
-      vagSolution: "Virtual assistants can manage blog writing, social media posting, and content scheduling at $6/hr",
     });
 
-    gaps.push({
-      area: "Lead Generation",
-      competitorAdvantage: `Competitors use optimized landing pages and lead magnets to capture visitors`,
-      vagSolution: "Our VAs can build landing pages, create lead magnets, and manage email nurture sequences",
-    });
+    const content = response.choices?.[0]?.message?.content;
+    if (content && typeof content === "string") {
+      const parsed = JSON.parse(content);
+      return {
+        competitors: parsed.competitors || [],
+        gaps: parsed.gaps || [],
+      };
+    }
+  } catch (e: any) {
+    console.warn("[WebsiteAnalysis] AI competitor analysis failed:", e.message);
   }
 
-  return { competitors, gaps };
+  return { competitors: [], gaps: [] };
 }
 
 /**
- * Fetch recent news and industry insights for a domain/company using LLM
+ * AI-powered industry insights and news generation
  */
 export async function fetchIndustryInsights(companyName: string, industry: string, domain: string): Promise<{
   recentNews: Array<{ title: string; relevance: string; angle: string }>;
   industryInsights: string[];
 }> {
   try {
-    const { invokeLLM } = await import("./_core/llm");
-
     const response = await invokeLLM({
       messages: [
         {
           role: "system",
-          content: `You are a business intelligence analyst. Generate realistic and relevant recent industry news and insights that would be applicable to a company in the ${industry} industry. These will be used to personalize outreach emails. Make them specific, timely, and actionable.`
+          content: `You are a business intelligence analyst specializing in ${industry}. Generate realistic and relevant recent industry news and insights that would be applicable to a company in this space. These will be used to personalize outreach emails. Make them specific, timely, and actionable. Reference real trends, technologies, and market shifts happening in 2024-2025.`
         },
         {
           role: "user",
-          content: `Generate 3 recent industry news items and 3 key industry insights for ${companyName} (${domain}) in the ${industry} industry.
+          content: `Generate industry intelligence for ${companyName} (${domain}) in the ${industry} industry.
 
-Return a JSON object with:
-- "recentNews": array of 3 objects with "title" (headline), "relevance" (why it matters to them), "angle" (how VAG can help them respond to this trend)
-- "industryInsights": array of 3 strings describing current challenges/opportunities in their industry that a virtual assistant service could help address
+Provide:
+1. 3 recent industry news/trends (reference real market shifts, regulatory changes, or technology trends)
+2. 3 key industry insights about challenges/opportunities
 
-Focus on:
-- Digital transformation trends in their industry
-- Common operational inefficiencies
-- Growth opportunities they might be missing
-- Recent regulatory or market changes
+For each news item, explain:
+- The headline/trend
+- Why it's relevant to THIS specific company
+- How a virtual assistant/growth service could help them capitalize on or respond to this trend
 
-Return ONLY valid JSON, no markdown.`
+Return ONLY valid JSON.`
         }
       ],
       response_format: {
@@ -510,22 +409,22 @@ Return ONLY valid JSON, no markdown.`
                   properties: {
                     title: { type: "string" },
                     relevance: { type: "string" },
-                    angle: { type: "string" },
+                    angle: { type: "string" }
                   },
                   required: ["title", "relevance", "angle"],
-                  additionalProperties: false,
-                },
+                  additionalProperties: false
+                }
               },
               industryInsights: {
                 type: "array",
-                items: { type: "string" },
-              },
+                items: { type: "string" }
+              }
             },
             required: ["recentNews", "industryInsights"],
-            additionalProperties: false,
-          },
-        },
-      },
+            additionalProperties: false
+          }
+        }
+      }
     });
 
     const content = response.choices?.[0]?.message?.content;
@@ -545,6 +444,7 @@ Return ONLY valid JSON, no markdown.`
 
 /**
  * Full analysis: website + competitors + news (for auto-analyze on lead import)
+ * All AI-powered - no paid API dependencies required
  */
 export async function fullWebsiteAnalysis(domain: string, companyName: string, industry: string): Promise<{
   insights: WebsiteInsights;
@@ -563,13 +463,15 @@ export async function fullWebsiteAnalysis(domain: string, companyName: string, i
 
   // Generate enhanced summary including competitor and news data
   const baseSummary = generateInsightsSummary(insights);
-  
   let enhancedSummary = baseSummary;
 
   if (competitorResult.competitors.length > 0) {
     enhancedSummary += "\n\nCOMPETITOR ANALYSIS:";
     for (const comp of competitorResult.competitors) {
       enhancedSummary += `\n- ${comp.domain}: ~${formatTraffic(comp.totalVisits)} monthly visits`;
+      if (comp.topKeywords.length > 0) {
+        enhancedSummary += ` | Top keywords: ${comp.topKeywords.join(", ")}`;
+      }
     }
     if (competitorResult.gaps.length > 0) {
       enhancedSummary += "\n\nCOMPETITOR GAPS (what competitors do that this company doesn't):";

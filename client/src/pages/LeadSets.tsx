@@ -10,7 +10,8 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FolderPlus, Pencil, Trash2, Merge, ArrowLeft, Users } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Loader2, FolderPlus, Pencil, Trash2, Merge, ArrowLeft, Users, ChevronDown, ChevronRight, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -24,6 +25,16 @@ export default function LeadSetsPage() {
   const renameMutation = trpc.leadSets.rename.useMutation();
   const deleteMutation = trpc.leadSets.delete.useMutation();
   const mergeMutation = trpc.leadSets.merge.useMutation();
+  const updateLeadMutation = trpc.leads.update.useMutation({
+    onSuccess: () => {
+      toast.success("Lead updated successfully");
+      leadsQuery.refetch();
+      setEditingLeadId(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to update lead");
+    },
+  });
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -39,6 +50,11 @@ export default function LeadSetsPage() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSourceId, setMergeSourceId] = useState<number | null>(null);
   const [mergeTargetId, setMergeTargetId] = useState<string>("");
+
+  // Expanded set and edit lead state
+  const [expandedSetId, setExpandedSetId] = useState<number | null>(null);
+  const [editingLeadId, setEditingLeadId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
 
   if (authLoading) {
     return (
@@ -58,6 +74,7 @@ export default function LeadSetsPage() {
 
   // Count leads per set
   const getLeadCount = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId).length;
+  const getLeadsForSet = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId);
   const unassignedCount = allLeads.filter((l: any) => !l.leadSetId).length;
 
   const handleCreate = async () => {
@@ -123,9 +140,41 @@ export default function LeadSetsPage() {
     }
   };
 
+  const handleEditLead = (lead: any) => {
+    setEditingLeadId(lead.id);
+    setEditForm({
+      companyName: lead.companyName || "",
+      ownerName: lead.ownerName || "",
+      email: lead.email || "",
+      phoneNumber: lead.phoneNumber || "",
+      website: lead.website || "",
+      industry: lead.industry || "",
+      linkedinUrl: lead.linkedinUrl || "",
+      instagramUrl: lead.instagramUrl || "",
+      facebookUrl: lead.facebookUrl || "",
+      status: lead.status || "new",
+      tag: lead.tag || "none",
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingLeadId) return;
+    updateLeadMutation.mutate({ id: editingLeadId, data: editForm });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingLeadId(null);
+    setEditForm({});
+  };
+
+  const toggleExpand = (setId: number) => {
+    setExpandedSetId(expandedSetId === setId ? null : setId);
+    setEditingLeadId(null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <div className="container max-w-5xl py-8 space-y-6">
+      <div className="container max-w-6xl py-8 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -224,7 +273,7 @@ export default function LeadSetsPage() {
         <Card>
           <CardHeader>
             <CardTitle>All Lead Sets</CardTitle>
-            <CardDescription>Manage your lead groups — rename, merge, or delete them</CardDescription>
+            <CardDescription>Click a set to expand and view/edit its leads</CardDescription>
           </CardHeader>
           <CardContent>
             {leadSets.length === 0 ? (
@@ -234,35 +283,31 @@ export default function LeadSetsPage() {
                 <p className="text-sm mt-1">Create your first lead set to start organizing leads</p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-center">Leads</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leadSets.map((set: any) => (
-                    <TableRow key={set.id}>
-                      <TableCell className="font-medium">
+              <div className="space-y-2">
+                {leadSets.map((set: any) => (
+                  <div key={set.id} className="border rounded-lg overflow-hidden">
+                    {/* Set Row */}
+                    <div
+                      className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => toggleExpand(set.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {expandedSetId === set.id ? (
+                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        )}
                         <Badge variant="outline" className="text-sm px-3 py-1">
                           {set.name}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {set.description || "—"}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary">{getLeadCount(set.id)}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(set.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <span className="text-sm text-muted-foreground">{set.description || ""}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant="secondary">{getLeadCount(set.id)} leads</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(set.createdAt).toLocaleDateString()}
+                        </span>
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -301,11 +346,205 @@ export default function LeadSetsPage() {
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      </div>
+                    </div>
+
+                    {/* Expanded Leads List */}
+                    {expandedSetId === set.id && (
+                      <div className="border-t bg-muted/20 px-4 py-3">
+                        {getLeadsForSet(set.id).length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">No leads in this set</p>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Company</TableHead>
+                                <TableHead>Owner</TableHead>
+                                <TableHead>Email</TableHead>
+                                <TableHead>Phone</TableHead>
+                                <TableHead>Industry</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {getLeadsForSet(set.id).map((lead: any) => (
+                                editingLeadId === lead.id ? (
+                                  /* Edit Mode Row */
+                                  <TableRow key={lead.id} className="bg-blue-50/50">
+                                    <TableCell colSpan={7}>
+                                      <div className="space-y-4 py-2">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                          <div>
+                                            <Label className="text-xs">Company Name</Label>
+                                            <Input
+                                              value={editForm.companyName}
+                                              onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Owner Name</Label>
+                                            <Input
+                                              value={editForm.ownerName}
+                                              onChange={(e) => setEditForm({ ...editForm, ownerName: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Email</Label>
+                                            <Input
+                                              value={editForm.email}
+                                              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Phone</Label>
+                                            <Input
+                                              value={editForm.phoneNumber}
+                                              onChange={(e) => setEditForm({ ...editForm, phoneNumber: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Website</Label>
+                                            <Input
+                                              value={editForm.website}
+                                              onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Industry</Label>
+                                            <Input
+                                              value={editForm.industry}
+                                              onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">LinkedIn URL</Label>
+                                            <Input
+                                              value={editForm.linkedinUrl}
+                                              onChange={(e) => setEditForm({ ...editForm, linkedinUrl: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Instagram URL</Label>
+                                            <Input
+                                              value={editForm.instagramUrl}
+                                              onChange={(e) => setEditForm({ ...editForm, instagramUrl: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Facebook URL</Label>
+                                            <Input
+                                              value={editForm.facebookUrl}
+                                              onChange={(e) => setEditForm({ ...editForm, facebookUrl: e.target.value })}
+                                              className="mt-1 h-8 text-sm"
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Status</Label>
+                                            <Select
+                                              value={editForm.status}
+                                              onValueChange={(v) => setEditForm({ ...editForm, status: v })}
+                                            >
+                                              <SelectTrigger className="mt-1 h-8 text-sm">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="new">New</SelectItem>
+                                                <SelectItem value="contacted">Contacted</SelectItem>
+                                                <SelectItem value="qualified">Qualified</SelectItem>
+                                                <SelectItem value="converted">Converted</SelectItem>
+                                                <SelectItem value="rejected">Rejected</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                          <div>
+                                            <Label className="text-xs">Tag</Label>
+                                            <Select
+                                              value={editForm.tag}
+                                              onValueChange={(v) => setEditForm({ ...editForm, tag: v })}
+                                            >
+                                              <SelectTrigger className="mt-1 h-8 text-sm">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="hot">Hot</SelectItem>
+                                                <SelectItem value="warm">Warm</SelectItem>
+                                                <SelectItem value="cold">Cold</SelectItem>
+                                                <SelectItem value="follow_up">Follow Up</SelectItem>
+                                                <SelectItem value="none">None</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 justify-end">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={handleCancelEdit}
+                                          >
+                                            <X className="w-4 h-4 mr-1" /> Cancel
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            onClick={handleSaveEdit}
+                                            disabled={updateLeadMutation.isPending}
+                                          >
+                                            {updateLeadMutation.isPending ? (
+                                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                            ) : (
+                                              <Save className="w-4 h-4 mr-1" />
+                                            )}
+                                            Save
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ) : (
+                                  /* Display Mode Row */
+                                  <TableRow key={lead.id}>
+                                    <TableCell className="font-medium text-sm">{lead.companyName}</TableCell>
+                                    <TableCell className="text-sm">{lead.ownerName}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{lead.phoneNumber || "—"}</TableCell>
+                                    <TableCell className="text-sm">{lead.industry || "—"}</TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={lead.status === "converted" ? "default" : lead.status === "rejected" ? "destructive" : "secondary"}
+                                        className="text-xs"
+                                      >
+                                        {lead.status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleEditLead(lead)}
+                                        title="Edit lead"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              ))}
+                            </TableBody>
+                          </Table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>

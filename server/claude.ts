@@ -19,6 +19,13 @@ interface GenerateEmailParams {
     industryTrends?: string[];
     competitiveThreats?: string[];
   };
+  websiteAnalysis?: {
+    competitors?: Array<{ domain: string; totalVisits: number | null; topKeywords: string[] }>;
+    competitorGaps?: Array<{ area: string; competitorAdvantage: string; vagSolution: string }>;
+    recentNews?: Array<{ title: string; relevance: string; angle: string }>;
+    industryInsights?: string[];
+    trafficSummary?: string;
+  };
 }
 
 interface GeneratedEmail {
@@ -130,9 +137,43 @@ FORMAT: Write the email body as PLAIN TEXT:
 - Do NOT use markdown headers or links
 - Just plain readable text with emoji icons and **bold markers**`;
 
+  // Build website analysis context
+  let websiteAnalysisContext = "";
+  if (params.websiteAnalysis) {
+    const wa = params.websiteAnalysis;
+    const parts: string[] = [];
+    if (wa.trafficSummary) parts.push(`Traffic Summary: ${wa.trafficSummary}`);
+    if (wa.competitors && wa.competitors.length > 0) {
+      parts.push(`\nDIRECT COMPETITORS (mention these by name in the email):`);
+      for (const c of wa.competitors) {
+        const traffic = c.totalVisits ? (c.totalVisits >= 1000000 ? `${(c.totalVisits/1000000).toFixed(1)}M` : c.totalVisits >= 1000 ? `${(c.totalVisits/1000).toFixed(1)}K` : `${c.totalVisits}`) : 'unknown';
+        parts.push(`- ${c.domain}: ~${traffic} monthly visits | Keywords: ${c.topKeywords.join(', ')}`);
+      }
+    }
+    if (wa.competitorGaps && wa.competitorGaps.length > 0) {
+      parts.push(`\nCOMPETITOR GAPS (use these to show what the company is missing):`);
+      for (const g of wa.competitorGaps) {
+        parts.push(`- ${g.area}: ${g.competitorAdvantage} → Our solution: ${g.vagSolution}`);
+      }
+    }
+    if (wa.recentNews && wa.recentNews.length > 0) {
+      parts.push(`\nRECENT INDUSTRY NEWS (reference at least one in the email):`);
+      for (const n of wa.recentNews) {
+        parts.push(`- ${n.title} | Relevance: ${n.relevance} | Angle: ${n.angle}`);
+      }
+    }
+    if (wa.industryInsights && wa.industryInsights.length > 0) {
+      parts.push(`\nINDUSTRY INSIGHTS:`);
+      for (const i of wa.industryInsights) {
+        parts.push(`- ${i}`);
+      }
+    }
+    websiteAnalysisContext = `\n\nWEBSITE & COMPETITIVE INTELLIGENCE (MUST use this data to make the email specific and data-driven):\n${parts.join('\n')}`;
+  }
+
   const userPrompt = `Write a cold outreach email based on this description:
 
-"${params.prompt}"${companyInfo}${leadInfo}${problemContext}
+"${params.prompt}"${companyInfo}${leadInfo}${problemContext}${websiteAnalysisContext}
 
 IMPORTANT: Generate a COMPLETELY UNIQUE email. Do not use cookie-cutter templates. Every sentence should feel fresh and specifically written for this recipient.
 
