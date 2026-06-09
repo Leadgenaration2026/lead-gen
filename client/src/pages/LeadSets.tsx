@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, FolderPlus, Pencil, Trash2, Merge, ArrowLeft, Users, ChevronDown, ChevronRight, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import DashboardLayout from "@/components/DashboardLayout";
 
 export default function LeadSetsPage() {
   const { user, isLoading: authLoading } = useAuth() as any;
@@ -173,14 +174,12 @@ export default function LeadSetsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <div className="container max-w-6xl py-8 space-y-6">
+    <DashboardLayout>
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back
-            </Button>
+
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Lead Sets</h1>
               <p className="text-muted-foreground text-sm">Organize your leads into named groups for better management</p>
@@ -637,6 +636,6 @@ export default function LeadSetsPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }

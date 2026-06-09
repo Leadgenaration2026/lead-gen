@@ -11,12 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock, Globe, Linkedin } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock, Globe, Linkedin, X } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { WebsiteInsightsPanel } from "@/components/WebsiteInsightsPanel";
+import DashboardLayout from "@/components/DashboardLayout";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -254,6 +255,7 @@ export default function EmailComposer() {
   };
 
   return (
+    <DashboardLayout>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Email Composer</h1>
@@ -1266,6 +1268,18 @@ export default function EmailComposer() {
 
                 <div className="flex gap-3 pt-2 border-t">
                   <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => {
+                      setCampaignFormData({ name: '', description: '', subject: '', emailTemplate: '', leadIds: [], scheduledAt: '' });
+                      setEnableScheduling(false);
+                      setLastCampaignAIPrompt(null);
+                      toast.success('Campaign form cleared');
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-2" /> Clear
+                  </Button>
+                  <Button
                     onClick={handleCreateCampaign}
                     disabled={createCampaignMutation.isPending || (enableScheduling && !campaignFormData.scheduledAt)}
                     className={enableScheduling ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"}
@@ -1433,5 +1447,6 @@ export default function EmailComposer() {
         </TabsContent>
       </Tabs>
     </div>
+    </DashboardLayout>
   );
 }

@@ -525,3 +525,10 @@
 - [x] Frontend: Show competitor comparison data in WebsiteInsightsPanel (what competitors have that client lacks)
 - [x] Frontend: Show recent news/industry insights in the analysis panel
 - [x] Testing: Write tests for competitor comparison and news integration (7 new tests, 193 total passing)
+
+## Fix: Edit Leads, Unsubscribe Link, Clear Campaign, Navigation
+- [x] Fix edit leads on Lead Sets page - working edit dialog with all fields
+- [x] Fix unsubscribe link to be clickable HTML link (not plain text) in both single and bulk emails
+- [x] Unsubscribe link auto-removes lead from follow-up emails when clicked
+- [x] Add clear/reset button on bulk campaign page to start fresh
+- [x] Add navigation bar on every page for easy navigation between sections

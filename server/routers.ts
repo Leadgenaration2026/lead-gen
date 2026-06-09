@@ -1929,7 +1929,9 @@ Respond in this exact JSON format:
 
         
         // Convert plain text to HTML if needed, append signature
-        const htmlBody = plainTextToHtml(trackedBody) + NITIN_SIGNATURE_HTML + trackingPixel;
+        const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
+        const unsubscribeHtml = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+        const htmlBody = plainTextToHtml(trackedBody) + NITIN_SIGNATURE_HTML + unsubscribeHtml + trackingPixel;
 
         try {
           await transporter.sendMail({
@@ -1937,6 +1939,7 @@ Respond in this exact JSON format:
             to: lead.email,
             subject: input.subject,
             html: htmlBody,
+            headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
           });
         } catch (smtpError: any) {
           console.error("[Email Send] SMTP error:", smtpError.message, smtpError.code);
@@ -2190,7 +2193,7 @@ Respond in this exact JSON format:
         // Append Nitin's signature
         let fullBody = result.body;
         fullBody += "\n\n" + NITIN_SIGNATURE_PLAIN;
-        fullBody += UNSUBSCRIBE_PLACEHOLDER_PLAIN;
+        fullBody += "\n\n---\n[Unsubscribe link will be added automatically when sent]";
 
         return {
           ...result,
@@ -3008,7 +3011,7 @@ Use the website data to:
         // Append Nitin's signature
         let fullBody = result.body;
         fullBody += "\n\n" + NITIN_SIGNATURE_PLAIN;
-        fullBody += UNSUBSCRIBE_PLACEHOLDER_PLAIN;
+        fullBody += "\n\n---\n[Unsubscribe link will be added automatically when sent]";
 
         return {
           ...result,

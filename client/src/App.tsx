@@ -1,3 +1,4 @@
+import React from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -6,6 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
+import DashboardLayout from "./components/DashboardLayout";
 import EmailComposer from "./pages/EmailComposer";
 import SignatureEditor from "./pages/SignatureEditor";
 import FollowUpReports from "./pages/FollowUpReports";
@@ -15,6 +17,17 @@ import Analytics from "./pages/Analytics";
 import LeadSets from "./pages/LeadSets";
 import CampaignDetail from "./pages/CampaignDetail";
 import AllLeads from "./pages/AllLeads";
+import Campaigns from "./pages/Campaigns";
+import SettingsPage from "./pages/Settings";
+
+// Wrapper to add DashboardLayout to pages
+function WithLayout({ component: Component }: { component: React.ComponentType }) {
+  return (
+    <DashboardLayout>
+      <Component />
+    </DashboardLayout>
+  );
+}
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -23,14 +36,16 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"} component={Dashboard} />
       <Route path={"/email-composer"} component={EmailComposer} />
-      <Route path={"/signature"} component={SignatureEditor} />
-      <Route path={"/follow-up-reports"} component={FollowUpReports} />
-      <Route path={"/templates"} component={CampaignTemplates} />
+      <Route path={"/signature"}>{() => <WithLayout component={SignatureEditor} />}</Route>
+      <Route path={"/follow-up-reports"}>{() => <WithLayout component={FollowUpReports} />}</Route>
+      <Route path={"/templates"}>{() => <WithLayout component={CampaignTemplates} />}</Route>
       <Route path={"/scheduled-emails"} component={ScheduledEmails} />
-      <Route path={"/analytics"} component={Analytics} />
+      <Route path={"/analytics"}>{() => <WithLayout component={Analytics} />}</Route>
       <Route path={"/lead-sets"} component={LeadSets} />
-      <Route path={"/all-leads"} component={AllLeads} />
-      <Route path={"/campaigns/:id"} component={CampaignDetail} />
+      <Route path={"/all-leads"}>{() => <WithLayout component={AllLeads} />}</Route>
+      <Route path={"/campaigns/:id"}>{() => <WithLayout component={CampaignDetail} />}</Route>
+      <Route path={"/campaigns"}>{() => <WithLayout component={Campaigns} />}</Route>
+      <Route path={"/settings"}>{() => <WithLayout component={SettingsPage} />}</Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

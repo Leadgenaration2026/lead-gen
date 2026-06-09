@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, Clock, CalendarDays } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -30,11 +30,14 @@ import { Button } from "./ui/button";
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Users, label: "All Leads", path: "/all-leads" },
+  { icon: FolderOpen, label: "Lead Sets", path: "/lead-sets" },
   { icon: Mail, label: "Email Composer", path: "/email-composer" },
-  { icon: Megaphone, label: "Campaigns", path: "/email-composer" },
+  { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
   { icon: FileText, label: "Templates", path: "/templates" },
   { icon: BarChart3, label: "Analytics", path: "/analytics" },
-  { icon: Settings, label: "Settings", path: "/dashboard" },
+  { icon: Clock, label: "Follow-ups", path: "/follow-up-reports" },
+  { icon: CalendarDays, label: "Scheduled", path: "/scheduled-emails" },
+  { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
