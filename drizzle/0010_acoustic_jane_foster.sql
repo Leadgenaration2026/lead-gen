@@ -1,0 +1,1 @@
+ALTER TABLE `userSettings` ADD `socialNotificationEmail` varchar(320);

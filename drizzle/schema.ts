@@ -162,6 +162,7 @@ export const userSettings = mysqlTable("userSettings", {
   // Social outreach limits
   socialDailyLimit: int("socialDailyLimit").default(20), // Max connection requests per day across all platforms
   socialMessageCharLimit: int("socialMessageCharLimit").default(300), // Max characters for social messages
+  socialNotificationEmail: varchar("socialNotificationEmail", { length: 320 }), // Email to receive notifications when social messages are due
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

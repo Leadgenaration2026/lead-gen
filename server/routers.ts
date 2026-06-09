@@ -67,6 +67,7 @@ const updateUserSettingsSchema = z.object({
   facebookType: z.enum(["page", "personal"]).optional(),
   socialDailyLimit: z.number().optional(),
   socialMessageCharLimit: z.number().optional(),
+  socialNotificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
 
 export const appRouter = router({
@@ -1248,6 +1249,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           facebookType: "personal" as const,
           socialDailyLimit: 20,
           socialMessageCharLimit: 300,
+          socialNotificationEmail: "",
         };
       }
       // Don't return sensitive data to frontend
@@ -1272,6 +1274,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         facebookType: settings.facebookType || "personal",
         socialDailyLimit: settings.socialDailyLimit || 20,
         socialMessageCharLimit: settings.socialMessageCharLimit || 300,
+        socialNotificationEmail: settings.socialNotificationEmail || "",
       };
     }),
 

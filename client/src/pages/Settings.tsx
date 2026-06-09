@@ -63,6 +63,7 @@ export default function SettingsPage() {
     instagramType: "personal" as "personal" | "page",
     facebookUrl: "",
     facebookType: "personal" as "personal" | "page",
+    socialNotificationEmail: "",
   });
 
   // Email deliverability checks state
@@ -108,6 +109,7 @@ export default function SettingsPage() {
         instagramType: (settingsQuery.data as any).instagramType || "personal",
         facebookUrl: (settingsQuery.data as any).facebookUrl || "",
         facebookType: (settingsQuery.data as any).facebookType || "personal",
+        socialNotificationEmail: (settingsQuery.data as any).socialNotificationEmail || "",
       });
       setPasswordTouched(false);
       setRetellKeyTouched(false);
@@ -898,7 +900,9 @@ export default function SettingsPage() {
                       instagramType: socialProfiles.instagramType,
                       facebookUrl: socialProfiles.facebookUrl || undefined,
                       facebookType: socialProfiles.facebookType,
+                      socialNotificationEmail: socialProfiles.socialNotificationEmail || undefined,
                     });
+                    toast.success("Notification email saved");
                     toast.success("Social profiles saved!");
                     settingsQuery.refetch();
                   } catch (error: any) {
@@ -914,6 +918,51 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Social Message Notification Email */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                Social Message Notifications
+              </CardTitle>
+              <CardDescription>
+                Get notified by email when social messages are due (after the 1st follow-up email is sent). You can then manually send the messages from the Message Queue.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Notification Email Address</Label>
+                <Input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={socialProfiles.socialNotificationEmail}
+                  onChange={(e) => setSocialProfiles({ ...socialProfiles, socialNotificationEmail: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  When a social message is queued (after the 1st follow-up email), you will receive an email notification with the lead details and a link to the Message Queue.
+                </p>
+              </div>
+              <Button
+                onClick={async () => {
+                  try {
+                    await updateSettingsMutation.mutateAsync({
+                      socialNotificationEmail: socialProfiles.socialNotificationEmail || undefined,
+                    });
+                    toast.success("Notification email saved");
+                    settingsQuery.refetch();
+                  } catch (error: any) {
+                    toast.error(error?.message || "Failed to save notification email");
+                  }
+                }}
+                disabled={updateSettingsMutation.isPending}
+                variant="outline"
+                className="gap-2"
+              >
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Notification Email
+              </Button>
+            </CardContent>
+          </Card>
           {/* Social Media Account Authorization */}
           <Card className="mt-6">
             <CardHeader>

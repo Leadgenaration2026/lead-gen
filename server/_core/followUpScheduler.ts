@@ -359,6 +359,35 @@ export async function processScheduledFollowUpEmails() {
                         characterCount: message.length,
                       });
                       console.log(`[FollowUpScheduler] Sent ${platform} connection request to ${lead.ownerName} (${message.length} chars)`);
+                      // Send notification email if configured
+                      if (settings.socialNotificationEmail) {
+                        try {
+                          const nodemailer = await import("nodemailer");
+                          const transporter = nodemailer.default.createTransport({
+                            host: settings.smtpHost || '',
+                            port: settings.smtpPort || 587,
+                            secure: (settings.smtpPort || 587) === 465,
+                            auth: { user: settings.smtpUsername || '', pass: settings.smtpPassword || '' },
+                          });
+                          await transporter.sendMail({
+                            from: `"Lead Gen System" <${settings.senderEmail || settings.smtpUsername}>`,
+                            to: settings.socialNotificationEmail,
+                            subject: `Social Message Due: ${lead.ownerName} (${platform})`,
+                            html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                              <h2 style="color: #1a1a1a;">Social Message Ready to Send</h2>
+                              <p>A <strong>${platform}</strong> message is ready for <strong>${lead.ownerName}</strong> at <strong>${lead.companyName}</strong>.</p>
+                              <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                                <p style="margin: 0; font-style: italic;">"${message}"</p>
+                              </div>
+                              <p><strong>Profile URL:</strong> <a href="${profileUrl}">${profileUrl}</a></p>
+                              <p style="margin-top: 20px;">Go to your <strong>Message Queue</strong> to copy the message and open the profile.</p>
+                            </div>`,
+                          });
+                          console.log(`[FollowUpScheduler] Notification sent to ${settings.socialNotificationEmail} for ${platform} message`);
+                        } catch (notifError) {
+                          console.error(`[FollowUpScheduler] Failed to send notification email:`, notifError);
+                        }
+                      }
                     }
                   }
                 } else {

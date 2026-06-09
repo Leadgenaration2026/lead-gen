@@ -534,9 +534,15 @@
 - [x] Add navigation bar on every page for easy navigation between sections
 
 ## Social Messaging Workflow Improvements
-- [ ] Remove misleading "API automation" text from social messaging UI
-- [ ] Implement one-click copy message + open profile workflow for LinkedIn/Instagram/Facebook
+- [x] Remove misleading "API automation" text from social messaging UI
+- [x] Implement one-click copy message + open profile workflow for LinkedIn/Instagram/Facebook
 - [x] Create Message Queue page showing all pending social messages
-- [ ] Add batch actions (copy all, mark as sent) to Message Queue
+- [x] Add batch actions (copy all, mark as sent) to Message Queue
 - [x] Add Message Queue to sidebar navigation
-- [ ] Backend: Create socialMessages table and procedures for queue management
+- [x] Backend: Create socialMessages table and procedures for queue management (using existing socialOutreach table)
+
+## Social Message Notification Email
+- [ ] Add notification email field in Settings Social Media tab
+- [ ] Backend: Save notification email preference in DB (settings table)
+- [ ] Backend: Trigger email notification when social message is due after 1st follow-up
+- [ ] Use notifyOwner or SMTP to send reminder email with message details and profile link
