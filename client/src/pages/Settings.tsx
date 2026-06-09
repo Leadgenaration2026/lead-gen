@@ -1027,7 +1027,7 @@ export default function SettingsPage() {
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-xs text-amber-800">
-                  <strong>Note:</strong> Full API automation requires developer apps from LinkedIn, Meta (Instagram/Facebook). Currently, the system generates AI messages and opens the profile for you to send manually. Once API keys are configured, messages will be sent automatically.
+                  <strong>How it works:</strong> The system generates personalized AI messages using Claude. Click "Copy & Open Profile" to copy the message and open the lead's profile — then paste and send manually. All outreach is tracked in the Message Queue.
                 </p>
               </div>
             </CardContent>

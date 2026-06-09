@@ -434,6 +434,10 @@ export default function SocialOutreach() {
                     Open Profile
                   </Button>
                 </div>
+                <Button onClick={() => { handleCopy(); setTimeout(() => handleOpenProfile(), 300); }} variant="default" size="sm" className="w-full gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy & Open Profile
+                </Button>
                 <Button
                   onClick={handleSend}
                   disabled={isSending || !criticalChecksPassed}
@@ -443,11 +447,11 @@ export default function SocialOutreach() {
                   {isSending ? (
                     <><Loader2 className="w-4 h-4 animate-spin" />Recording...</>
                   ) : (
-                    <><Send className="w-4 h-4" />Record & Send</>
+                    <><Send className="w-4 h-4" />Save to Queue</>
                   )}
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
-                  Records outreach in system, then opens profile for you to send manually
+                  Saves message to your Message Queue for tracking
                 </p>
               </div>
             ) : (

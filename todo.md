@@ -532,3 +532,11 @@
 - [x] Unsubscribe link auto-removes lead from follow-up emails when clicked
 - [x] Add clear/reset button on bulk campaign page to start fresh
 - [x] Add navigation bar on every page for easy navigation between sections
+
+## Social Messaging Workflow Improvements
+- [ ] Remove misleading "API automation" text from social messaging UI
+- [ ] Implement one-click copy message + open profile workflow for LinkedIn/Instagram/Facebook
+- [x] Create Message Queue page showing all pending social messages
+- [ ] Add batch actions (copy all, mark as sent) to Message Queue
+- [x] Add Message Queue to sidebar navigation
+- [ ] Backend: Create socialMessages table and procedures for queue management
