@@ -85,7 +85,8 @@ export function registerEmailTrackingRoutes(app: Express) {
               settings.retellAgentId,
               normalizedFromPhone,
               'email_open',
-              (lead as any).timezone || undefined
+              (lead as any).timezone || undefined,
+              { customerName: lead.ownerName, customerEmail: lead.email, companyName: lead.companyName }
             );
             
             if (result.success) {
@@ -186,7 +187,8 @@ export function registerEmailTrackingRoutes(app: Express) {
                 settings.retellAgentId,
                 normalizedFromPhone,
                 'email_click',
-                (lead as any).timezone || undefined
+                (lead as any).timezone || undefined,
+                { customerName: lead.ownerName, customerEmail: lead.email, companyName: lead.companyName }
               );
               
               if (result.success) {

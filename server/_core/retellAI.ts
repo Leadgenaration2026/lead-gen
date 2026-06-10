@@ -15,6 +15,16 @@ export interface RetellCallResponse {
 }
 
 /**
+ * Lead context passed to Retell.AI dynamic variables so the AI agent
+ * can address the customer by name and confirm their email during the call.
+ */
+export interface RetellLeadContext {
+  customerName?: string;
+  customerEmail?: string;
+  companyName?: string;
+}
+
+/**
  * Trigger an outbound call via Retell.AI
  */
 export async function triggerRetellCall(
@@ -23,7 +33,8 @@ export async function triggerRetellCall(
   apiKey: string,
   agentId: string,
   senderPhoneNumber: string,
-  triggerReason: "email_open" | "email_click"
+  triggerReason: "email_open" | "email_click",
+  leadContext?: RetellLeadContext
 ): Promise<string | null> {
   try {
     if (!apiKey || !agentId || !senderPhoneNumber) {
@@ -31,8 +42,20 @@ export async function triggerRetellCall(
       return null;
     }
 
-    console.log(`[RetellAI] Creating phone call - to: ${phoneNumber}, from: ${senderPhoneNumber}, agent: ${agentId}`);
+    console.log(`[RetellAI] Creating phone call - to: ${phoneNumber}, from: ${senderPhoneNumber}, agent: ${agentId}, customer: ${leadContext?.customerName || 'unknown'}`);
     
+    // Build dynamic variables to pass customer context to the AI agent
+    const retell_llm_dynamic_variables: Record<string, string> = {};
+    if (leadContext?.customerName) {
+      retell_llm_dynamic_variables.customer_name = leadContext.customerName;
+    }
+    if (leadContext?.customerEmail) {
+      retell_llm_dynamic_variables.customer_email = leadContext.customerEmail;
+    }
+    if (leadContext?.companyName) {
+      retell_llm_dynamic_variables.company_name = leadContext.companyName;
+    }
+
     // Make API call to Retell.AI (v2 endpoint)
     const response = await axios.post<RetellCallResponse>(
       `${RETELL_API_BASE}/v2/create-phone-call`,
@@ -40,6 +63,7 @@ export async function triggerRetellCall(
         from_number: senderPhoneNumber,
         to_number: phoneNumber,
         override_agent_id: agentId,
+        ...(Object.keys(retell_llm_dynamic_variables).length > 0 && { retell_llm_dynamic_variables }),
         metadata: {
           campaign_lead_id: String(campaignLeadId),
           trigger_reason: triggerReason,

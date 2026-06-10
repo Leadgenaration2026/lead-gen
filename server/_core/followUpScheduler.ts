@@ -654,6 +654,20 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
         const normalizedPhone = normalizePhoneNumber(call.phoneNumber);
         const normalizedFromPhone = normalizePhoneNumber(senderPhoneNumber);
 
+        // Fetch lead data to pass customer context to the AI agent
+        const campaignLead = await db.getCampaignLeadById(call.campaignLeadId);
+        let leadContext: { customerName?: string; customerEmail?: string; companyName?: string } | undefined;
+        if (campaignLead) {
+          const lead = await db.getLeadById(campaignLead.leadId);
+          if (lead) {
+            leadContext = {
+              customerName: lead.ownerName,
+              customerEmail: lead.email,
+              companyName: lead.companyName,
+            };
+          }
+        }
+
         // Trigger the Retell.AI call
         await db.updateFollowUpCall(call.id, { status: "initiated", initiatedAt: new Date() });
 
@@ -663,7 +677,8 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
           retellApiKey,
           retellAgentId,
           normalizedFromPhone,
-          "email_open"
+          "email_open",
+          leadContext
         );
 
         console.log(`[FollowUpScheduler] Triggered follow-up call #${call.attemptNumber} for campaignLeadId: ${call.campaignLeadId}`);
@@ -691,7 +706,8 @@ export async function triggerCallOnFollowUpOpen(
   retellAgentId: string,
   senderPhoneNumber: string,
   triggerType: "email_open" | "email_click",
-  leadTimezone?: string
+  leadTimezone?: string,
+  leadContext?: { customerName?: string; customerEmail?: string; companyName?: string }
 ) {
   try {
     // Check if lead's local time is between 10 AM - 5 PM
@@ -729,14 +745,15 @@ export async function triggerCallOnFollowUpOpen(
       initiatedAt: new Date(),
     });
 
-    // Trigger the Retell.AI call
+    // Trigger the Retell.AI call with customer context for the AI agent
     const callResult = await triggerRetellCall(
       campaignLeadId,
       normalizedPhone,
       retellApiKey,
       retellAgentId,
       normalizedFromPhone,
-      triggerType
+      triggerType,
+      leadContext
     );
 
     return { success: true, callId: callResult };

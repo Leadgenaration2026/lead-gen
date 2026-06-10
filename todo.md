@@ -546,3 +546,10 @@
 - [x] Backend: Save notification email preference in DB (settings table)
 - [x] Backend: Trigger email notification when social message is due after 1st follow-up
 - [x] Use notifyOwner or SMTP to send reminder email with message details and profile link
+
+## Retell.AI Dynamic Variables — Pass Customer Context to AI Agent
+- [x] Pass customer name (ownerName) to Retell.AI via retell_llm_dynamic_variables when triggering calls
+- [x] Pass customer email address to Retell.AI via retell_llm_dynamic_variables when triggering calls
+- [x] Pass company name to Retell.AI for additional context during calls
+- [x] Update triggerRetellCall function signature to accept lead context data
+- [x] Update all call sites (emailTracking.ts open + click triggers, followUpScheduler scheduled calls) to pass lead data
