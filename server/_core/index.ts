@@ -171,6 +171,23 @@ async function startServer() {
             .replace(/{{ctaLink}}/g, trackedCtaUrl)
             .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
 
+          // Wrap any remaining raw URLs that weren't caught by specific patterns
+          emailBody = emailBody.replace(
+            /(https?:\/\/[^\s<>"']+)/g,
+            (rawUrl) => {
+              if (rawUrl.includes('/api/track/click/')) return rawUrl;
+              return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
+            }
+          );
+          // Wrap any existing href="..." links (for HTML templates)
+          emailBody = emailBody.replace(
+            /href=["'](https?:\/\/[^"']*)["']/g,
+            (match, url) => {
+              if (url.includes('/api/track/click/')) return match;
+              return `href="${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}"`;
+            }
+          );
+
           emailBody = plainTextToHtml(emailBody) + trackingPixel;
 
           const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;

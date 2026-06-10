@@ -466,6 +466,24 @@ export async function processScheduledFollowUpEmails() {
         const { plainTextToHtml } = await import("@shared/emailFormat");
         let htmlBody = followUpEmail.emailBody
           .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+
+        // Wrap any remaining raw URLs that weren't caught by the specific Calendly pattern
+        htmlBody = htmlBody.replace(
+          /(https?:\/\/[^\s<>"']+)/g,
+          (rawUrl) => {
+            if (rawUrl.includes('/api/track/click/')) return rawUrl;
+            return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
+          }
+        );
+        // Wrap any existing href="..." links (for HTML content)
+        htmlBody = htmlBody.replace(
+          /href=["'](https?:\/\/[^"']*)["']/g,
+          (match, url) => {
+            if (url.includes('/api/track/click/')) return match;
+            return `href="${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}"`;
+          }
+        );
+
         htmlBody = plainTextToHtml(htmlBody) + NITIN_SIGNATURE_HTML + trackingPixel;
 
         // Add unsubscribe link

@@ -994,8 +994,10 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               trackingToken: clickTrackingToken,
             });
 
-            // Determine the base URL for tracking (use request origin or deployed domain)
-            const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
+            // Determine the base URL for tracking (respect x-forwarded-proto behind reverse proxy)
+            const baseUrl = ctx.req.headers?.['x-forwarded-proto']
+              ? `${ctx.req.headers['x-forwarded-proto']}://${ctx.req.headers['x-forwarded-host'] || ctx.req.get?.('host') || 'localhost:3000'}`
+              : `${ctx.req.protocol || 'https'}://${ctx.req.get?.('host') || 'localhost:3000'}`;
             const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
             
             // Replace CTA links with tracked versions
@@ -1005,6 +1007,24 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               .replace(/{{bookingUrl}}/g, trackedCtaUrl)
               .replace(/{{ctaLink}}/g, trackedCtaUrl)
               .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+
+            // Also wrap any other raw URLs that weren't caught by the specific patterns above
+            emailBody = emailBody.replace(
+              /(https?:\/\/[^\s<>"']+)/g,
+              (rawUrl) => {
+                // Don't double-wrap already-tracked URLs
+                if (rawUrl.includes('/api/track/click/')) return rawUrl;
+                return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
+              }
+            );
+            // Also wrap any existing href="..." links (for HTML templates)
+            emailBody = emailBody.replace(
+              /href=["'](https?:\/\/[^"']*)["']/g,
+              (match, url) => {
+                if (url.includes('/api/track/click/')) return match;
+                return `href="${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}"`;
+              }
+            );
 
             // Convert plain text to HTML if needed, append tracking pixel
             // Note: signature is already included in the template from AI generation
@@ -1915,22 +1935,34 @@ Respond in this exact JSON format:
 
         // Using Nitin's hardcoded signature
 
-        // Use request origin for tracking URL
-        const baseUrl = `${ctx.req.protocol}://${ctx.req.get('host')}`;
+        // Use request origin for tracking URL (respect x-forwarded-proto behind reverse proxy)
+        const baseUrl = ctx.req.headers?.['x-forwarded-proto']
+          ? `${ctx.req.headers['x-forwarded-proto']}://${ctx.req.headers['x-forwarded-host'] || ctx.req.get?.('host') || 'localhost:3000'}`
+          : `${ctx.req.protocol || 'https'}://${ctx.req.get?.('host') || 'localhost:3000'}`;
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
 
         // Create click tracking token for CTA links
         const clickTrackingToken = nanoid();
+        
         // Wrap all links in the email body with click tracking
-        const linkRegex = /href=["']([^"']*)["']/g;
-        const trackedBody = input.body.replace(linkRegex, (match, url) => {
-          if (url.startsWith('http')) {
+        // Step 1: Replace raw URLs in plain text (e.g. https://calendly.com/...)
+        let trackedBody = input.body.replace(
+          /(https?:\/\/[^\s<>"']+)/g,
+          (rawUrl) => {
+            // Skip if it's already inside an href attribute (already tracked)
+            return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
+          }
+        );
+        // Step 2: Also wrap any existing href="..." links (for HTML bodies from AI generation)
+        trackedBody = trackedBody.replace(
+          /href=["'](https?:\/\/[^"']*)["']/g,
+          (match, url) => {
+            // Don't double-wrap if already tracked
+            if (url.includes('/api/track/click/')) return match;
             return `href="${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}"`;
           }
-          return match;
-        });
+        );
 
-        
         // Convert plain text to HTML if needed, append signature
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
         const unsubscribeHtml = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;

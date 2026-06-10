@@ -553,3 +553,7 @@
 - [x] Pass company name to Retell.AI for additional context during calls
 - [x] Update triggerRetellCall function signature to accept lead context data
 - [x] Update all call sites (emailTracking.ts open + click triggers, followUpScheduler scheduled calls) to pass lead data
+
+## Bug Fix — Click Tracking Not Updating
+- [x] Investigate why customer clicks on email links are not being recorded/updated in the system
+- [x] Fix click tracking flow (link wrapping → redirect endpoint → DB update)
