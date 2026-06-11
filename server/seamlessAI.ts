@@ -192,30 +192,37 @@ export async function getSeamlessLeads(
   }>;
   totalSearchResults: number;
 }> {
-  // Step 1: Search
+  // Step 1: Search — request more results than needed to maximize yield
+  const searchLimit = Math.min(count * 2, 100);
   const searchResponse = await searchContacts(apiKey, {
     ...filters,
-    limit: Math.min(count, 100),
+    limit: searchLimit,
   });
 
   if (!searchResponse.data || searchResponse.data.length === 0) {
     throw new Error("No contacts found matching your criteria on Seamless.AI. Try broadening your search.");
   }
 
-  console.log(`[Seamless.AI] Search returned ${searchResponse.data.length} results`);
+  console.log(`[Seamless.AI] Search returned ${searchResponse.data.length} results (requested ${searchLimit})`);
 
   // Build a map of searchResultId → country from search results for post-filtering
   const searchCountryMap = new Map<string, string>();
+  const searchNameMap = new Map<string, { firstName?: string; lastName?: string; company?: string; jobTitle?: string }>();
   for (const r of searchResponse.data) {
     if (r.country) {
       searchCountryMap.set(r.searchResultId, r.country);
     }
+    // Save basic info from search results as fallback
+    searchNameMap.set(r.searchResultId, {
+      firstName: (r as any).firstName,
+      lastName: (r as any).lastName,
+      company: (r as any).company || (r as any).companyName,
+      jobTitle: (r as any).jobTitle,
+    });
   }
 
-  // Step 2: Research (enrich) — take up to `count` results
-  const searchResultIds = searchResponse.data
-    .slice(0, count)
-    .map((r) => r.searchResultId);
+  // Step 2: Research (enrich) — submit ALL search results to maximize yield
+  const searchResultIds = searchResponse.data.map((r) => r.searchResultId);
 
   const researchResponse = await researchContacts(apiKey, searchResultIds);
 
@@ -228,30 +235,54 @@ export async function getSeamlessLeads(
   // Step 3: Poll for results
   const pollResults = await pollContactResults(apiKey, researchResponse.requestIds);
 
-  // Convert to our lead format
-  const contacts = pollResults
-    .filter((r) => r.status === "done" && r.contact)
-    .map((r) => {
-      const c = r.contact!;
-      const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unknown";
-      return {
-        companyName: c.company || "Unknown",
-        ownerName: fullName,
-        email: c.email || c.personalEmail || "",
-        phoneNumber: c.phone || "",
-        linkedinUrl: c.lIProfileUrl || undefined,
-        industry: undefined as string | undefined,
-        website: undefined as string | undefined,
-        timezone: undefined as string | undefined,
-        country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || undefined,
-      };
-    })
-    .filter((c) => c.email); // Only include contacts with verified emails
+  // Convert to our lead format — include ALL contacts, even without emails
+  const contactsWithEmail: Array<{
+    companyName: string;
+    ownerName: string;
+    email: string;
+    phoneNumber: string;
+    website?: string;
+    industry?: string;
+    linkedinUrl?: string;
+    timezone?: string;
+    country?: string;
+  }> = [];
+  
+  const contactsWithoutEmail: typeof contactsWithEmail = [];
 
-  console.log(`[Seamless.AI] Got ${contacts.length} verified contacts with emails`);
+  for (const r of pollResults) {
+    if (r.status !== "done" || !r.contact) continue;
+    
+    const c = r.contact;
+    const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unknown";
+    const email = c.email || c.personalEmail || "";
+    const contact = {
+      companyName: c.company || "Unknown",
+      ownerName: fullName,
+      email,
+      phoneNumber: c.phone || "",
+      linkedinUrl: c.lIProfileUrl || undefined,
+      industry: undefined as string | undefined,
+      website: undefined as string | undefined,
+      timezone: undefined as string | undefined,
+      country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || undefined,
+    };
+    
+    if (email) {
+      contactsWithEmail.push(contact);
+    } else {
+      // Still include contacts without email — they have phone/LinkedIn
+      contactsWithoutEmail.push(contact);
+    }
+  }
+
+  // Prioritize contacts with emails, then fill remaining slots with contacts without emails
+  const allContacts = [...contactsWithEmail, ...contactsWithoutEmail];
+  
+  console.log(`[Seamless.AI] Got ${contactsWithEmail.length} contacts with emails, ${contactsWithoutEmail.length} without emails. Total: ${allContacts.length}`);
 
   return {
-    contacts,
+    contacts: allContacts,
     totalSearchResults: searchResponse.data.length,
   };
 }

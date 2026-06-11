@@ -584,3 +584,9 @@
 - [x] Add state-level filtering option in lead generation form (all 50 US states dropdown)
 - [x] Pass state filter to Seamless.AI API for targeted prospecting (contactState filter)
 - [x] Pass state hint to AI-generated leads for location accuracy
+
+## Bug Fix — Seamless.AI Returning Too Few Leads (Wasting Credits)
+- [x] Include contacts without verified emails (they still have phone, LinkedIn, name)
+- [x] Request more search results to compensate for email filter dropoff
+- [x] Mark leads without email as "No Email - Use Phone/LinkedIn" instead of dropping them
+- [ ] Add broader search fallback (related job titles) when initial results are too few

@@ -301,9 +301,8 @@ export const appRouter = router({
           console.log("[Seamless.AI] Final filters (country enforced):", JSON.stringify(filters));
 
           try {
-            // Request extra results to account for filtering
-            const requestCount = input.country ? Math.min(input.count * 2, 100) : input.count;
-            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, requestCount);
+            // getSeamlessLeads already requests 2x count internally for better yield
+            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count);
             
             // Post-filter: only keep contacts from the specified country
             if (input.country) {
@@ -332,8 +331,15 @@ export const appRouter = router({
             if (leadsData.length === 0) {
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: `No contacts with verified emails found in ${input.country || "your criteria"} on Seamless.AI. Try broadening your search.`,
+                message: `No contacts found in ${input.country || "your criteria"} on Seamless.AI. Try broadening your search (e.g., wider state or different job title).`,
               });
+            }
+            
+            // Log how many have emails vs don't
+            const withEmail = leadsData.filter((l: any) => l.email).length;
+            const withoutEmail = leadsData.length - withEmail;
+            if (withoutEmail > 0) {
+              console.log(`[Seamless.AI] Returning ${withEmail} leads with email, ${withoutEmail} without email (have phone/LinkedIn)`);
             }
           } catch (error: any) {
             if (error instanceof TRPCError) throw error;
