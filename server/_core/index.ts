@@ -267,6 +267,212 @@ async function startServer() {
     }
   });
 
+  // Daily campaign drip-send endpoint (called by heartbeat cron daily)
+  app.post("/api/scheduled/daily-campaign-send", async (req, res) => {
+    try {
+      const { sdk } = await import("./sdk");
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron || !user.taskUid) {
+        return res.status(403).json({ error: "cron-only" });
+      }
+
+      const db = await import("../db");
+      const { campaigns, campaignLeads: campaignLeadsTable } = await import("../../drizzle/schema");
+      const { eq, and } = await import("drizzle-orm");
+
+      // Find campaign by dailySendCronTaskUid
+      const database = await db.getDb();
+      if (!database) return res.status(500).json({ error: "Database unavailable" });
+      const [campaign] = await database.select().from(campaigns).where(eq(campaigns.dailySendCronTaskUid, user.taskUid)).limit(1);
+      if (!campaign) return res.json({ ok: true, skipped: "orphan" });
+
+      // Only continue if campaign is active
+      if (campaign.status !== "active") {
+        return res.json({ ok: true, skipped: "not_active", status: campaign.status });
+      }
+
+      // Get user settings for SMTP
+      const settings = await db.getUserSettings(campaign.userId);
+      if (!settings?.smtpHost || !settings?.smtpPassword || !settings?.senderEmail) {
+        return res.status(500).json({ error: "SMTP not configured for campaign owner" });
+      }
+
+      // Import required utilities
+      const nodemailer = (await import("nodemailer")).default;
+      const { nanoid } = await import("nanoid");
+      const { plainTextToHtml } = await import("@shared/emailFormat");
+      const { getSignatureHtml } = await import("./followUpScheduler");
+
+      const signature = await db.getEmailSignature(campaign.userId);
+      const signatureHtml = getSignatureHtml(signature);
+
+      // Get unsent campaign leads
+      const allCampaignLeads = await db.getCampaignLeads(campaign.id);
+      const unsent = allCampaignLeads.filter(cl => !cl.emailSent);
+      const dailyLimit = campaign.dailySendLimit || 50;
+      const toSendToday = unsent.slice(0, dailyLimit);
+
+      if (toSendToday.length === 0) {
+        // All emails sent — mark campaign complete and delete the cron
+        await db.updateCampaign(campaign.id, { status: "completed" });
+        try {
+          const { deleteHeartbeatJob } = await import("./heartbeat");
+          await deleteHeartbeatJob(user.taskUid, "");
+        } catch { /* ignore cleanup errors */ }
+        return res.json({ ok: true, completed: true, totalSent: campaign.sentCount });
+      }
+
+      let sentCount = 0;
+      const baseUrl = req.headers["x-forwarded-proto"]
+        ? `${req.headers["x-forwarded-proto"]}://${req.headers["x-forwarded-host"] || req.headers.host}`
+        : `${req.protocol}://${req.get("host")}`;
+
+      for (const campaignLead of toSendToday) {
+        try {
+          const lead = await db.getLeadById(campaignLead.leadId);
+          if (!lead || !lead.email) continue;
+
+          const personalizedTemplate = (campaign.emailTemplate || "")
+            .replace(/{{companyName}}/g, lead.companyName)
+            .replace(/{{ownerName}}/g, lead.ownerName)
+            .replace(/{{email}}/g, lead.email)
+            .replace(/{{industry}}/g, lead.industry || "your industry")
+            .replace(/{{phoneNumber}}/g, lead.phoneNumber || "");
+
+          const trackingToken = nanoid();
+          await db.createEmailTrackingEvent({ campaignLeadId: campaignLead.id, eventType: "open", trackingToken });
+          const clickTrackingToken = nanoid();
+          await db.createEmailTrackingEvent({ campaignLeadId: campaignLead.id, eventType: "click", trackingToken: clickTrackingToken });
+
+          const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
+          const ctaUrl = "https://calendly.com/nitin-virtualassistant/30min";
+          const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
+          let emailBody = personalizedTemplate
+            .replace(/{{bookingUrl}}/g, trackedCtaUrl)
+            .replace(/{{ctaLink}}/g, trackedCtaUrl)
+            .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+
+          emailBody = emailBody.replace(
+            /(https?:\/\/[^\s<>"']+)/g,
+            (rawUrl) => {
+              if (rawUrl.includes('/api/track/click/')) return rawUrl;
+              return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
+            }
+          );
+          emailBody = emailBody.replace(
+            /href=["'](https?:\/\/[^"']*)["']/g,
+            (match, url) => {
+              if (url.includes('/api/track/click/')) return match;
+              return `href="${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}"`;
+            }
+          );
+
+          emailBody = plainTextToHtml(emailBody) + trackingPixel;
+
+          const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
+          emailBody = emailBody.replace(
+            /---<br\/?>[\s\S]*?unsubscribe[\s\S]*?$/i,
+            `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`
+          );
+          if (!emailBody.includes(unsubscribeUrl)) {
+            emailBody += `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+          }
+
+          const todayDow = new Date().getDay();
+          const mappedDow = todayDow === 0 ? 5 : todayDow > 5 ? 5 : todayDow;
+          let rotationalEmail = await db.getRotationalEmailForDay(campaign.userId, mappedDow);
+
+          if (!rotationalEmail) {
+            const allRotational = await db.getRotationalEmailsByUser(campaign.userId);
+            const activeRotational = allRotational.filter(r => r.isActive);
+            if (activeRotational.length > 0) {
+              const index = sentCount % activeRotational.length;
+              rotationalEmail = activeRotational[index];
+            }
+          }
+
+          const smtpConfig = rotationalEmail ? {
+            host: rotationalEmail.smtpHost,
+            port: rotationalEmail.smtpPort,
+            secure: rotationalEmail.smtpPort === 465,
+            auth: { user: rotationalEmail.smtpUsername, pass: rotationalEmail.smtpPassword },
+          } : {
+            host: settings.smtpHost || "",
+            port: settings.smtpPort || 587,
+            secure: (settings.smtpPort || 587) === 465,
+            auth: { user: settings.smtpUsername || "", pass: settings.smtpPassword || "" },
+          };
+          const senderEmail = rotationalEmail ? rotationalEmail.email : settings.senderEmail;
+          const senderDisplayName = rotationalEmail ? (rotationalEmail.senderName || settings.senderName || "Lead Gen") : (settings.senderName || "Lead Gen");
+
+          const transporter = nodemailer.createTransport(smtpConfig as any);
+          await transporter.sendMail({
+            from: `"${senderDisplayName}" <${senderEmail}>`,
+            to: lead.email,
+            replyTo: "nitin@virtualassistant-group.com",
+            subject: campaign.subject,
+            html: emailBody,
+            headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
+          });
+
+          await db.updateCampaignLead(campaignLead.id, { emailSent: true, emailSentAt: new Date() });
+          sentCount++;
+        } catch (err: any) {
+          console.error(`[Daily Send] Failed for campaignLead ${campaignLead.id}:`, err?.message);
+          if (err?.code === 'EAUTH') break; // Stop on auth errors
+        }
+      }
+
+      // Update campaign sent count
+      await db.updateCampaign(campaign.id, {
+        sentCount: (campaign.sentCount || 0) + sentCount,
+      });
+
+      // Check if all emails are now sent
+      const remainingAfter = unsent.length - sentCount;
+      if (remainingAfter <= 0) {
+        await db.updateCampaign(campaign.id, { status: "completed" });
+        try {
+          const { deleteHeartbeatJob } = await import("./heartbeat");
+          await deleteHeartbeatJob(user.taskUid, "");
+        } catch { /* ignore cleanup errors */ }
+      }
+
+      // Schedule follow-ups for today's batch
+      const { scheduleFollowUpEmails } = await import("./followUpScheduler");
+      const ctaLinkForFollowUp = "https://calendly.com/nitin-virtualassistant/30min";
+      for (const campaignLead of toSendToday) {
+        const lead = await db.getLeadById(campaignLead.leadId);
+        if (lead) {
+          scheduleFollowUpEmails(
+            campaignLead.id,
+            lead.id,
+            lead.email,
+            lead.phoneNumber || '',
+            lead.ownerName,
+            lead.companyName,
+            lead.industry || 'business services',
+            ctaLinkForFollowUp,
+            campaign.userId
+          ).catch((err: any) => {
+            console.error(`[Daily Send] Failed to schedule follow-ups for lead ${lead.id}:`, err);
+          });
+        }
+      }
+
+      console.log(`[Daily Send] Campaign ${campaign.id}: sent ${sentCount}/${toSendToday.length} today, ${remainingAfter} remaining`);
+      res.json({ ok: true, campaignId: campaign.id, sentToday: sentCount, remaining: remainingAfter });
+    } catch (error: any) {
+      console.error("[Daily Send] Handler error:", error);
+      res.status(500).json({
+        error: error.message || "Unknown error",
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        context: { url: req.url, taskUid: (req as any).user?.taskUid },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, Zap } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
@@ -83,6 +83,10 @@ export default function LeadsPage() {
 
   // Checkbox selection state
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
+
+  // Sort state
+  const [sortBy, setSortBy] = useState<string>("newest");
+  const scoreEngagementBatchMutation = trpc.leads.scoreEngagementBatch.useMutation();
 
   // Bulk assign dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -169,7 +173,7 @@ export default function LeadsPage() {
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
       });
-      toast.success(`Generated ${count} leads successfully`);
+      toast.success(`Lead generation complete!`);
       setInstruction("");
       setGenerateLeadSetName("");
       leadsQuery.refetch();
@@ -501,7 +505,7 @@ export default function LeadsPage() {
 
   // Filter leads
   const filteredLeads = useMemo(() => {
-    return (leadsQuery.data || []).filter((lead: any) => {
+    const filtered = (leadsQuery.data || []).filter((lead: any) => {
       const matchesTag = filterTag === "all" || lead.tag === filterTag;
       const matchesSearch =
         !searchQuery ||
@@ -513,7 +517,19 @@ export default function LeadsPage() {
         (filterLeadSet === "unassigned" ? !lead.leadSetId : lead.leadSetId === parseInt(filterLeadSet));
       return matchesTag && matchesSearch && matchesSet;
     });
-  }, [leadsQuery.data, filterTag, searchQuery, filterLeadSet]);
+
+    // Apply sorting
+    if (sortBy === "engagement_desc") {
+      return [...filtered].sort((a: any, b: any) => (b.engagementScore || 0) - (a.engagementScore || 0));
+    } else if (sortBy === "engagement_asc") {
+      return [...filtered].sort((a: any, b: any) => (a.engagementScore || 0) - (b.engagementScore || 0));
+    } else if (sortBy === "name_asc") {
+      return [...filtered].sort((a: any, b: any) => (a.ownerName || "").localeCompare(b.ownerName || ""));
+    } else if (sortBy === "newest") {
+      return [...filtered].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    return filtered;
+  }, [leadsQuery.data, filterTag, searchQuery, filterLeadSet, sortBy]);
 
   const leadSets = leadSetsQuery.data || [];
 
@@ -907,7 +923,10 @@ export default function LeadsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium">Number of Leads</label>
-                      <Input type="number" min="1" max="100" value={count} onChange={(e) => setCount(parseInt(e.target.value) || 10)} className="mt-1" />
+                      <Input type="number" min="1" max="1000" value={count} onChange={(e) => setCount(parseInt(e.target.value) || 10)} className="mt-1" />
+                      {generateSource === "seamless" && (
+                        <p className="text-xs text-muted-foreground mt-1">Set a high number (e.g. 200) to pull all available leads from Seamless.AI</p>
+                      )}
                     </div>
                     <div>
                       <label className="text-sm font-medium">Lead Set Name</label>
@@ -1104,6 +1123,39 @@ export default function LeadsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-44">
+                  <ArrowUpDown className="w-3.5 h-3.5 mr-1.5" />
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest First</SelectItem>
+                  <SelectItem value="engagement_desc">Engagement: High → Low</SelectItem>
+                  <SelectItem value="engagement_asc">Engagement: Low → High</SelectItem>
+                  <SelectItem value="name_asc">Name: A → Z</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const ids = selectedLeadIds.size > 0 ? Array.from(selectedLeadIds) : filteredLeads.map((l: any) => l.id);
+                  if (ids.length === 0) { toast.error("No leads to score"); return; }
+                  toast.info(`Scoring engagement for ${ids.length} leads... This may take a moment.`);
+                  try {
+                    const result = await scoreEngagementBatchMutation.mutateAsync({ leadIds: ids });
+                    toast.success(`Scored ${result.scored} leads (${result.errors} errors)`);
+                    leadsQuery.refetch();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to score engagement");
+                  }
+                }}
+                disabled={scoreEngagementBatchMutation.isPending}
+                className="gap-1.5"
+              >
+                {scoreEngagementBatchMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}
+                Score Engagement
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -1175,6 +1227,7 @@ export default function LeadsPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
+                    <TableHead className="text-center">Engagement</TableHead>
                     <TableHead>Country</TableHead>
                     <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
@@ -1222,6 +1275,21 @@ export default function LeadsPage() {
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {lead.engagementScore != null && lead.engagementScore > 0 ? (
+                          <div className="flex items-center justify-center gap-1" title={`Engagement Score: ${lead.engagementScore}/100`}>
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                              lead.engagementScore >= 70 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
+                              lead.engagementScore >= 40 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
+                              "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                            }`}>
+                              {lead.engagementScore}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">
                         {lead.country ? lead.country : <span className="text-muted-foreground">—</span>}

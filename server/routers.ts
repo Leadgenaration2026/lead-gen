@@ -35,11 +35,12 @@ const createCampaignSchema = z.object({
   leadIds: z.array(z.number()),
   templateId: z.number().optional(),
   scheduledAt: z.string().optional(), // ISO date string for scheduled launch
+  dailySendLimit: z.number().min(1).max(500).optional(), // Max emails per day (null = send all at once)
 });
 
 const generateLeadsSchema = z.object({
   instruction: z.string().min(10),
-  count: z.number().min(1).max(100),
+  count: z.number().min(1).max(1000),
   leadSetName: z.string().optional(), // Optional: assign generated leads to a named set
   source: z.enum(["ai", "seamless"]).optional().default("ai"),
   country: z.string().optional(),
@@ -301,7 +302,7 @@ export const appRouter = router({
           console.log("[Seamless.AI] Final filters (country enforced):", JSON.stringify(filters));
 
           try {
-            // getSeamlessLeads already requests 2x count internally for better yield
+            // getSeamlessLeads now paginates through ALL available search results up to count
             const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count);
             
             // Post-filter: only keep contacts from the specified country
@@ -916,6 +917,39 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           },
         };
       }),
+
+    // Score engagement for a single lead
+    scoreEngagement: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: leadId, ctx }) => {
+        const lead = await db.getLeadById(leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const { scoreLeadEngagement } = await import("./engagementScoring");
+        const result = await scoreLeadEngagement(leadId);
+        return result;
+      }),
+
+    // Score engagement for multiple leads (batch)
+    scoreEngagementBatch: protectedProcedure
+      .input(z.object({
+        leadIds: z.array(z.number()),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // Verify all leads belong to user
+        const userLeads = await db.getLeadsByUserId(ctx.user.id);
+        const userLeadIds = new Set(userLeads.map(l => l.id));
+        const validIds = input.leadIds.filter(id => userLeadIds.has(id));
+        
+        if (validIds.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No valid leads to score" });
+        }
+
+        const { scoreLeadsBatch } = await import("./engagementScoring");
+        const result = await scoreLeadsBatch(validIds);
+        return { ...result, total: validIds.length };
+      }),
   }),
 
   // Campaigns router
@@ -946,6 +980,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           status: input.scheduledAt ? "draft" : "draft",
           totalLeads: input.leadIds.length,
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+          dailySendLimit: input.dailySendLimit || null,
         });
 
         // Add leads to campaign
@@ -1094,8 +1129,16 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         let sentCount = 0;
         let skippedInvalid = 0;
 
-        // Send emails
-        for (const campaignLead of campaignLeads) {
+        // Determine how many to send today based on dailySendLimit
+        const dailyLimit = (campaign as any).dailySendLimit || null;
+        const unsent = campaignLeads.filter(cl => !cl.emailSent);
+        const toSendToday = dailyLimit ? unsent.slice(0, dailyLimit) : unsent;
+        const remaining = dailyLimit ? unsent.length - toSendToday.length : 0;
+
+        console.log(`[Campaign ${campaignId}] Daily limit: ${dailyLimit || 'unlimited'}, Unsent: ${unsent.length}, Sending today: ${toSendToday.length}, Remaining for future days: ${remaining}`);
+
+        // Send emails (only today's batch)
+        for (const campaignLead of toSendToday) {
           try {
             const lead = await db.getLeadById(campaignLead.leadId);
             if (!lead) continue;
@@ -1252,15 +1295,40 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         }
 
         await db.updateCampaign(campaignId, {
-          status: "active",
+          status: remaining > 0 ? "active" : "active",
           launchedAt: new Date(),
-          sentCount,
+          sentCount: (campaign.sentCount || 0) + sentCount,
         });
 
-        // Schedule 7 follow-up emails for each lead (async, don't block)
+        // If there are remaining leads and a daily limit is set, schedule a daily cron to continue sending
+        if (remaining > 0 && dailyLimit) {
+          try {
+            const { parse: parseCookie } = await import("cookie");
+            const { COOKIE_NAME } = await import("@shared/const");
+            const { createHeartbeatJob } = await import("./_core/heartbeat");
+            const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+            // Schedule daily at 9:00 AM UTC (adjustable)
+            const cronExpression = "0 0 9 * * *";
+            const job = await createHeartbeatJob({
+              name: `campaign-daily-send-${campaignId}`,
+              cron: cronExpression,
+              path: "/api/scheduled/daily-campaign-send",
+              payload: { campaignId },
+              description: `Daily drip send for campaign: ${campaign.name} (${dailyLimit}/day)`,
+            }, sessionToken);
+            await db.updateCampaign(campaignId, { dailySendCronTaskUid: job.taskUid } as any);
+            console.log(`[Campaign ${campaignId}] Daily send cron created: ${job.taskUid}, sending ${dailyLimit}/day`);
+          } catch (err: any) {
+            console.error(`[Campaign ${campaignId}] Failed to create daily send cron:`, err.message);
+            // Campaign still launched, just won't auto-continue
+          }
+        }
+
+        // Schedule 7 follow-up emails for each lead that was sent today (async, don't block)
         const { scheduleFollowUpEmails } = await import("./_core/followUpScheduler");
         const ctaLink = "https://calendly.com/nitin-virtualassistant/30min";
-        for (const campaignLead of campaignLeads) {
+        for (const campaignLead of toSendToday) {
+          if (!campaignLead.emailSent) continue; // Only schedule follow-ups for actually sent emails
           const leadForFollowUp = await db.getLeadById(campaignLead.leadId);
           if (leadForFollowUp) {
             scheduleFollowUpEmails(
@@ -1279,7 +1347,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           }
         }
 
-        return { success: true, sentCount };
+        return { success: true, sentCount, remaining, dailyLimit };
       }),
 
     // Pause campaign

@@ -66,6 +66,7 @@ export default function EmailComposer() {
     emailTemplate: "",
     leadIds: [] as number[],
     scheduledAt: "",
+    dailySendLimit: undefined as number | undefined,
   });
   const [enableScheduling, setEnableScheduling] = useState(false);
   const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
@@ -216,13 +217,14 @@ export default function EmailComposer() {
         ...campaignFormData,
         leadIds: campaignFormData.leadIds,
         scheduledAt: enableScheduling && campaignFormData.scheduledAt ? campaignFormData.scheduledAt : undefined,
+        dailySendLimit: campaignFormData.dailySendLimit || undefined,
       });
       if (result.scheduled) {
         toast.success(`Campaign scheduled for ${new Date(campaignFormData.scheduledAt).toLocaleString()} with ${campaignFormData.leadIds.length} leads!`);
       } else {
         toast.success(`Campaign created with ${campaignFormData.leadIds.length} leads!`);
       }
-      setCampaignFormData({ name: "", description: "", subject: "", emailTemplate: "", leadIds: [], scheduledAt: "" });
+      setCampaignFormData({ name: "", description: "", subject: "", emailTemplate: "", leadIds: [], scheduledAt: "", dailySendLimit: undefined });
       setEnableScheduling(false);
       campaignsQuery.refetch();
     } catch (error) {
@@ -1381,12 +1383,46 @@ export default function EmailComposer() {
                   )}
                 </div>
 
+                {/* Daily Send Limit */}
+                <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Daily Send Limit</span>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={campaignFormData.dailySendLimit !== undefined}
+                        onChange={(e) => {
+                          setCampaignFormData(prev => ({ ...prev, dailySendLimit: e.target.checked ? 30 : undefined }));
+                        }}
+                        className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-blue-700">Enable</span>
+                    </label>
+                  </div>
+                  {campaignFormData.dailySendLimit !== undefined && (
+                    <div className="mt-3 space-y-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={campaignFormData.dailySendLimit || 30}
+                        onChange={(e) => setCampaignFormData(prev => ({ ...prev, dailySendLimit: parseInt(e.target.value) || 30 }))}
+                        className="text-sm h-9 bg-white w-32"
+                      />
+                      <p className="text-xs text-blue-700">Sends this many emails per day. Remaining leads will be emailed on subsequent days automatically at 9:00 AM UTC.</p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3 pt-2 border-t">
                   <Button
                     variant="outline"
                     size="lg"
                     onClick={() => {
-                      setCampaignFormData({ name: '', description: '', subject: '', emailTemplate: '', leadIds: [], scheduledAt: '' });
+                      setCampaignFormData({ name: '', description: '', subject: '', emailTemplate: '', leadIds: [], scheduledAt: '', dailySendLimit: undefined });
                       setEnableScheduling(false);
                       setLastCampaignAIPrompt(null);
                       toast.success('Campaign form cleared');

@@ -33,6 +33,7 @@ export default function CampaignsPage() {
     subject: "",
     emailTemplate: "",
     leadIds: [] as number[],
+    dailySendLimit: undefined as number | undefined,
   });
   const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
   const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
@@ -58,6 +59,7 @@ export default function CampaignsPage() {
       await createCampaignMutation.mutateAsync({
         ...formData,
         leadIds: formData.leadIds,
+        dailySendLimit: formData.dailySendLimit || undefined,
       });
       toast.success(`Campaign created with ${formData.leadIds.length} leads!`);
       setFormData({
@@ -66,6 +68,7 @@ export default function CampaignsPage() {
         subject: "",
         emailTemplate: "",
         leadIds: [],
+        dailySendLimit: undefined,
       });
       setIsOpen(false);
       campaignsQuery.refetch();
@@ -249,6 +252,36 @@ export default function CampaignsPage() {
                 onChange={(ids) => setFormData({ ...formData, leadIds: ids })}
                 isLoading={leadsQuery.isLoading}
               />
+            </div>
+            {/* Daily Send Limit */}
+            <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-blue-900">Daily Send Limit</span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.dailySendLimit !== undefined}
+                    onChange={(e) => setFormData({ ...formData, dailySendLimit: e.target.checked ? 30 : undefined })}
+                    className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-blue-700">Enable</span>
+                </label>
+              </div>
+              {formData.dailySendLimit !== undefined && (
+                <div className="mt-2 space-y-1">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={formData.dailySendLimit || 30}
+                    onChange={(e) => setFormData({ ...formData, dailySendLimit: parseInt(e.target.value) || 30 })}
+                    className="text-sm h-8 bg-white w-28"
+                  />
+                  <p className="text-xs text-blue-700">Emails per day. Remaining leads will be sent on subsequent days.</p>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 justify-end pt-2 border-t">
               <Button variant="outline" onClick={() => setIsOpen(false)}>

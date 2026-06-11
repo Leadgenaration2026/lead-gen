@@ -44,6 +44,8 @@ export const leads = mysqlTable("leads", {
   instagramUrl: varchar("instagramUrl", { length: 500 }),
   facebookUrl: varchar("facebookUrl", { length: 500 }),
   country: varchar("country", { length: 100 }),
+  engagementScore: int("engagementScore").default(0), // 0-100 score based on social media activity
+  engagementData: json("engagementData"), // Stores raw engagement metrics (followers, posts, etc.)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -66,8 +68,10 @@ export const campaigns = mysqlTable("campaigns", {
   openCount: int("openCount").default(0).notNull(),
   clickCount: int("clickCount").default(0).notNull(),
   callCount: int("callCount").default(0).notNull(),
+  dailySendLimit: int("dailySendLimit"), // Max emails to send per day (null = send all at once)
   scheduledAt: timestamp("scheduledAt"),
   scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  dailySendCronTaskUid: varchar("dailySendCronTaskUid", { length: 65 }), // Cron for daily drip sending
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   launchedAt: timestamp("launchedAt"),

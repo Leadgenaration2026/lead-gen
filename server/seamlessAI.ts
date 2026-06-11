@@ -2,6 +2,12 @@
  * Seamless.AI API Integration
  * Implements the Search → Research → Poll flow to get real, verified contacts.
  * API Docs: https://docs.seamless.ai
+ * 
+ * Key API limits:
+ * - Search: default 50 per page, uses nextToken for pagination
+ * - Research: max 100 searchResultIds per batch, each consumes 1 credit
+ * - Poll: returns results for requested IDs
+ * - Rate limit: 60 requests/minute per endpoint
  */
 
 const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
@@ -86,7 +92,9 @@ async function seamlessRequest(
 }
 
 /**
- * Step 1: Search contacts by filters derived from the user's instruction.
+ * Step 1: Search contacts by filters — with PAGINATION to get ALL results.
+ * Uses nextToken to fetch subsequent pages until we have enough results
+ * or there are no more pages.
  */
 export async function searchContacts(
   apiKey: string,
@@ -99,10 +107,13 @@ export async function searchContacts(
     contactCountry?: string[];
     contactState?: string[];
     limit?: number;
-  }
+  },
+  maxResults?: number
 ): Promise<SeamlessSearchResponse> {
+  const pageSize = 50; // Seamless.AI default/max per page
+  const targetCount = maxResults || filters.limit || 50;
+  
   const body: Record<string, any> = {};
-
   if (filters.companyName?.length) body.companyName = filters.companyName;
   if (filters.jobTitle?.length) body.jobTitle = filters.jobTitle;
   if (filters.department?.length) body.department = filters.department;
@@ -110,61 +121,187 @@ export async function searchContacts(
   if (filters.industry?.length) body.industry = filters.industry;
   if (filters.contactCountry?.length) body.contactCountry = filters.contactCountry;
   if (filters.contactState?.length) body.contactState = filters.contactState;
-  if (filters.limit) body.limit = filters.limit;
+  body.limit = pageSize;
 
-  return seamlessRequest(apiKey, "POST", "/search/contacts", body);
+  const allResults: SeamlessSearchResult[] = [];
+  let nextToken: string | undefined = undefined;
+  let totalResults: number | undefined = undefined;
+  let pageCount = 0;
+  const maxPages = 20; // Safety limit to prevent infinite loops (20 * 50 = 1000 max)
+
+  while (pageCount < maxPages) {
+    pageCount++;
+    
+    const requestBody = { ...body };
+    if (nextToken) {
+      requestBody.nextToken = nextToken;
+    }
+
+    console.log(`[Seamless.AI] Search page ${pageCount}${nextToken ? " (with nextToken)" : ""}, have ${allResults.length} results so far`);
+    
+    const response = await seamlessRequest(apiKey, "POST", "/search/contacts", requestBody);
+    
+    const pageData: SeamlessSearchResult[] = response.data || [];
+    allResults.push(...pageData);
+    
+    // Track total available results from API
+    if (response.supplementalData?.totalResults !== undefined) {
+      totalResults = response.supplementalData.totalResults;
+    }
+    
+    // Get nextToken for pagination
+    nextToken = response.supplementalData?.nextToken;
+    
+    console.log(`[Seamless.AI] Page ${pageCount}: got ${pageData.length} results. Total so far: ${allResults.length}${totalResults !== undefined ? ` / ${totalResults} available` : ""}`);
+    
+    // Stop if we have enough results
+    if (allResults.length >= targetCount) {
+      console.log(`[Seamless.AI] Reached target count (${targetCount}), stopping pagination`);
+      break;
+    }
+    
+    // Stop if no more pages
+    if (!nextToken) {
+      console.log(`[Seamless.AI] No more pages (nextToken is empty)`);
+      break;
+    }
+    
+    // Stop if this page returned fewer results than page size (last page)
+    if (pageData.length < pageSize) {
+      console.log(`[Seamless.AI] Last page (got ${pageData.length} < ${pageSize})`);
+      break;
+    }
+    
+    // Small delay between pages to respect rate limits (60 req/min)
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  console.log(`[Seamless.AI] Search complete: ${allResults.length} total results across ${pageCount} pages`);
+
+  return {
+    data: allResults,
+    supplementalData: {
+      nextToken,
+      totalResults: totalResults || allResults.length,
+    },
+  };
 }
 
 /**
  * Step 2: Submit searchResultIds for research (enrichment).
+ * Handles batching — API allows max 100 IDs per request.
  */
 export async function researchContacts(
   apiKey: string,
   searchResultIds: string[]
 ): Promise<SeamlessResearchResponse> {
-  return seamlessRequest(apiKey, "POST", "/contacts/research", {
-    searchResultIds,
-  });
+  const BATCH_SIZE = 100; // API maximum per request
+  const allRequestIds: string[] = [];
+  
+  // Split into batches of 100
+  for (let i = 0; i < searchResultIds.length; i += BATCH_SIZE) {
+    const batch = searchResultIds.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(searchResultIds.length / BATCH_SIZE);
+    
+    console.log(`[Seamless.AI] Research batch ${batchNum}/${totalBatches}: submitting ${batch.length} contacts`);
+    
+    const response = await seamlessRequest(apiKey, "POST", "/contacts/research", {
+      searchResultIds: batch,
+    });
+    
+    if (response.requestIds?.length) {
+      allRequestIds.push(...response.requestIds);
+    } else if (!response.success) {
+      console.error(`[Seamless.AI] Research batch ${batchNum} failed:`, JSON.stringify(response));
+    }
+    
+    // Delay between batches to respect rate limits
+    if (i + BATCH_SIZE < searchResultIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  return {
+    success: allRequestIds.length > 0,
+    requestIds: allRequestIds,
+  };
 }
 
 /**
  * Step 3: Poll for research results until done or timeout.
+ * Handles large sets by polling in batches if needed.
  */
 export async function pollContactResults(
   apiKey: string,
   requestIds: string[],
-  maxAttempts = 24,
-  pollIntervalMs = 5000
+  maxAttempts = 30,
+  pollIntervalMs = 3000
 ): Promise<SeamlessPollResult[]> {
+  const completedResults: SeamlessPollResult[] = [];
+  let pendingIds = [...requestIds];
+  
+  console.log(`[Seamless.AI] Polling for ${pendingIds.length} research results...`);
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const idsParam = requestIds.join(",");
-    const response = await seamlessRequest(
-      apiKey,
-      "GET",
-      `/contacts/research/poll?requestIds=${encodeURIComponent(idsParam)}`,
-    );
+    if (pendingIds.length === 0) break;
+    
+    // Poll in batches to avoid URL length limits
+    const POLL_BATCH_SIZE = 50;
+    const newPending: string[] = [];
+    
+    for (let i = 0; i < pendingIds.length; i += POLL_BATCH_SIZE) {
+      const batch = pendingIds.slice(i, i + POLL_BATCH_SIZE);
+      const idsParam = batch.join(",");
+      
+      const response = await seamlessRequest(
+        apiKey,
+        "GET",
+        `/contacts/research/poll?requestIds=${encodeURIComponent(idsParam)}`,
+      );
 
-    const results: SeamlessPollResult[] = Array.isArray(response) ? response : (response.data || [response]);
+      const results: SeamlessPollResult[] = Array.isArray(response) 
+        ? response 
+        : (response.data || [response]);
 
-    // Check if all are done
-    const allDone = results.every(
-      (r: any) => r.status === "done" || r.status === "missing" || r.status === "error" || r.status === "duplicate"
-    );
-
-    if (allDone) {
-      return results;
+      for (const r of results) {
+        if (r.status === "done" || r.status === "missing" || r.status === "error" || r.status === "duplicate") {
+          completedResults.push(r);
+        } else {
+          // Still researching — keep polling
+          newPending.push(r.requestId);
+        }
+      }
+      
+      // Small delay between poll batches
+      if (i + POLL_BATCH_SIZE < pendingIds.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
+    
+    pendingIds = newPending;
+    
+    if (pendingIds.length === 0) {
+      console.log(`[Seamless.AI] All ${completedResults.length} results completed after ${attempt + 1} poll attempts`);
+      break;
+    }
+    
+    console.log(`[Seamless.AI] Poll attempt ${attempt + 1}: ${completedResults.length} done, ${pendingIds.length} still researching`);
 
-    // Wait before next poll
+    // Wait before next poll cycle
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
+  
+  if (pendingIds.length > 0) {
+    console.warn(`[Seamless.AI] Polling timed out with ${pendingIds.length} still pending. Returning ${completedResults.length} completed results.`);
+  }
 
-  throw new Error("Seamless.AI research polling timed out after " + maxAttempts + " attempts");
+  return completedResults;
 }
 
 /**
  * Full flow: Search → Research → Poll → Return enriched contacts.
- * Uses LLM to parse the user's instruction into Seamless.AI search filters.
+ * Fetches ALL available results up to the requested count using pagination.
  */
 export async function getSeamlessLeads(
   apiKey: string,
@@ -192,38 +329,32 @@ export async function getSeamlessLeads(
   }>;
   totalSearchResults: number;
 }> {
-  // Step 1: Search — request more results than needed to maximize yield
-  const searchLimit = Math.min(count * 2, 100);
-  const searchResponse = await searchContacts(apiKey, {
-    ...filters,
-    limit: searchLimit,
-  });
+  // Step 1: Search — fetch ALL available results up to the requested count
+  // Pass the count as maxResults so pagination fetches enough pages
+  const searchResponse = await searchContacts(apiKey, filters, count);
 
   if (!searchResponse.data || searchResponse.data.length === 0) {
     throw new Error("No contacts found matching your criteria on Seamless.AI. Try broadening your search.");
   }
 
-  console.log(`[Seamless.AI] Search returned ${searchResponse.data.length} results (requested ${searchLimit})`);
+  console.log(`[Seamless.AI] Search returned ${searchResponse.data.length} total results for requested count of ${count}`);
 
   // Build a map of searchResultId → country from search results for post-filtering
   const searchCountryMap = new Map<string, string>();
-  const searchNameMap = new Map<string, { firstName?: string; lastName?: string; company?: string; jobTitle?: string }>();
   for (const r of searchResponse.data) {
     if (r.country) {
       searchCountryMap.set(r.searchResultId, r.country);
     }
-    // Save basic info from search results as fallback
-    searchNameMap.set(r.searchResultId, {
-      firstName: (r as any).firstName,
-      lastName: (r as any).lastName,
-      company: (r as any).company || (r as any).companyName,
-      jobTitle: (r as any).jobTitle,
-    });
   }
 
-  // Step 2: Research (enrich) — submit ALL search results to maximize yield
-  const searchResultIds = searchResponse.data.map((r) => r.searchResultId);
+  // Take up to `count` search results for research
+  const searchResultIds = searchResponse.data
+    .slice(0, count)
+    .map((r) => r.searchResultId);
 
+  console.log(`[Seamless.AI] Submitting ${searchResultIds.length} contacts for research (of ${searchResponse.data.length} found)`);
+
+  // Step 2: Research (enrich) — batched automatically in groups of 100
   const researchResponse = await researchContacts(apiKey, searchResultIds);
 
   if (!researchResponse.success || !researchResponse.requestIds?.length) {
@@ -232,11 +363,11 @@ export async function getSeamlessLeads(
 
   console.log(`[Seamless.AI] Research submitted for ${researchResponse.requestIds.length} contacts`);
 
-  // Step 3: Poll for results
+  // Step 3: Poll for results — handles large sets with batched polling
   const pollResults = await pollContactResults(apiKey, researchResponse.requestIds);
 
-  // Convert to our lead format — include ALL contacts, even without emails
-  const contactsWithEmail: Array<{
+  // Convert to our lead format — include ALL contacts
+  const contacts: Array<{
     companyName: string;
     ownerName: string;
     email: string;
@@ -247,10 +378,17 @@ export async function getSeamlessLeads(
     timezone?: string;
     country?: string;
   }> = [];
-  
-  const contactsWithoutEmail: typeof contactsWithEmail = [];
+
+  let withEmail = 0;
+  let withoutEmail = 0;
+  let duplicateCount = 0;
+  let missingCount = 0;
+  let errorCount = 0;
 
   for (const r of pollResults) {
+    if (r.status === "duplicate") { duplicateCount++; continue; }
+    if (r.status === "missing") { missingCount++; continue; }
+    if (r.status === "error") { errorCount++; continue; }
     if (r.status !== "done" || !r.contact) continue;
     
     const c = r.contact;
@@ -268,22 +406,15 @@ export async function getSeamlessLeads(
       country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || undefined,
     };
     
-    if (email) {
-      contactsWithEmail.push(contact);
-    } else {
-      // Still include contacts without email — they have phone/LinkedIn
-      contactsWithoutEmail.push(contact);
-    }
+    contacts.push(contact);
+    if (email) withEmail++; else withoutEmail++;
   }
 
-  // Prioritize contacts with emails, then fill remaining slots with contacts without emails
-  const allContacts = [...contactsWithEmail, ...contactsWithoutEmail];
-  
-  console.log(`[Seamless.AI] Got ${contactsWithEmail.length} contacts with emails, ${contactsWithoutEmail.length} without emails. Total: ${allContacts.length}`);
+  console.log(`[Seamless.AI] Results: ${contacts.length} contacts (${withEmail} with email, ${withoutEmail} without email). Duplicates: ${duplicateCount}, Missing: ${missingCount}, Errors: ${errorCount}`);
 
   return {
-    contacts: allContacts,
-    totalSearchResults: searchResponse.data.length,
+    contacts,
+    totalSearchResults: searchResponse.supplementalData?.totalResults || searchResponse.data.length,
   };
 }
 
@@ -381,7 +512,6 @@ function fallbackParseFilters(
   contactState?: string[];
 } {
   // Remove common location words from instruction to extract the role
-  const locationWords = ["in", "from", "based in", "located in", "usa", "united states", "india", "uk"];
   let jobTitle = instruction.trim();
   
   // Remove trailing location phrases like "in Alabama" or "in USA"
@@ -389,8 +519,6 @@ function fallbackParseFilters(
   
   // Remove leading "find", "search", "get", "look for" etc.
   jobTitle = jobTitle.replace(/^(find|search|get|look for|looking for|i need|i want)\s+/i, "").trim();
-  
-  // Remove trailing "s" for plural if it looks like a role (e.g., "speakers" → "speaker" is fine for search)
   
   const filters: Record<string, string[]> = {};
   if (jobTitle) {

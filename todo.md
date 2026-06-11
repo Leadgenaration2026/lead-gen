@@ -590,3 +590,20 @@
 - [x] Request more search results to compensate for email filter dropoff
 - [x] Mark leads without email as "No Email - Use Phone/LinkedIn" instead of dropping them
 - [ ] Add broader search fallback (related job titles) when initial results are too few
+- [x] Add pagination to searchContacts using nextToken to fetch ALL available results
+- [x] Batch research requests in groups of 100 (API max per request)
+- [x] Remove artificial cap of 100 on search results
+- [x] Return all matching leads up to user's requested count
+- [x] Remove count limit on frontend — allow "Pull All" from Seamless.AI
+- [x] Increase backend schema max from 100 to 1000 (or unlimited)
+- [x] Add daily email send limit control to bulk campaign workflow
+- [x] Allow user to specify how many emails to send per day from a lead set
+- [x] Add dailySendLimit column to campaigns table
+- [x] Update campaign launch to respect daily limit (send batch, schedule rest)
+- [x] Create /api/scheduled/daily-campaign-send handler for drip sending
+- [x] Add engagement scoring system (engagementScore column on leads)
+- [x] Scrape Instagram public profiles for follower count and post frequency
+- [x] Use LinkedIn URL presence + company data as engagement proxy
+- [x] Sort leads by engagement score (highest first) in lead list
+- [x] Add engagement score display in leads table/cards
+- [x] Add daily send limit input to campaign creation forms (both pages)

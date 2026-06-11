@@ -121,6 +121,12 @@ export async function deleteLead(id: number) {
   return db.delete(leads).where(eq(leads.id, id));
 }
 
+export async function updateLeadEngagement(id: number, score: number, metrics: any) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(leads).set({ engagementScore: score, engagementData: metrics, updatedAt: new Date() }).where(eq(leads.id, id));
+}
+
 // Campaign queries
 export async function createCampaign(data: InsertCampaign) {
   const db = await getDb();
