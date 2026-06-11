@@ -165,7 +165,7 @@ export default function LeadsPage() {
     }
     setIsGenerating(true);
     try {
-      await generateLeadsMutation.mutateAsync({
+      const result = await generateLeadsMutation.mutateAsync({
         instruction,
         count,
         leadSetName: generateLeadSetName.trim() || undefined,
@@ -173,14 +173,26 @@ export default function LeadsPage() {
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
       });
-      toast.success(`Lead generation complete!`);
-      setInstruction("");
-      setGenerateLeadSetName("");
+      
+      // Handle different response scenarios
+      if (result.count === 0 && result.duplicatesSkipped && result.duplicatesSkipped > 0) {
+        // All results were duplicates
+        toast.error(result.message || `All ${result.duplicatesSkipped} contacts found are already in your system. Try different search criteria.`, { duration: 8000 });
+      } else if (result.count > 0) {
+        const dupMsg = result.duplicatesSkipped ? ` (${result.duplicatesSkipped} duplicates skipped)` : "";
+        toast.success(`Generated ${result.count} new leads!${dupMsg}`);
+        setInstruction("");
+        setGenerateLeadSetName("");
+      } else {
+        toast.success(`Lead generation complete!`);
+        setInstruction("");
+        setGenerateLeadSetName("");
+      }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to generate leads";
-      toast.error(msg);
+      toast.error(msg, { duration: 8000 });
     } finally {
       setIsGenerating(false);
     }

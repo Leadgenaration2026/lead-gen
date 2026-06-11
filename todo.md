@@ -607,3 +607,12 @@
 - [x] Sort leads by engagement score (highest first) in lead list
 - [x] Add engagement score display in leads table/cards
 - [x] Add daily send limit input to campaign creation forms (both pages)
+
+## Bug Fix — Seamless.AI "No Contacts Found" Error (Actually Credits Exhausted)
+- [x] Detect "insufficientCredits" error from Seamless.AI API and show clear message
+- [x] Detect "unauthorized" (invalid API key) and show clear message
+- [x] Detect "rateLimited" and show clear message
+- [x] Handle "all results are duplicates" scenario gracefully (not as error)
+- [x] Show duplicate count and helpful message when all contacts already exist in system
+- [x] Make broader search fallback more aggressive (search nationwide when state results are few)
+- [x] Frontend shows specific error duration (8 seconds) for important messages

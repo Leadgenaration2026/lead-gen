@@ -345,6 +345,28 @@ export const appRouter = router({
           } catch (error: any) {
             if (error instanceof TRPCError) throw error;
             console.error("[Seamless.AI] Error:", error.message);
+            
+            // Provide user-friendly error messages for known error types
+            const errMsg = error.message || "";
+            if (errMsg.includes("SEAMLESS_CREDITS_EXHAUSTED")) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Your Seamless.AI account has run out of API credits. Please add more credits at seamless.ai/billing to continue generating leads.",
+              });
+            }
+            if (errMsg.includes("SEAMLESS_AUTH_ERROR")) {
+              throw new TRPCError({
+                code: "UNAUTHORIZED",
+                message: "Your Seamless.AI API key is invalid or expired. Please update it in Settings.",
+              });
+            }
+            if (errMsg.includes("SEAMLESS_RATE_LIMITED")) {
+              throw new TRPCError({
+                code: "TOO_MANY_REQUESTS",
+                message: "Too many requests to Seamless.AI. Please wait a moment and try again.",
+              });
+            }
+            
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: `Seamless.AI error: ${error.message}`,
@@ -414,18 +436,30 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
         // ═══════════════════════════════════════════════
         // DUPLICATE PREVENTION: Skip leads with emails already in the system
+        // But include leads WITHOUT emails (they have phone/LinkedIn)
         // ═══════════════════════════════════════════════
         const emailsToCheck = leadsData.map(l => l.email).filter(Boolean);
         const existingLeads = emailsToCheck.length > 0
           ? await db.getLeadsByEmails(emailsToCheck, ctx.user.id)
           : [];
         const existingEmails = new Set(existingLeads.map((l: any) => l.email.toLowerCase()));
+        
+        // Keep leads that either: have no email (phone/LinkedIn only) OR have a new email
         const uniqueLeadsData = leadsData.filter(
-          (l) => l.email && !existingEmails.has(l.email.toLowerCase())
+          (l) => !l.email || !existingEmails.has(l.email.toLowerCase())
         );
         const duplicatesSkipped = leadsData.length - uniqueLeadsData.length;
         if (duplicatesSkipped > 0) {
           console.log(`[LeadGen] Skipped ${duplicatesSkipped} duplicate leads (email already exists)`);
+        }
+        
+        // If ALL leads were duplicates, return a helpful message instead of an error
+        if (uniqueLeadsData.length === 0 && leadsData.length > 0) {
+          return {
+            count: 0,
+            duplicatesSkipped,
+            message: `Found ${leadsData.length} contacts from Seamless.AI, but all ${duplicatesSkipped} are already in your system. Try a different search criteria or location to find new leads.`,
+          };
         }
 
         // If leadSetName is provided, create or find the lead set

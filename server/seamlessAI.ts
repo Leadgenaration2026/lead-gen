@@ -85,6 +85,24 @@ async function seamlessRequest(
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
     console.error(`[Seamless.AI] Error ${response.status}: ${errorText}`);
+    
+    // Parse specific error codes from Seamless.AI
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.code === "insufficientCredits" || errorData.msg?.includes("Insufficient credit")) {
+        throw new Error("SEAMLESS_CREDITS_EXHAUSTED: Your Seamless.AI account has run out of API credits. Please add more credits at seamless.ai/billing to continue generating leads.");
+      }
+      if (errorData.code === "unauthorized" || response.status === 401) {
+        throw new Error("SEAMLESS_AUTH_ERROR: Your Seamless.AI API key is invalid or expired. Please update it in Settings.");
+      }
+      if (errorData.code === "rateLimited" || response.status === 429) {
+        throw new Error("SEAMLESS_RATE_LIMITED: Too many requests to Seamless.AI. Please wait a moment and try again.");
+      }
+    } catch (parseError: any) {
+      // If it's our own thrown error, re-throw it
+      if (parseError.message?.startsWith("SEAMLESS_")) throw parseError;
+    }
+    
     throw new Error(`Seamless.AI API error (${response.status}): ${errorText}`);
   }
 
@@ -385,39 +403,61 @@ export async function getSeamlessLeads(
   // Pass the count as maxResults so pagination fetches enough pages
   let searchResponse = await searchContacts(apiKey, filters, count);
 
-  // BROADER SEARCH FALLBACK: If initial results are too few (less than 50% of requested),
-  // try expanding with related job titles
-  const tooFewThreshold = Math.min(count * 0.5, 10); // At least 50% or 10 results
+  // BROADER SEARCH FALLBACK: If initial results are fewer than requested,
+  // aggressively expand the search with related job titles and relaxed filters
   if (
-    searchResponse.data.length < tooFewThreshold &&
-    filters.jobTitle?.length &&
-    searchResponse.data.length < count
+    searchResponse.data.length < count &&
+    filters.jobTitle?.length
   ) {
     const relatedTitles = getRelatedJobTitles(filters.jobTitle);
+    const existingIds = new Set(searchResponse.data.map(r => r.searchResultId));
+    
     if (relatedTitles.length > 0) {
       console.log(`[Seamless.AI] Initial search returned only ${searchResponse.data.length} results (need ${count}). Trying broader search with related titles: ${relatedTitles.join(", ")}`);
       
-      // Combine original + related titles for a broader search
+      // Strategy 1: Search with ALL related titles combined (same location filters)
       const expandedFilters = {
         ...filters,
-        jobTitle: [...filters.jobTitle, ...relatedTitles.slice(0, 5)], // Add up to 5 related titles
+        jobTitle: [...filters.jobTitle, ...relatedTitles],
       };
       
       const expandedResponse = await searchContacts(apiKey, expandedFilters, count);
       
-      if (expandedResponse.data.length > searchResponse.data.length) {
-        console.log(`[Seamless.AI] Broader search found ${expandedResponse.data.length} results (up from ${searchResponse.data.length})`);
-        // Merge: keep original results first, then add new ones
-        const existingIds = new Set(searchResponse.data.map(r => r.searchResultId));
+      if (expandedResponse.data.length > 0) {
         const newResults = expandedResponse.data.filter(r => !existingIds.has(r.searchResultId));
-        searchResponse = {
-          data: [...searchResponse.data, ...newResults],
-          supplementalData: {
-            totalResults: (searchResponse.supplementalData?.totalResults || searchResponse.data.length) + newResults.length,
-          },
-        };
+        searchResponse.data.push(...newResults);
+        newResults.forEach(r => existingIds.add(r.searchResultId));
+        console.log(`[Seamless.AI] Broader title search added ${newResults.length} results. Total: ${searchResponse.data.length}`);
       }
     }
+    
+    // Strategy 2: If still not enough and we have a state filter, try without state
+    // (search nationwide with original + related titles)
+    if (searchResponse.data.length < count && filters.contactState?.length) {
+      console.log(`[Seamless.AI] Still only ${searchResponse.data.length} results. Trying without state filter (nationwide)...`);
+      
+      const nationwideFilters = {
+        ...filters,
+        jobTitle: [...filters.jobTitle, ...relatedTitles],
+        contactState: undefined as string[] | undefined,
+      };
+      delete nationwideFilters.contactState;
+      
+      const nationwideResponse = await searchContacts(apiKey, nationwideFilters, count);
+      
+      if (nationwideResponse.data.length > 0) {
+        const newResults = nationwideResponse.data.filter(r => !existingIds.has(r.searchResultId));
+        searchResponse.data.push(...newResults);
+        newResults.forEach(r => existingIds.add(r.searchResultId));
+        console.log(`[Seamless.AI] Nationwide search added ${newResults.length} results. Total: ${searchResponse.data.length}`);
+      }
+    }
+    
+    // Update supplementalData
+    searchResponse.supplementalData = {
+      ...searchResponse.supplementalData,
+      totalResults: searchResponse.data.length,
+    };
   }
 
   if (!searchResponse.data || searchResponse.data.length === 0) {
