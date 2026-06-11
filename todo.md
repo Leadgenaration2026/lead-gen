@@ -589,7 +589,7 @@
 - [x] Include contacts without verified emails (they still have phone, LinkedIn, name)
 - [x] Request more search results to compensate for email filter dropoff
 - [x] Mark leads without email as "No Email - Use Phone/LinkedIn" instead of dropping them
-- [ ] Add broader search fallback (related job titles) when initial results are too few
+- [x] Add broader search fallback (related job titles) when initial results are too few
 - [x] Add pagination to searchContacts using nextToken to fetch ALL available results
 - [x] Batch research requests in groups of 100 (API max per request)
 - [x] Remove artificial cap of 100 on search results

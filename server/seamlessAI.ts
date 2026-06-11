@@ -300,8 +300,60 @@ export async function pollContactResults(
 }
 
 /**
+ * Generate related/broader job titles for fallback search.
+ * If the initial search returns too few results, we expand the search with related titles.
+ */
+function getRelatedJobTitles(jobTitles: string[]): string[] {
+  const relatedTitleMap: Record<string, string[]> = {
+    "motivational speaker": ["keynote speaker", "public speaker", "inspirational speaker", "life coach", "executive coach", "leadership speaker", "corporate trainer"],
+    "keynote speaker": ["motivational speaker", "public speaker", "conference speaker", "thought leader", "corporate speaker"],
+    "public speaker": ["motivational speaker", "keynote speaker", "presenter", "trainer", "facilitator"],
+    "life coach": ["executive coach", "business coach", "career coach", "wellness coach", "personal development coach", "motivational speaker"],
+    "executive coach": ["leadership coach", "business coach", "life coach", "performance coach"],
+    "business coach": ["executive coach", "startup advisor", "business consultant", "mentor"],
+    "real estate agent": ["realtor", "real estate broker", "property manager", "real estate consultant", "real estate advisor"],
+    "realtor": ["real estate agent", "real estate broker", "property consultant"],
+    "financial advisor": ["financial planner", "wealth manager", "investment advisor", "financial consultant"],
+    "marketing director": ["marketing manager", "head of marketing", "vp marketing", "chief marketing officer", "digital marketing director"],
+    "sales director": ["sales manager", "head of sales", "vp sales", "chief revenue officer"],
+    "ceo": ["founder", "president", "managing director", "chief executive", "owner"],
+    "founder": ["ceo", "co-founder", "entrepreneur", "startup founder", "owner"],
+    "consultant": ["advisor", "strategist", "specialist", "expert"],
+    "personal trainer": ["fitness coach", "strength coach", "wellness coach", "health coach"],
+    "therapist": ["counselor", "psychologist", "mental health professional", "clinical therapist"],
+    "attorney": ["lawyer", "legal counsel", "solicitor", "legal advisor"],
+    "lawyer": ["attorney", "legal counsel", "solicitor", "legal advisor"],
+    "dentist": ["dental surgeon", "orthodontist", "dental practitioner"],
+    "chiropractor": ["chiropractic physician", "wellness practitioner", "spine specialist"],
+    "photographer": ["videographer", "creative director", "visual artist", "content creator"],
+  };
+
+  const related: string[] = [];
+  for (const title of jobTitles) {
+    const titleLower = title.toLowerCase().trim();
+    // Check exact match
+    if (relatedTitleMap[titleLower]) {
+      related.push(...relatedTitleMap[titleLower]);
+    } else {
+      // Check partial match (e.g., "motivational speakers" matches "motivational speaker")
+      for (const [key, values] of Object.entries(relatedTitleMap)) {
+        if (titleLower.includes(key) || key.includes(titleLower)) {
+          related.push(...values);
+          break;
+        }
+      }
+    }
+  }
+
+  // Remove duplicates and original titles
+  const originalLower = new Set(jobTitles.map(t => t.toLowerCase().trim()));
+  return Array.from(new Set(related)).filter(t => !originalLower.has(t.toLowerCase()));
+}
+
+/**
  * Full flow: Search → Research → Poll → Return enriched contacts.
  * Fetches ALL available results up to the requested count using pagination.
+ * If initial results are too few, automatically retries with related/broader job titles.
  */
 export async function getSeamlessLeads(
   apiKey: string,
@@ -331,7 +383,42 @@ export async function getSeamlessLeads(
 }> {
   // Step 1: Search — fetch ALL available results up to the requested count
   // Pass the count as maxResults so pagination fetches enough pages
-  const searchResponse = await searchContacts(apiKey, filters, count);
+  let searchResponse = await searchContacts(apiKey, filters, count);
+
+  // BROADER SEARCH FALLBACK: If initial results are too few (less than 50% of requested),
+  // try expanding with related job titles
+  const tooFewThreshold = Math.min(count * 0.5, 10); // At least 50% or 10 results
+  if (
+    searchResponse.data.length < tooFewThreshold &&
+    filters.jobTitle?.length &&
+    searchResponse.data.length < count
+  ) {
+    const relatedTitles = getRelatedJobTitles(filters.jobTitle);
+    if (relatedTitles.length > 0) {
+      console.log(`[Seamless.AI] Initial search returned only ${searchResponse.data.length} results (need ${count}). Trying broader search with related titles: ${relatedTitles.join(", ")}`);
+      
+      // Combine original + related titles for a broader search
+      const expandedFilters = {
+        ...filters,
+        jobTitle: [...filters.jobTitle, ...relatedTitles.slice(0, 5)], // Add up to 5 related titles
+      };
+      
+      const expandedResponse = await searchContacts(apiKey, expandedFilters, count);
+      
+      if (expandedResponse.data.length > searchResponse.data.length) {
+        console.log(`[Seamless.AI] Broader search found ${expandedResponse.data.length} results (up from ${searchResponse.data.length})`);
+        // Merge: keep original results first, then add new ones
+        const existingIds = new Set(searchResponse.data.map(r => r.searchResultId));
+        const newResults = expandedResponse.data.filter(r => !existingIds.has(r.searchResultId));
+        searchResponse = {
+          data: [...searchResponse.data, ...newResults],
+          supplementalData: {
+            totalResults: (searchResponse.supplementalData?.totalResults || searchResponse.data.length) + newResults.length,
+          },
+        };
+      }
+    }
+  }
 
   if (!searchResponse.data || searchResponse.data.length === 0) {
     throw new Error("No contacts found matching your criteria on Seamless.AI. Try broadening your search.");
