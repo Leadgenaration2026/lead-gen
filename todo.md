@@ -564,3 +564,10 @@
 - [x] Added round-robin fallback when no rotational email matches today's day
 - [x] Added per-account "Test" button in Settings to test each rotational account individually
 - [x] Added console logging to track which SMTP account is used for each email
+
+## Bug Fix — Email Bouncing from Seamless.AI Leads
+- [x] Investigate why emails extracted from Seamless.AI are bouncing back
+- [x] Root cause: Seamless.AI source was not actually calling Seamless API — it used LLM to generate fake leads with invalid emails
+- [x] Implemented real Seamless.AI API integration (Search → Research → Poll) to get verified contacts
+- [x] Add email validation/verification (MX record check) before sending campaigns — invalid emails are auto-skipped
+- [x] Prevent duplicate leads from being added to the same lead set during AI/Seamless extraction

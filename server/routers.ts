@@ -259,8 +259,62 @@ export const appRouter = router({
     generate: protectedProcedure
       .input(generateLeadsSchema)
       .mutation(async ({ input, ctx }) => {
-        const countryHint = input.country ? `\nIMPORTANT: All leads MUST be from ${input.country}. Use phone numbers, timezones, and domains appropriate for ${input.country}.` : "";
-        const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryHint}
+        let leadsData: Array<{
+          companyName: string;
+          ownerName: string;
+          email: string;
+          phoneNumber: string;
+          website?: string;
+          industry?: string;
+          timezone?: string;
+          linkedinUrl?: string;
+          instagramUrl?: string;
+          facebookUrl?: string;
+        }>;
+
+        // ═══════════════════════════════════════════════
+        // SOURCE: SEAMLESS.AI (Real verified contacts)
+        // ═══════════════════════════════════════════════
+        if (input.source === "seamless") {
+          const settings = await db.getUserSettings(ctx.user.id);
+          if (!settings?.seamlessApiKey) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Seamless.AI API key not configured. Go to Settings → Seamless.ai to add your API key.",
+            });
+          }
+
+          const { parseInstructionToFilters, getSeamlessLeads } = await import("./seamlessAI");
+
+          // Parse user instruction into Seamless.AI filters using LLM
+          const filters = await parseInstructionToFilters(input.instruction, input.country);
+          console.log("[Seamless.AI] Parsed filters:", JSON.stringify(filters));
+
+          try {
+            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count);
+            leadsData = result.contacts;
+
+            if (leadsData.length === 0) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "No contacts with verified emails found on Seamless.AI for your criteria. Try broadening your search.",
+              });
+            }
+          } catch (error: any) {
+            if (error instanceof TRPCError) throw error;
+            console.error("[Seamless.AI] Error:", error.message);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Seamless.AI error: ${error.message}`,
+            });
+          }
+        }
+        // ═══════════════════════════════════════════════
+        // SOURCE: AI (LLM-generated placeholder leads)
+        // ═══════════════════════════════════════════════
+        else {
+          const countryHint = input.country ? `\nIMPORTANT: All leads MUST be from ${input.country}. Use phone numbers, timezones, and domains appropriate for ${input.country}.` : "";
+          const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryHint}
         
 Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - companyName: string
@@ -276,46 +330,59 @@ Return a JSON array with exactly ${input.count} leads. Each lead must have:
 
 Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
-        const response = await invokeLLM({
-          messages: [
-            {
-              role: "system",
-              content: "You are a lead generation expert. Generate realistic business leads with accurate contact information. Always respond with raw JSON only - no markdown formatting, no code fences, no explanatory text.",
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          response_format: { type: "json_object" },
-        }) as any;
+          const response = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: "You are a lead generation expert. Generate realistic business leads with accurate contact information. Always respond with raw JSON only - no markdown formatting, no code fences, no explanatory text.",
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            response_format: { type: "json_object" },
+          }) as any;
 
-        let leadsData;
-        try {
-          let content = response.choices[0]?.message?.content;
-          // Handle array content (some models return content as array)
-          if (Array.isArray(content)) {
-            content = content.map((c: any) => typeof c === 'string' ? c : c.text || '').join('');
+          try {
+            let content = response.choices[0]?.message?.content;
+            if (Array.isArray(content)) {
+              content = content.map((c: any) => typeof c === 'string' ? c : c.text || '').join('');
+            }
+            if (!content) throw new Error("No response from LLM");
+            content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+            const parsed = JSON.parse(content);
+            leadsData = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || Object.values(parsed)[0]);
+          } catch (error: any) {
+            console.error("Lead generation parse error:", error.message);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Failed to parse AI-generated leads. Please try again.",
+            });
           }
-          if (!content) throw new Error("No response from LLM");
-          // Strip markdown code fences if present
-          content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-          const parsed = JSON.parse(content);
-          // Handle both {leads: [...]} and [...] formats
-          leadsData = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || Object.values(parsed)[0]);
-        } catch (error: any) {
-          console.error("Lead generation parse error:", error.message, "Raw response:", JSON.stringify(response.choices?.[0]?.message?.content)?.slice(0, 500));
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to parse AI-generated leads. Please try again.",
-          });
+
+          if (!Array.isArray(leadsData)) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "AI response was not an array of leads. Please try again.",
+            });
+          }
         }
 
-        if (!Array.isArray(leadsData)) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "AI response was not an array of leads. Please try again.",
-          });
+        // ═══════════════════════════════════════════════
+        // DUPLICATE PREVENTION: Skip leads with emails already in the system
+        // ═══════════════════════════════════════════════
+        const emailsToCheck = leadsData.map(l => l.email).filter(Boolean);
+        const existingLeads = emailsToCheck.length > 0
+          ? await db.getLeadsByEmails(emailsToCheck, ctx.user.id)
+          : [];
+        const existingEmails = new Set(existingLeads.map((l: any) => l.email.toLowerCase()));
+        const uniqueLeadsData = leadsData.filter(
+          (l) => l.email && !existingEmails.has(l.email.toLowerCase())
+        );
+        const duplicatesSkipped = leadsData.length - uniqueLeadsData.length;
+        if (duplicatesSkipped > 0) {
+          console.log(`[LeadGen] Skipped ${duplicatesSkipped} duplicate leads (email already exists)`);
         }
 
         // If leadSetName is provided, create or find the lead set
@@ -329,14 +396,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             leadSetId = await db.createLeadSet({
               userId: ctx.user.id,
               name: input.leadSetName.trim(),
-              description: `Auto-created from AI generation: ${input.instruction.slice(0, 100)}`,
+              description: `Auto-created from ${input.source === "seamless" ? "Seamless.AI" : "AI"} generation: ${input.instruction.slice(0, 100)}`,
             });
           }
         }
 
-        // Create leads in database
+        // Create leads in database (only unique ones)
         const createdLeads = [];
-        for (const leadData of leadsData) {
+        for (const leadData of uniqueLeadsData) {
           try {
             const result = await db.createLead({
               companyName: leadData.companyName || "Unknown",
@@ -363,10 +430,10 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         setImmediate(async () => {
           try {
             const { fullWebsiteAnalysis } = await import("./websiteAnalysis");
-            for (const leadData of leadsData) {
+            for (const leadData of uniqueLeadsData) {
               if (leadData.website) {
-                const createdLead = await db.getLeadsByUserId(ctx.user.id);
-                const matchingLead = createdLead.find(l => l.email === leadData.email && l.website === leadData.website);
+                const allLeads = await db.getLeadsByUserId(ctx.user.id);
+                const matchingLead = allLeads.find(l => l.email === leadData.email && l.website === leadData.website);
                 if (matchingLead) {
                   try {
                     const analysis = await fullWebsiteAnalysis(
@@ -403,7 +470,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         return {
           success: true,
           count: createdLeads.length,
-          leads: leadsData,
+          leads: uniqueLeadsData,
+          duplicatesSkipped,
+          source: input.source || "ai",
         };
       }),
 
@@ -962,13 +1031,39 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             message: "No leads assigned to this campaign. Add leads before launching.",
           });
         }
+
+        // Validate recipient emails (MX record check) before sending
+        const { validateEmails } = await import("./emailValidation");
+        const leadsForValidation = await Promise.all(
+          campaignLeads.map(async (cl) => {
+            const lead = await db.getLeadById(cl.leadId);
+            return { campaignLeadId: cl.id, email: lead?.email || "", lead };
+          })
+        );
+        const emailsToValidate = leadsForValidation.map(l => l.email).filter(Boolean);
+        const validationResults = await validateEmails(emailsToValidate);
+        const invalidEmails = new Set(
+          validationResults.filter(r => !r.valid).map(r => r.email)
+        );
+        if (invalidEmails.size > 0) {
+          console.log(`[Campaign ${campaignId}] Skipping ${invalidEmails.size} invalid emails (no MX records):`, Array.from(invalidEmails).join(", "));
+        }
+
         let sentCount = 0;
+        let skippedInvalid = 0;
 
         // Send emails
         for (const campaignLead of campaignLeads) {
           try {
             const lead = await db.getLeadById(campaignLead.leadId);
             if (!lead) continue;
+
+            // Skip leads with invalid emails
+            if (invalidEmails.has(lead.email.toLowerCase())) {
+              skippedInvalid++;
+              console.log(`[Campaign ${campaignId}] Skipped invalid email: ${lead.email}`);
+              continue;
+            }
 
             // Generate personalized email
             const personalizedTemplate = campaign.emailTemplate
