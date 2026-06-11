@@ -21,6 +21,7 @@ export default function SettingsPage() {
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
   const upsertRotationalMutation = trpc.rotationalEmails.upsert.useMutation();
   const deleteRotationalMutation = trpc.rotationalEmails.delete.useMutation();
+  const testRotationalMutation = trpc.rotationalEmails.testAccount.useMutation();
   const sendTestToAllMutation = trpc.email.sendTestToAllAccounts.useMutation();
 
   const [formData, setFormData] = useState({
@@ -508,9 +509,22 @@ export default function SettingsPage() {
                             <p className="text-xs text-muted-foreground">{DAY_NAMES[re.dayOfWeek]} &middot; {re.smtpHost}:{re.smtpPort}</p>
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteRotational(re.id)}>
-                          Remove
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" className="text-blue-600 border-blue-300 hover:bg-blue-50 gap-1" onClick={async () => {
+                            try {
+                              const result = await testRotationalMutation.mutateAsync({ accountId: re.id });
+                              toast.success(result.message || `Test email sent from ${re.email}`);
+                            } catch (error: any) {
+                              toast.error(error?.message || `Failed to test ${re.email}`);
+                            }
+                          }} disabled={testRotationalMutation.isPending}>
+                            {testRotationalMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                            Test
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteRotational(re.id)}>
+                            Remove
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>

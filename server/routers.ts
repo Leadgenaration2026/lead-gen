@@ -1044,7 +1044,19 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             // Get rotational email for today (Mon=1, Tue=2, etc.)
             const todayDow = new Date().getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
             const mappedDow = todayDow === 0 ? 5 : todayDow > 5 ? 5 : todayDow; // Map weekends to Friday
-            const rotationalEmail = await db.getRotationalEmailForDay(ctx.user.id, mappedDow);
+            let rotationalEmail = await db.getRotationalEmailForDay(ctx.user.id, mappedDow);
+
+            // If no rotational email for today, try to find any active one (round-robin by lead index)
+            if (!rotationalEmail) {
+              const allRotational = await db.getRotationalEmailsByUser(ctx.user.id);
+              const activeRotational = allRotational.filter(r => r.isActive);
+              if (activeRotational.length > 0) {
+                const index = sentCount % activeRotational.length;
+                rotationalEmail = activeRotational[index];
+              }
+            }
+
+            console.log(`[Campaign Launch] Day=${mappedDow}, UserId=${ctx.user.id}, RotationalEmail=${rotationalEmail?.email || 'NONE (using primary)'}, Lead=${lead.email}`);
 
             // Use rotational email SMTP if available, otherwise fall back to settings
             const smtpConfig = rotationalEmail ? {
@@ -2664,6 +2676,82 @@ Respond in this exact JSON format:
       .mutation(async ({ input: id }) => {
         await db.deleteRotationalEmail(id);
         return { success: true };
+      }),
+
+    // Test a specific rotational SMTP account by sending a test email through it
+    testAccount: protectedProcedure
+      .input(z.object({
+        accountId: z.number().optional(), // If provided, test existing account by ID
+        // Or test with provided credentials directly (for testing before saving)
+        email: z.string().email().optional(),
+        smtpHost: z.string().optional(),
+        smtpPort: z.number().optional(),
+        smtpUsername: z.string().optional(),
+        smtpPassword: z.string().optional(),
+        senderName: z.string().optional(),
+        testEmail: z.string().email().optional(), // Where to send the test
+      }))
+      .mutation(async ({ input, ctx }) => {
+        let host: string, port: number, username: string, password: string, senderEmail: string, senderName: string;
+
+        if (input.accountId) {
+          // Test an existing saved rotational account
+          const accounts = await db.getRotationalEmailsByUser(ctx.user.id);
+          const account = accounts.find(a => a.id === input.accountId);
+          if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Rotational account not found" });
+          host = account.smtpHost;
+          port = account.smtpPort;
+          username = account.smtpUsername;
+          password = account.smtpPassword;
+          senderEmail = account.email;
+          senderName = account.senderName || account.email;
+        } else {
+          // Test with provided credentials
+          if (!input.email || !input.smtpHost || !input.smtpUsername || !input.smtpPassword) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Please provide email, SMTP host, username, and password to test." });
+          }
+          host = input.smtpHost;
+          port = input.smtpPort || 587;
+          username = input.smtpUsername;
+          password = input.smtpPassword;
+          senderEmail = input.email;
+          senderName = input.senderName || input.email;
+        }
+
+        // Determine recipient
+        const recipientEmail = input.testEmail || senderEmail;
+
+        try {
+          const transporter = nodemailer.createTransport({
+            host,
+            port,
+            secure: port === 465,
+            auth: { user: username, pass: password },
+          });
+
+          // Verify connection first
+          await transporter.verify();
+
+          // Send test email FROM this specific account
+          await transporter.sendMail({
+            from: `"${senderName}" <${senderEmail}>`,
+            to: recipientEmail,
+            subject: `[SMTP Test] Verification from ${senderEmail}`,
+            html: `<div style="font-family:sans-serif;padding:20px;"><h3 style="color:#16a34a;">\u2705 SMTP Account Verified</h3><p>This test email was sent <strong>directly from</strong>: <code>${senderEmail}</code></p><p>SMTP Host: <code>${host}:${port}</code></p><p>Username: <code>${username}</code></p><p style="color:#6b7280;font-size:12px;margin-top:20px;">If you received this email, the SMTP credentials for this rotational account are working correctly.</p></div>`,
+          });
+
+          return { success: true, message: `Test email sent from ${senderEmail} to ${recipientEmail}` };
+        } catch (err: any) {
+          console.error(`[Rotational SMTP Test] Failed for ${senderEmail}:`, err.message);
+          const errorMsg = err.code === "EAUTH"
+            ? `Authentication failed for ${senderEmail}. Check username and password.`
+            : err.code === "ECONNREFUSED"
+            ? `Could not connect to ${host}:${port}. Check host and port.`
+            : err.code === "ESOCKET"
+            ? `Connection timed out to ${host}:${port}. Try port 587 or 465.`
+            : `SMTP test failed for ${senderEmail}: ${err.message}`;
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
+        }
       }),
   }),
 

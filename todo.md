@@ -557,3 +557,10 @@
 ## Bug Fix — Click Tracking Not Updating
 - [x] Investigate why customer clicks on email links are not being recorded/updated in the system
 - [x] Fix click tracking flow (link wrapping → redirect endpoint → DB update)
+
+## Bug Fix — SMTP Rotation Not Working
+- [x] Bulk campaigns always sending from primary SMTP instead of assigned rotational accounts
+- [x] SMTP verification testing the primary SMTP instead of the actual account being verified
+- [x] Added round-robin fallback when no rotational email matches today's day
+- [x] Added per-account "Test" button in Settings to test each rotational account individually
+- [x] Added console logging to track which SMTP account is used for each email

@@ -201,7 +201,19 @@ async function startServer() {
 
           const todayDow = new Date().getDay();
           const mappedDow = todayDow === 0 ? 5 : todayDow > 5 ? 5 : todayDow;
-          const rotationalEmail = await db.getRotationalEmailForDay(campaign.userId, mappedDow);
+          let rotationalEmail = await db.getRotationalEmailForDay(campaign.userId, mappedDow);
+
+          // If no rotational email for today, try to find any active one (round-robin by lead index)
+          if (!rotationalEmail) {
+            const allRotational = await db.getRotationalEmailsByUser(campaign.userId);
+            const activeRotational = allRotational.filter(r => r.isActive);
+            if (activeRotational.length > 0) {
+              const index = sentCount % activeRotational.length;
+              rotationalEmail = activeRotational[index];
+            }
+          }
+
+          console.log(`[Scheduled Launch] Day=${mappedDow}, UserId=${campaign.userId}, RotationalEmail=${rotationalEmail?.email || 'NONE (using primary)'}, Lead=${lead.email}`);
 
           const smtpConfig = rotationalEmail ? {
             host: rotationalEmail.smtpHost,
