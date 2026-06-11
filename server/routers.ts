@@ -288,16 +288,46 @@ export const appRouter = router({
 
           // Parse user instruction into Seamless.AI filters using LLM
           const filters = await parseInstructionToFilters(input.instruction, input.country);
-          console.log("[Seamless.AI] Parsed filters:", JSON.stringify(filters));
+          
+          // ALWAYS enforce country filter when user specifies a country
+          if (input.country) {
+            filters.contactCountry = [input.country];
+          }
+          console.log("[Seamless.AI] Final filters (country enforced):", JSON.stringify(filters));
 
           try {
-            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count);
-            leadsData = result.contacts;
+            // Request extra results to account for filtering
+            const requestCount = input.country ? Math.min(input.count * 2, 100) : input.count;
+            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, requestCount);
+            
+            // Post-filter: only keep contacts from the specified country
+            if (input.country) {
+              const countryLower = input.country.toLowerCase();
+              const countryAliases: Record<string, string[]> = {
+                "united states": ["united states", "usa", "us", "united states of america"],
+                "united kingdom": ["united kingdom", "uk", "great britain", "england"],
+                "india": ["india"],
+              };
+              const matchTerms = countryAliases[countryLower] || [countryLower];
+              
+              leadsData = result.contacts.filter((c: any) => {
+                // If contact has country info, check it matches
+                if (c.country) {
+                  return matchTerms.some(term => c.country!.toLowerCase().includes(term));
+                }
+                // If no country info, include it (benefit of the doubt since we filtered in search)
+                return true;
+              }).slice(0, input.count);
+              
+              console.log(`[Seamless.AI] After country filter: ${leadsData.length} of ${result.contacts.length} contacts match ${input.country}`);
+            } else {
+              leadsData = result.contacts.slice(0, input.count);
+            }
 
             if (leadsData.length === 0) {
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: "No contacts with verified emails found on Seamless.AI for your criteria. Try broadening your search.",
+                message: `No contacts with verified emails found in ${input.country || "your criteria"} on Seamless.AI. Try broadening your search.`,
               });
             }
           } catch (error: any) {

@@ -12,6 +12,9 @@ interface SeamlessSearchResult {
   company?: string;
   title?: string;
   location?: string;
+  country?: string;
+  city?: string;
+  state?: string;
 }
 
 interface SeamlessContact {
@@ -185,6 +188,7 @@ export async function getSeamlessLeads(
     industry?: string;
     linkedinUrl?: string;
     timezone?: string;
+    country?: string;
   }>;
   totalSearchResults: number;
 }> {
@@ -199,6 +203,14 @@ export async function getSeamlessLeads(
   }
 
   console.log(`[Seamless.AI] Search returned ${searchResponse.data.length} results`);
+
+  // Build a map of searchResultId → country from search results for post-filtering
+  const searchCountryMap = new Map<string, string>();
+  for (const r of searchResponse.data) {
+    if (r.country) {
+      searchCountryMap.set(r.searchResultId, r.country);
+    }
+  }
 
   // Step 2: Research (enrich) — take up to `count` results
   const searchResultIds = searchResponse.data
@@ -231,6 +243,7 @@ export async function getSeamlessLeads(
         industry: undefined as string | undefined,
         website: undefined as string | undefined,
         timezone: undefined as string | undefined,
+        country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || undefined,
       };
     })
     .filter((c) => c.email); // Only include contacts with verified emails
