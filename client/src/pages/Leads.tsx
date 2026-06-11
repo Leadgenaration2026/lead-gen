@@ -78,6 +78,7 @@ export default function LeadsPage() {
   const [generateLeadSetName, setGenerateLeadSetName] = useState("");
   const [generateSource, setGenerateSource] = useState<"ai" | "seamless">("ai");
   const [generateCountry, setGenerateCountry] = useState("");
+  const [generateState, setGenerateState] = useState("");
   const [csvLeadSetName, setCsvLeadSetName] = useState("");
 
   // Checkbox selection state
@@ -166,6 +167,7 @@ export default function LeadsPage() {
         leadSetName: generateLeadSetName.trim() || undefined,
         source: generateSource,
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
+        state: generateState && generateState !== "any" ? generateState : undefined,
       });
       toast.success(`Generated ${count} leads successfully`);
       setInstruction("");
@@ -814,7 +816,7 @@ export default function LeadsPage() {
                     </div>
                     <div>
                       <label className="text-sm font-medium">Country</label>
-                      <Select value={generateCountry || "any"} onValueChange={setGenerateCountry}>
+                      <Select value={generateCountry || "any"} onValueChange={(val) => { setGenerateCountry(val); setGenerateState(""); }}>
                         <SelectTrigger className="mt-1">
                           <SelectValue placeholder="All Countries" />
                         </SelectTrigger>
@@ -838,6 +840,69 @@ export default function LeadsPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {generateCountry === "United States" && (
+                      <div>
+                        <label className="text-sm font-medium">State</label>
+                        <Select value={generateState || "any"} onValueChange={setGenerateState}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="All States" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="any">All States</SelectItem>
+                            <SelectItem value="Alabama">Alabama</SelectItem>
+                            <SelectItem value="Alaska">Alaska</SelectItem>
+                            <SelectItem value="Arizona">Arizona</SelectItem>
+                            <SelectItem value="Arkansas">Arkansas</SelectItem>
+                            <SelectItem value="California">California</SelectItem>
+                            <SelectItem value="Colorado">Colorado</SelectItem>
+                            <SelectItem value="Connecticut">Connecticut</SelectItem>
+                            <SelectItem value="Delaware">Delaware</SelectItem>
+                            <SelectItem value="Florida">Florida</SelectItem>
+                            <SelectItem value="Georgia">Georgia</SelectItem>
+                            <SelectItem value="Hawaii">Hawaii</SelectItem>
+                            <SelectItem value="Idaho">Idaho</SelectItem>
+                            <SelectItem value="Illinois">Illinois</SelectItem>
+                            <SelectItem value="Indiana">Indiana</SelectItem>
+                            <SelectItem value="Iowa">Iowa</SelectItem>
+                            <SelectItem value="Kansas">Kansas</SelectItem>
+                            <SelectItem value="Kentucky">Kentucky</SelectItem>
+                            <SelectItem value="Louisiana">Louisiana</SelectItem>
+                            <SelectItem value="Maine">Maine</SelectItem>
+                            <SelectItem value="Maryland">Maryland</SelectItem>
+                            <SelectItem value="Massachusetts">Massachusetts</SelectItem>
+                            <SelectItem value="Michigan">Michigan</SelectItem>
+                            <SelectItem value="Minnesota">Minnesota</SelectItem>
+                            <SelectItem value="Mississippi">Mississippi</SelectItem>
+                            <SelectItem value="Missouri">Missouri</SelectItem>
+                            <SelectItem value="Montana">Montana</SelectItem>
+                            <SelectItem value="Nebraska">Nebraska</SelectItem>
+                            <SelectItem value="Nevada">Nevada</SelectItem>
+                            <SelectItem value="New Hampshire">New Hampshire</SelectItem>
+                            <SelectItem value="New Jersey">New Jersey</SelectItem>
+                            <SelectItem value="New Mexico">New Mexico</SelectItem>
+                            <SelectItem value="New York">New York</SelectItem>
+                            <SelectItem value="North Carolina">North Carolina</SelectItem>
+                            <SelectItem value="North Dakota">North Dakota</SelectItem>
+                            <SelectItem value="Ohio">Ohio</SelectItem>
+                            <SelectItem value="Oklahoma">Oklahoma</SelectItem>
+                            <SelectItem value="Oregon">Oregon</SelectItem>
+                            <SelectItem value="Pennsylvania">Pennsylvania</SelectItem>
+                            <SelectItem value="Rhode Island">Rhode Island</SelectItem>
+                            <SelectItem value="South Carolina">South Carolina</SelectItem>
+                            <SelectItem value="South Dakota">South Dakota</SelectItem>
+                            <SelectItem value="Tennessee">Tennessee</SelectItem>
+                            <SelectItem value="Texas">Texas</SelectItem>
+                            <SelectItem value="Utah">Utah</SelectItem>
+                            <SelectItem value="Vermont">Vermont</SelectItem>
+                            <SelectItem value="Virginia">Virginia</SelectItem>
+                            <SelectItem value="Washington">Washington</SelectItem>
+                            <SelectItem value="West Virginia">West Virginia</SelectItem>
+                            <SelectItem value="Wisconsin">Wisconsin</SelectItem>
+                            <SelectItem value="Wyoming">Wyoming</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -1110,6 +1175,7 @@ export default function LeadsPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
+                    <TableHead>Country</TableHead>
                     <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
@@ -1156,6 +1222,9 @@ export default function LeadsPage() {
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {lead.country ? lead.country : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell>
                         {lead.leadSetId ? (

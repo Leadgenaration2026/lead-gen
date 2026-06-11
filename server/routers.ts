@@ -43,6 +43,7 @@ const generateLeadsSchema = z.object({
   leadSetName: z.string().optional(), // Optional: assign generated leads to a named set
   source: z.enum(["ai", "seamless"]).optional().default("ai"),
   country: z.string().optional(),
+  state: z.string().optional(), // US state for targeted prospecting
 });
 
 const updateUserSettingsSchema = z.object({
@@ -293,6 +294,10 @@ export const appRouter = router({
           if (input.country) {
             filters.contactCountry = [input.country];
           }
+          // Enforce state filter when user specifies a US state
+          if (input.state) {
+            filters.contactState = [input.state];
+          }
           console.log("[Seamless.AI] Final filters (country enforced):", JSON.stringify(filters));
 
           try {
@@ -343,7 +348,8 @@ export const appRouter = router({
         // SOURCE: AI (LLM-generated placeholder leads)
         // ═══════════════════════════════════════════════
         else {
-          const countryHint = input.country ? `\nIMPORTANT: All leads MUST be from ${input.country}. Use phone numbers, timezones, and domains appropriate for ${input.country}.` : "";
+          const stateHint = input.state ? ` in ${input.state}` : "";
+          const countryHint = input.country ? `\nIMPORTANT: All leads MUST be from ${input.country}${stateHint}. Use phone numbers, timezones, and domains appropriate for ${input.country}${stateHint}.` : "";
           const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryHint}
         
 Return a JSON array with exactly ${input.count} leads. Each lead must have:

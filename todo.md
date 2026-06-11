@@ -577,3 +577,10 @@
 - [x] Add "Validate Emails" button on single campaign page (EmailComposer)
 - [x] Add "Validate Emails" button on bulk campaign page (creation form + existing campaign list)
 - [x] Show validation results (valid/invalid count, list of invalid emails with reasons)
+
+## Feature — Country Display & State-Level Filtering
+- [x] Add country column to leads table in the UI
+- [x] Store country field from Seamless.AI results in the leads database (already existed in schema)
+- [x] Add state-level filtering option in lead generation form (all 50 US states dropdown)
+- [x] Pass state filter to Seamless.AI API for targeted prospecting (contactState filter)
+- [x] Pass state hint to AI-generated leads for location accuracy
