@@ -271,70 +271,104 @@ export async function parseInstructionToFilters(
   contactCountry?: string[];
   contactState?: string[];
 }> {
-  const { invokeLLM } = await import("./_core/llm");
+  try {
+    const { invokeLLM } = await import("./_core/llm");
 
-  const response = await invokeLLM({
-    messages: [
-      {
-        role: "system",
-        content: `You are a B2B lead search filter parser. Convert the user's natural language instruction into Seamless.AI search filters.
+    const response = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: `You are a B2B lead search filter parser. Convert the user's natural language instruction into Seamless.AI search filters.
 
-Return a JSON object with these optional fields (only include fields that are clearly specified):
+Return a JSON object with ONLY the relevant fields (omit fields that don't apply):
 - companyName: string[] (specific company names to search)
-- jobTitle: string[] (job titles like "CEO", "Marketing Director")
+- jobTitle: string[] (job titles like "CEO", "Marketing Director", "Motivational Speaker")
 - department: string[] (one of: Sales, Marketing, Engineering, Human Resources, Finance, IT, Operations, Support, Legal, Project Management, Other)
 - seniority: string[] (one of: C-Level, VP, Director, Manager, Senior, Entry Level, Mid-Level, Other)
-- industry: string[] (industry categories)
-- contactCountry: string[] (countries)
-- contactState: string[] (US states)
+- industry: string[] (industry categories like "Professional Training & Coaching", "Financial Services")
+- contactCountry: string[] (countries like "United States", "India")
+- contactState: string[] (US states like "Alabama", "California")
 
-Return ONLY valid JSON, no other text.`,
-      },
-      {
-        role: "user",
-        content: `Parse this lead generation instruction into search filters: "${instruction}"${country ? ` (Country: ${country})` : ""}`,
-      },
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "search_filters",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            companyName: { type: "array", items: { type: "string" }, description: "Specific company names" },
-            jobTitle: { type: "array", items: { type: "string" }, description: "Job titles" },
-            department: { type: "array", items: { type: "string" }, description: "Departments" },
-            seniority: { type: "array", items: { type: "string" }, description: "Seniority levels" },
-            industry: { type: "array", items: { type: "string" }, description: "Industries" },
-            contactCountry: { type: "array", items: { type: "string" }, description: "Countries" },
-            contactState: { type: "array", items: { type: "string" }, description: "US states" }
-          },
-          required: ["companyName", "jobTitle", "department", "seniority", "industry", "contactCountry", "contactState"],
-          additionalProperties: false
-        }
-      }
-    },
-  }) as any;
+IMPORTANT: The jobTitle field is the most critical. Always extract the job title or role from the instruction.
+Return ONLY valid JSON, no markdown, no explanation.`,
+        },
+        {
+          role: "user",
+          content: `Parse this lead generation instruction into search filters: "${instruction}"${country ? ` (Country: ${country})` : ""}`,
+        },
+      ],
+    }) as any;
 
-  let content = response.choices[0]?.message?.content;
-  if (Array.isArray(content)) {
-    content = content.map((c: any) => typeof c === "string" ? c : c.text || "").join("");
-  }
-  if (!content) return {};
-
-  content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  const parsed = JSON.parse(content);
-  
-  // Filter out empty arrays — only pass non-empty filters to the API
-  const filtered: Record<string, string[]> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (Array.isArray(value) && value.length > 0) {
-      filtered[key] = value as string[];
+    let content = response.choices[0]?.message?.content;
+    if (Array.isArray(content)) {
+      content = content.map((c: any) => typeof c === "string" ? c : c.text || "").join("");
     }
+    if (!content) {
+      console.warn("[Seamless.AI] LLM returned empty content, using fallback");
+      return fallbackParseFilters(instruction, country);
+    }
+
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(content);
+    
+    // Filter out empty arrays — only pass non-empty filters to the API
+    const filtered: Record<string, string[]> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (Array.isArray(value) && value.length > 0) {
+        filtered[key] = value as string[];
+      }
+    }
+    
+    // If LLM didn't extract a jobTitle, use the instruction as-is
+    if (!filtered.jobTitle || filtered.jobTitle.length === 0) {
+      const fallback = fallbackParseFilters(instruction, country);
+      if (fallback.jobTitle) filtered.jobTitle = fallback.jobTitle;
+    }
+    
+    console.log(`[Seamless.AI] Parsed filters:`, JSON.stringify(filtered));
+    return filtered;
+  } catch (error: any) {
+    console.warn(`[Seamless.AI] LLM filter parsing failed: ${error.message}. Using fallback.`);
+    return fallbackParseFilters(instruction, country);
+  }
+}
+
+/**
+ * Fallback filter parser when LLM is unavailable or fails.
+ * Extracts the instruction as a job title and applies country/state from explicit inputs.
+ */
+function fallbackParseFilters(
+  instruction: string,
+  country?: string
+): {
+  companyName?: string[];
+  jobTitle?: string[];
+  department?: string[];
+  seniority?: string[];
+  industry?: string[];
+  contactCountry?: string[];
+  contactState?: string[];
+} {
+  // Remove common location words from instruction to extract the role
+  const locationWords = ["in", "from", "based in", "located in", "usa", "united states", "india", "uk"];
+  let jobTitle = instruction.trim();
+  
+  // Remove trailing location phrases like "in Alabama" or "in USA"
+  jobTitle = jobTitle.replace(/\s+(in|from|based in|located in)\s+.+$/i, "").trim();
+  
+  // Remove leading "find", "search", "get", "look for" etc.
+  jobTitle = jobTitle.replace(/^(find|search|get|look for|looking for|i need|i want)\s+/i, "").trim();
+  
+  // Remove trailing "s" for plural if it looks like a role (e.g., "speakers" → "speaker" is fine for search)
+  
+  const filters: Record<string, string[]> = {};
+  if (jobTitle) {
+    filters.jobTitle = [jobTitle];
+  }
+  if (country) {
+    filters.contactCountry = [country];
   }
   
-  console.log(`[Seamless.AI] Parsed filters:`, JSON.stringify(filtered));
-  return filtered;
+  console.log(`[Seamless.AI] Fallback filters:`, JSON.stringify(filters));
+  return filters;
 }
