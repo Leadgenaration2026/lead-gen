@@ -4,7 +4,7 @@
  * API Docs: https://docs.seamless.ai
  */
 
-const SEAMLESS_API_BASE = "https://api.seamless.ai";
+const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
 interface SeamlessSearchResult {
   searchResultId: string;
@@ -45,8 +45,10 @@ interface SeamlessResearchResponse {
 
 interface SeamlessPollResult {
   requestId: string;
+  searchResultId?: string;
   status: "researching" | "done" | "missing" | "error" | "duplicate";
-  data?: SeamlessContact;
+  message?: string;
+  contact?: SeamlessContact;
 }
 
 async function seamlessRequest(
@@ -56,8 +58,10 @@ async function seamlessRequest(
   body?: Record<string, any>
 ): Promise<any> {
   const url = `${SEAMLESS_API_BASE}${path}`;
+  // Seamless.AI supports both "Token" header (API key) and "Authorization: Bearer" (OAuth token)
+  // Try Authorization: Bearer first as it's the documented OAuth approach
   const headers: Record<string, string> = {
-    "Token": apiKey,
+    "Authorization": `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
 
@@ -66,10 +70,34 @@ async function seamlessRequest(
     options.body = JSON.stringify(body);
   }
 
+  console.log(`[Seamless.AI] ${method} ${url}`);
+
   const response = await fetch(url, options);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
+    console.error(`[Seamless.AI] Error ${response.status}: ${errorText}`);
+    
+    // If Bearer fails with 401, retry with Token header (API key format)
+    if (response.status === 401) {
+      console.log(`[Seamless.AI] Retrying with Token header...`);
+      const retryHeaders: Record<string, string> = {
+        "Token": apiKey,
+        "Content-Type": "application/json",
+      };
+      const retryOptions: RequestInit = { method, headers: retryHeaders };
+      if (body && method === "POST") {
+        retryOptions.body = JSON.stringify(body);
+      }
+      const retryResponse = await fetch(url, retryOptions);
+      if (!retryResponse.ok) {
+        const retryError = await retryResponse.text().catch(() => "Unknown error");
+        console.error(`[Seamless.AI] Retry also failed (${retryResponse.status}): ${retryError}`);
+        throw new Error(`Seamless.AI API error (${retryResponse.status}): ${retryError}`);
+      }
+      return retryResponse.json();
+    }
+    
     throw new Error(`Seamless.AI API error (${response.status}): ${errorText}`);
   }
 
@@ -212,14 +240,14 @@ export async function getSeamlessLeads(
 
   // Convert to our lead format
   const contacts = pollResults
-    .filter((r) => r.status === "done" && r.data)
+    .filter((r) => r.status === "done" && r.contact)
     .map((r) => {
-      const c = r.data!;
+      const c = r.contact!;
       const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unknown";
       return {
         companyName: c.company || "Unknown",
         ownerName: fullName,
-        email: c.email || "",
+        email: c.email || c.personalEmail || "",
         phoneNumber: c.phone || "",
         linkedinUrl: c.lIProfileUrl || undefined,
         industry: undefined as string | undefined,
@@ -276,7 +304,27 @@ Return ONLY valid JSON, no other text.`,
         content: `Parse this lead generation instruction into search filters: "${instruction}"${country ? ` (Country: ${country})` : ""}`,
       },
     ],
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "search_filters",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            companyName: { type: "array", items: { type: "string" }, description: "Specific company names" },
+            jobTitle: { type: "array", items: { type: "string" }, description: "Job titles" },
+            department: { type: "array", items: { type: "string" }, description: "Departments" },
+            seniority: { type: "array", items: { type: "string" }, description: "Seniority levels" },
+            industry: { type: "array", items: { type: "string" }, description: "Industries" },
+            contactCountry: { type: "array", items: { type: "string" }, description: "Countries" },
+            contactState: { type: "array", items: { type: "string" }, description: "US states" }
+          },
+          required: ["companyName", "jobTitle", "department", "seniority", "industry", "contactCountry", "contactState"],
+          additionalProperties: false
+        }
+      }
+    },
   }) as any;
 
   let content = response.choices[0]?.message?.content;
@@ -287,5 +335,15 @@ Return ONLY valid JSON, no other text.`,
 
   content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   const parsed = JSON.parse(content);
-  return parsed;
+  
+  // Filter out empty arrays — only pass non-empty filters to the API
+  const filtered: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (Array.isArray(value) && value.length > 0) {
+      filtered[key] = value as string[];
+    }
+  }
+  
+  console.log(`[Seamless.AI] Parsed filters:`, JSON.stringify(filtered));
+  return filtered;
 }

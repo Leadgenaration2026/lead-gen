@@ -172,8 +172,9 @@ export default function LeadsPage() {
       setGenerateLeadSetName("");
       leadsQuery.refetch();
       leadSetsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to generate leads");
+    } catch (error: any) {
+      const msg = error?.message || error?.data?.message || "Failed to generate leads";
+      toast.error(msg);
     } finally {
       setIsGenerating(false);
     }
