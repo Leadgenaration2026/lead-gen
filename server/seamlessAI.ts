@@ -58,10 +58,9 @@ async function seamlessRequest(
   body?: Record<string, any>
 ): Promise<any> {
   const url = `${SEAMLESS_API_BASE}${path}`;
-  // Seamless.AI supports both "Token" header (API key) and "Authorization: Bearer" (OAuth token)
-  // Try Authorization: Bearer first as it's the documented OAuth approach
+  // Use "Token" header as primary auth (works with Seamless.AI API keys)
   const headers: Record<string, string> = {
-    "Authorization": `Bearer ${apiKey}`,
+    "Token": apiKey,
     "Content-Type": "application/json",
   };
 
@@ -77,27 +76,6 @@ async function seamlessRequest(
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
     console.error(`[Seamless.AI] Error ${response.status}: ${errorText}`);
-    
-    // If Bearer fails with 401, retry with Token header (API key format)
-    if (response.status === 401) {
-      console.log(`[Seamless.AI] Retrying with Token header...`);
-      const retryHeaders: Record<string, string> = {
-        "Token": apiKey,
-        "Content-Type": "application/json",
-      };
-      const retryOptions: RequestInit = { method, headers: retryHeaders };
-      if (body && method === "POST") {
-        retryOptions.body = JSON.stringify(body);
-      }
-      const retryResponse = await fetch(url, retryOptions);
-      if (!retryResponse.ok) {
-        const retryError = await retryResponse.text().catch(() => "Unknown error");
-        console.error(`[Seamless.AI] Retry also failed (${retryResponse.status}): ${retryError}`);
-        throw new Error(`Seamless.AI API error (${retryResponse.status}): ${retryError}`);
-      }
-      return retryResponse.json();
-    }
-    
     throw new Error(`Seamless.AI API error (${response.status}): ${errorText}`);
   }
 
