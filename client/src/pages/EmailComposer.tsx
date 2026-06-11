@@ -119,7 +119,14 @@ export default function EmailComposer() {
     },
     onError: (err) => toast.error(err.message),
   });
+  const validateEmailsMutation = trpc.campaigns.validateEmails.useMutation();
   const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
+
+  // Email validation state
+  const [emailValidationResult, setEmailValidationResult] = useState<{ total: number; validCount: number; invalidCount: number; results: Array<{ leadId: number; name: string; email: string; valid: boolean; reason: string }> } | null>(null);
+  const [showEmailValidation, setShowEmailValidation] = useState(false);
+  const [bulkEmailValidationResult, setBulkEmailValidationResult] = useState<{ total: number; validCount: number; invalidCount: number; results: Array<{ leadId: number; name: string; email: string; valid: boolean; reason: string }> } | null>(null);
+  const [showBulkEmailValidation, setShowBulkEmailValidation] = useState(false);
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
@@ -862,6 +869,52 @@ export default function EmailComposer() {
                       <p className="text-xs text-amber-700 mt-1.5">Preview how the email looks in your inbox before sending to the lead</p>
                     </div>
 
+                    {/* Validate Email Address */}
+                    {selectedLead && (
+                      <div className="border rounded-lg p-3 bg-teal-50/50 border-teal-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-teal-600" />
+                            <span className="text-sm font-medium text-teal-900">Validate Recipient Email</span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs border-teal-300 text-teal-700 hover:bg-teal-100 gap-1.5"
+                            disabled={validateEmailsMutation.isPending || !selectedLead}
+                            onClick={async () => {
+                              try {
+                                const result = await validateEmailsMutation.mutateAsync({ leadIds: [selectedLead] });
+                                setEmailValidationResult(result);
+                                setShowEmailValidation(true);
+                                if (result.invalidCount > 0) {
+                                  toast.error(`Email validation failed: ${result.results[0]?.reason}`);
+                                } else {
+                                  toast.success("Email address is valid!");
+                                }
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to validate email");
+                              }
+                            }}
+                          >
+                            {validateEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><CheckCircle2 className="w-3.5 h-3.5" /> Validate</>}
+                          </Button>
+                        </div>
+                        {emailValidationResult && showEmailValidation && (
+                          <div className="mt-2 space-y-1">
+                            {emailValidationResult.results.map((r, i) => (
+                              <div key={i} className={`flex items-center gap-2 text-sm p-2 rounded ${r.valid ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                                {r.valid ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
+                                <span className="font-medium">{r.email}</span>
+                                <span className="text-xs ml-auto">{r.valid ? 'Valid (MX records found)' : r.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs text-teal-700 mt-1.5">Check if the recipient's email domain has valid MX records before sending</p>
+                      </div>
+                    )}
+
 
                   </div>
                 </CardContent>
@@ -1230,7 +1283,69 @@ export default function EmailComposer() {
                   </div>
                 )}
 
-
+                {/* Validate All Lead Emails */}
+                {campaignFormData.leadIds.length > 0 && (
+                  <div className="border rounded-lg p-3 bg-teal-50/50 border-teal-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-teal-600" />
+                        <span className="text-sm font-medium text-teal-900">Validate Lead Emails ({campaignFormData.leadIds.length} leads)</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs border-teal-300 text-teal-700 hover:bg-teal-100 gap-1.5"
+                        disabled={validateEmailsMutation.isPending}
+                        onClick={async () => {
+                          try {
+                            const result = await validateEmailsMutation.mutateAsync({ leadIds: campaignFormData.leadIds });
+                            setBulkEmailValidationResult(result);
+                            setShowBulkEmailValidation(true);
+                            if (result.invalidCount > 0) {
+                              toast.warning(`${result.invalidCount} of ${result.total} emails have invalid domains`);
+                            } else {
+                              toast.success(`All ${result.total} email addresses are valid!`);
+                            }
+                          } catch (error: any) {
+                            toast.error(error.message || "Failed to validate emails");
+                          }
+                        }}
+                      >
+                        {validateEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><CheckCircle2 className="w-3.5 h-3.5" /> Validate All</>}
+                      </Button>
+                    </div>
+                    {bulkEmailValidationResult && showBulkEmailValidation && (
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            {bulkEmailValidationResult.validCount} Valid
+                          </Badge>
+                          {bulkEmailValidationResult.invalidCount > 0 && (
+                            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                              {bulkEmailValidationResult.invalidCount} Invalid
+                            </Badge>
+                          )}
+                        </div>
+                        {bulkEmailValidationResult.invalidCount > 0 && (
+                          <div className="max-h-40 overflow-y-auto space-y-1">
+                            {bulkEmailValidationResult.results.filter(r => !r.valid).map((r, i) => (
+                              <div key={i} className="flex items-center gap-2 text-sm p-2 rounded bg-red-50 text-red-800">
+                                <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                                <span className="font-medium truncate">{r.name}</span>
+                                <span className="text-xs text-red-600 truncate">{r.email}</span>
+                                <span className="text-xs ml-auto shrink-0">{r.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {bulkEmailValidationResult.invalidCount > 0 && (
+                          <p className="text-xs text-red-600 mt-2">Invalid emails will be automatically skipped when the campaign is launched.</p>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-xs text-teal-700 mt-1.5">Check all lead email domains have valid MX records before launching</p>
+                  </div>
+                )}
 
                 {/* Schedule Campaign */}
                 <div className="border rounded-lg p-3 bg-purple-50/50 border-purple-200">
@@ -1407,6 +1522,29 @@ export default function EmailComposer() {
                                   </Button>
                                 }
                               />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 border-teal-200 text-teal-700 hover:bg-teal-50"
+                                disabled={validateEmailsMutation.isPending}
+                                onClick={async () => {
+                                  try {
+                                    const result = await validateEmailsMutation.mutateAsync({ campaignId: campaign.id });
+                                    setBulkEmailValidationResult(result);
+                                    setShowBulkEmailValidation(true);
+                                    setSelectedCampaignId(campaign.id);
+                                    if (result.invalidCount > 0) {
+                                      toast.warning(`${result.invalidCount} of ${result.total} emails have invalid domains`);
+                                    } else {
+                                      toast.success(`All ${result.total} email addresses are valid!`);
+                                    }
+                                  } catch (error: any) {
+                                    toast.error(error.message || "Failed to validate emails");
+                                  }
+                                }}
+                              >
+                                {validateEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><CheckCircle2 className="w-3.5 h-3.5" /> Validate Emails</>}
+                              </Button>
                               <Button size="sm" onClick={() => handleLaunchCampaign(campaign.id)} disabled={launchCampaignMutation.isPending} className="gap-2">
                                 <Play className="w-4 h-4" /> Launch
                               </Button>
@@ -1428,7 +1566,39 @@ export default function EmailComposer() {
                           </Button>
                         </div>
                         {selectedCampaignId === campaign.id && (
-                          <div className="mt-4 pt-4 border-t border-border">
+                          <div className="mt-4 pt-4 border-t border-border space-y-4">
+                            {bulkEmailValidationResult && showBulkEmailValidation && (
+                              <div className="border rounded-lg p-3 bg-teal-50/50 border-teal-200">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <Mail className="w-4 h-4 text-teal-600" />
+                                  <span className="text-sm font-medium text-teal-900">Email Validation Results</span>
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    {bulkEmailValidationResult.validCount} Valid
+                                  </Badge>
+                                  {bulkEmailValidationResult.invalidCount > 0 && (
+                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                                      {bulkEmailValidationResult.invalidCount} Invalid
+                                    </Badge>
+                                  )}
+                                  <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => setShowBulkEmailValidation(false)}>Dismiss</Button>
+                                </div>
+                                {bulkEmailValidationResult.invalidCount > 0 && (
+                                  <div className="max-h-40 overflow-y-auto space-y-1">
+                                    {bulkEmailValidationResult.results.filter(r => !r.valid).map((r, i) => (
+                                      <div key={i} className="flex items-center gap-2 text-sm p-2 rounded bg-red-50 text-red-800">
+                                        <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                                        <span className="font-medium truncate">{r.name}</span>
+                                        <span className="text-xs text-red-600 truncate">{r.email}</span>
+                                        <span className="text-xs ml-auto shrink-0">{r.reason}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {bulkEmailValidationResult.invalidCount > 0 && (
+                                  <p className="text-xs text-red-600 mt-2">These emails will be automatically skipped when the campaign is launched.</p>
+                                )}
+                              </div>
+                            )}
                             <ActivityFeed campaignId={campaign.id} />
                           </div>
                         )}

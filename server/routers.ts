@@ -1252,6 +1252,67 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
       }),
 
     // Delete campaign
+    // Validate emails for a campaign before sending
+    validateEmails: protectedProcedure
+      .input(z.object({
+        campaignId: z.number().optional(),
+        leadIds: z.array(z.number()).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { validateEmails: validateEmailsFn } = await import("./emailValidation");
+        let emails: Array<{ leadId: number; email: string; name: string }> = [];
+
+        if (input.campaignId) {
+          // Validate all leads in a campaign
+          const campaign = await db.getCampaignById(input.campaignId);
+          if (!campaign || campaign.userId !== ctx.user.id) {
+            throw new TRPCError({ code: "NOT_FOUND" });
+          }
+          const campaignLeads = await db.getCampaignLeads(input.campaignId);
+          for (const cl of campaignLeads) {
+            const lead = await db.getLeadById(cl.leadId);
+            if (lead) {
+              emails.push({ leadId: lead.id, email: lead.email, name: lead.ownerName });
+            }
+          }
+        } else if (input.leadIds?.length) {
+          // Validate specific leads (for single email composer)
+          for (const leadId of input.leadIds) {
+            const lead = await db.getLeadById(leadId);
+            if (lead && lead.userId === ctx.user.id) {
+              emails.push({ leadId: lead.id, email: lead.email, name: lead.ownerName });
+            }
+          }
+        } else {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Provide campaignId or leadIds" });
+        }
+
+        const emailAddresses = emails.map(e => e.email);
+        const results = await validateEmailsFn(emailAddresses);
+
+        const validationMap = new Map(results.map(r => [r.email, r]));
+        const detailed = emails.map(e => {
+          const result = validationMap.get(e.email.toLowerCase()) || validationMap.get(e.email);
+          return {
+            leadId: e.leadId,
+            name: e.name,
+            email: e.email,
+            valid: result?.valid ?? false,
+            reason: result?.reason || "Unknown",
+          };
+        });
+
+        const validCount = detailed.filter(d => d.valid).length;
+        const invalidCount = detailed.filter(d => !d.valid).length;
+
+        return {
+          total: detailed.length,
+          validCount,
+          invalidCount,
+          results: detailed,
+        };
+      }),
+
     delete: protectedProcedure
       .input(z.number())
       .mutation(async ({ input: campaignId, ctx }) => {

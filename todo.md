@@ -571,3 +571,9 @@
 - [x] Implemented real Seamless.AI API integration (Search → Research → Poll) to get verified contacts
 - [x] Add email validation/verification (MX record check) before sending campaigns — invalid emails are auto-skipped
 - [x] Prevent duplicate leads from being added to the same lead set during AI/Seamless extraction
+
+## Feature — Validate Emails Button on Campaign Pages
+- [x] Add backend procedure to validate emails for a given campaign (MX record check)
+- [x] Add "Validate Emails" button on single campaign page (EmailComposer)
+- [x] Add "Validate Emails" button on bulk campaign page (creation form + existing campaign list)
+- [x] Show validation results (valid/invalid count, list of invalid emails with reasons)
