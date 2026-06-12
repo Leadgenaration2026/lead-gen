@@ -164,6 +164,9 @@ export const userSettings = mysqlTable("userSettings", {
   instagramType: mysqlEnum("instagramType", ["page", "personal"]).default("personal"),
   facebookUrl: varchar("facebookUrl", { length: 500 }),
   facebookType: mysqlEnum("facebookType", ["page", "personal"]).default("personal"),
+  // Email verification & deliverability
+  zeroBounceApiKey: varchar("zeroBounceApiKey", { length: 500 }), // ZeroBounce API key for email verification
+  glockAppsApiKey: varchar("glockAppsApiKey", { length: 500 }), // GlockApps API key for inbox placement testing
   // Social outreach limits
   socialDailyLimit: int("socialDailyLimit").default(20), // Max connection requests per day across all platforms
   socialMessageCharLimit: int("socialMessageCharLimit").default(300), // Max characters for social messages

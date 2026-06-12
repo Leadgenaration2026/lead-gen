@@ -113,6 +113,8 @@ export default function EmailComposer() {
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
   const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
+  const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
+  const createInboxTestMutation = trpc.verification.createInboxTest.useMutation();
   const cancelScheduleMutation = trpc.campaigns.cancelSchedule.useMutation({
     onSuccess: () => {
       toast.success("Scheduled launch cancelled");
@@ -1580,6 +1582,46 @@ export default function EmailComposer() {
                                 }}
                               >
                                 {validateEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><CheckCircle2 className="w-3.5 h-3.5" /> Validate Emails</>}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    const result = await verifyEmailsMutation.mutateAsync({ campaignId: String(campaign.id) });
+                                    if (result.doNotSendCount > 0) {
+                                      toast.warning(`Verification: ${result.safeToSendCount} safe, ${result.doNotSendCount} unsafe (${result.invalid} invalid, ${result.spamtrap} traps)`);
+                                    } else {
+                                      toast.success(`All ${result.safeToSendCount} emails verified safe!`);
+                                    }
+                                  } catch (error: any) {
+                                    toast.error(error?.message || "Verification failed");
+                                  }
+                                }}
+                                disabled={verifyEmailsMutation.isPending}
+                                className="gap-2"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                {verifyEmailsMutation.isPending ? "Verifying..." : "Verify Emails"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
+                                    toast.success(`Inbox test created! Send to ${result.seedAddresses.length} seeds. Results in 2-5 min.`, { duration: 10000 });
+                                    await navigator.clipboard.writeText(result.seedAddresses.join(", "));
+                                    toast.info("Seed addresses copied to clipboard!");
+                                  } catch (error: any) {
+                                    toast.error(error?.message || "Inbox test failed");
+                                  }
+                                }}
+                                disabled={createInboxTestMutation.isPending}
+                                className="gap-2"
+                              >
+                                <Inbox className="w-3.5 h-3.5" />
+                                {createInboxTestMutation.isPending ? "Creating..." : "Test Inbox"}
                               </Button>
                               <Button size="sm" onClick={() => handleLaunchCampaign(campaign.id)} disabled={launchCampaignMutation.isPending} className="gap-2">
                                 <Play className="w-4 h-4" /> Launch

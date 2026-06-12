@@ -644,3 +644,13 @@
 - [x] Capture both Direct Phone and Company Phone from Seamless.AI CSV
 - [x] Display both phone numbers in the leads table/detail view
 - [x] Make both numbers available for Retell.AI calling (stored as +1XXXXXXXXXX)
+
+## Feature — ZeroBounce & GlockApps Integration
+- [x] Add zeroBounceApiKey and glockAppsApiKey columns to userSettings table
+- [x] Add ZeroBounce API key input field to Settings page (Deliverability tab)
+- [x] Add GlockApps API key input field to Settings page (Deliverability tab)
+- [x] Implement ZeroBounce email verification service (bulk verify)
+- [x] Implement GlockApps inbox placement test service
+- [x] Add pre-campaign verification step to campaign launch flow (both single & bulk)
+- [x] Show verification results before sending (valid/invalid/spam-trap counts)
+- [x] Show inbox placement results (seed addresses copied to clipboard for testing)

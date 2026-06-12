@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Mail, Play, Pause, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, Plus, Mail, Play, Pause, Trash2, RefreshCw, ShieldCheck, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { LeadPicker } from "@/components/LeadPicker";
@@ -23,6 +23,8 @@ export default function CampaignsPage() {
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
   const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
+  const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
+  const createInboxTestMutation = trpc.verification.createInboxTest.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
@@ -386,6 +388,48 @@ export default function CampaignsPage() {
                         >
                           <Mail className="w-4 h-4" />
                           {sendTestEmailMutation.isPending ? "Sending..." : "Send Preview"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              const result = await verifyEmailsMutation.mutateAsync({ campaignId: String(campaign.id) });
+                              if (result.doNotSendCount > 0) {
+                                toast.warning(`Email Verification: ${result.safeToSendCount} safe to send, ${result.doNotSendCount} should NOT be sent (${result.invalid} invalid, ${result.spamtrap} spam traps, ${result.abuse} abuse)`);
+                              } else {
+                                toast.success(`All ${result.safeToSendCount} emails verified as safe to send!`);
+                              }
+                            } catch (error: any) {
+                              toast.error(error?.message || "Email verification failed");
+                            }
+                          }}
+                          disabled={verifyEmailsMutation.isPending}
+                          className="gap-2"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          {verifyEmailsMutation.isPending ? "Verifying..." : "Verify Emails"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
+                              toast.success(`Inbox test created! Send your email to ${result.seedAddresses.length} seed addresses. Results in 2-5 min.`, { duration: 10000 });
+                              // Copy seed addresses to clipboard
+                              const seedList = result.seedAddresses.join(", ");
+                              await navigator.clipboard.writeText(seedList);
+                              toast.info("Seed addresses copied to clipboard!");
+                            } catch (error: any) {
+                              toast.error(error?.message || "Inbox test creation failed");
+                            }
+                          }}
+                          disabled={createInboxTestMutation.isPending}
+                          className="gap-2"
+                        >
+                          <Inbox className="w-4 h-4" />
+                          {createInboxTestMutation.isPending ? "Creating..." : "Test Inbox"}
                         </Button>
                         <Button
                           size="sm"

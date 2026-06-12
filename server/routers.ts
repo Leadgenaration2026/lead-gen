@@ -60,6 +60,8 @@ const updateUserSettingsSchema = z.object({
   calendlyWebhookSecret: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
   seamlessApiKey: z.string().optional(),
+  zeroBounceApiKey: z.string().optional(),
+  glockAppsApiKey: z.string().optional(),
   // Social profiles
   linkedinUrl: z.string().optional(),
   linkedinType: z.enum(["page", "personal"]).optional(),
@@ -3443,6 +3445,177 @@ Use the website data to:
           body: fullBody,
           bodyWithoutSignature: result.body,
         };
+      }),
+  }),
+
+  // Email Verification & Inbox Placement
+  verification: router({
+    // Verify emails via ZeroBounce before campaign send
+    verifyEmails: protectedProcedure
+      .input(z.object({
+        campaignId: z.string().optional(),
+        leadIds: z.array(z.string()).optional(),
+        emails: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { validateEmails, shouldSendToEmail, getCreditsBalance } = await import("./zeroBounce");
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.zeroBounceApiKey) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "ZeroBounce API key not configured. Go to Settings → Deliverability to add it." });
+        }
+
+        // Get emails to verify
+        let emailsToVerify: { email: string; leadId?: string }[] = [];
+
+        if (input.emails && input.emails.length > 0) {
+          emailsToVerify = input.emails.map(e => ({ email: e }));
+        } else if (input.campaignId) {
+          const cls = await db.getCampaignLeads(Number(input.campaignId));
+          for (const cl of cls) {
+            const lead = await db.getLeadById(cl.leadId);
+            if (lead?.email) {
+              emailsToVerify.push({ email: lead.email, leadId: String(lead.id) });
+            }
+          }
+        } else if (input.leadIds && input.leadIds.length > 0) {
+          for (const leadId of input.leadIds) {
+            const lead = await db.getLeadById(Number(leadId));
+            if (lead?.email) {
+              emailsToVerify.push({ email: lead.email, leadId: String(lead.id) });
+            }
+          }
+        }
+
+        if (emailsToVerify.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No emails to verify" });
+        }
+
+        // Check credits first
+        try {
+          const credits = await getCreditsBalance(settings.zeroBounceApiKey);
+          if (credits < emailsToVerify.length) {
+            throw new TRPCError({ 
+              code: "BAD_REQUEST", 
+              message: `Insufficient ZeroBounce credits. Need ${emailsToVerify.length}, have ${credits}. Add more credits at zerobounce.net/members/pricing` 
+            });
+          }
+        } catch (e: any) {
+          if (e.code === "BAD_REQUEST") throw e;
+          // If credit check fails, continue anyway
+        }
+
+        // Run verification
+        try {
+          const summary = await validateEmails(
+            settings.zeroBounceApiKey,
+            emailsToVerify.map(e => e.email)
+          );
+
+          // Build detailed results with send/don't-send recommendation
+          const detailedResults = summary.results.map((r, idx) => {
+            const decision = shouldSendToEmail(r.status);
+            return {
+              email: r.address,
+              leadId: emailsToVerify[idx]?.leadId,
+              status: r.status,
+              subStatus: r.sub_status,
+              shouldSend: decision.send,
+              reason: decision.reason,
+              freeEmail: r.free_email,
+              didYouMean: r.did_you_mean,
+            };
+          });
+
+          const safeToSend = detailedResults.filter(r => r.shouldSend);
+          const doNotSend = detailedResults.filter(r => !r.shouldSend);
+
+          return {
+            total: summary.total,
+            valid: summary.valid,
+            invalid: summary.invalid,
+            catchAll: summary.catchAll,
+            spamtrap: summary.spamtrap,
+            abuse: summary.abuse,
+            doNotMail: summary.doNotMail,
+            unknown: summary.unknown,
+            safeToSendCount: safeToSend.length,
+            doNotSendCount: doNotSend.length,
+            results: detailedResults,
+          };
+        } catch (e: any) {
+          if (e.message === "ZEROBOUNCE_INVALID_KEY_OR_NO_CREDITS") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "ZeroBounce API key is invalid or your account has no credits. Please check your API key and credit balance at zerobounce.net" });
+          }
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Email verification failed: ${e.message}` });
+        }
+      }),
+
+    // Get ZeroBounce credit balance
+    getZeroBounceCredits: protectedProcedure.query(async ({ ctx }) => {
+      const { getCreditsBalance } = await import("./zeroBounce");
+      const settings = await db.getUserSettings(ctx.user.id);
+      if (!settings?.zeroBounceApiKey) {
+        return { configured: false, credits: 0 };
+      }
+      try {
+        const credits = await getCreditsBalance(settings.zeroBounceApiKey);
+        return { configured: true, credits };
+      } catch {
+        return { configured: true, credits: -1 };
+      }
+    }),
+
+    // Create GlockApps inbox placement test
+    createInboxTest: protectedProcedure
+      .input(z.object({
+        campaignId: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { getOrCreateProject, createManualTest } = await import("./glockApps");
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.glockAppsApiKey) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps API key not configured. Go to Settings → Deliverability to add it." });
+        }
+
+        try {
+          const projectId = await getOrCreateProject(settings.glockAppsApiKey);
+          const test = await createManualTest(settings.glockAppsApiKey, projectId);
+
+          return {
+            testId: test.testId,
+            projectId,
+            seedAddresses: test.seedAddresses,
+            instructions: "Send your campaign email to ALL the seed addresses below. GlockApps will analyze where it lands (Inbox, Promotions, or Spam). Results will be ready in 2-5 minutes after sending.",
+          };
+        } catch (e: any) {
+          if (e.message === "GLOCKAPPS_INVALID_KEY") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps API key is invalid. Please check your API key in Settings." });
+          }
+          if (e.message === "GLOCKAPPS_NO_CREDITS") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps has no test credits remaining. Add more at glockapps.com" });
+          }
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Inbox test creation failed: ${e.message}` });
+        }
+      }),
+
+    // Get GlockApps test results
+    getInboxTestResults: protectedProcedure
+      .input(z.object({
+        projectId: z.number(),
+        testId: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { getTestResults } = await import("./glockApps");
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.glockAppsApiKey) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps API key not configured." });
+        }
+
+        try {
+          return await getTestResults(settings.glockAppsApiKey, input.projectId, input.testId);
+        } catch (e: any) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to get test results: ${e.message}` });
+        }
       }),
   }),
 });
