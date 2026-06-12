@@ -654,3 +654,11 @@
 - [x] Add pre-campaign verification step to campaign launch flow (both single & bulk)
 - [x] Show verification results before sending (valid/invalid/spam-trap counts)
 - [x] Show inbox placement results (seed addresses copied to clipboard for testing)
+
+## Feature — Retell.AI Call Fallback to Secondary Phone
+- [x] Detect when primary phone call fails (no answer, busy, failed status from Retell webhook)
+- [x] Automatically retry call with secondary phone number if available
+- [x] Track which phone number was used for each call attempt
+- [x] Show fallback status in activity feed (logged in server console)
+- [x] Don't retry if secondary phone is same as primary or missing
+- [x] Don't retry if secondary was already tried for this campaign lead

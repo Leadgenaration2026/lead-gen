@@ -122,6 +122,7 @@ export async function triggerRetellCall(
 /**
  * Handle Retell.AI webhook for call status updates
  * When a call is "completed" (answered), cancel all pending follow-ups for that lead
+ * When a call fails (no answer, voicemail, etc.), retry with secondary phone if available
  */
 export async function handleRetellWebhook(payload: any) {
   try {
@@ -141,8 +142,9 @@ export async function handleRetellWebhook(payload: any) {
     }
 
     // Update call status
+    const mappedStatus = mapRetellStatus(status, end_reason);
     const updateData: any = {
-      status,
+      status: mappedStatus,
     };
 
     if (status === "completed" || status === "failed" || status === "ended") {
@@ -150,17 +152,109 @@ export async function handleRetellWebhook(payload: any) {
     }
 
     await db.updateCallLog(callLog.id, updateData);
-    console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${status}`);
+    console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${mappedStatus}`);
 
     // If call was answered/completed, cancel remaining follow-ups
     // Retell uses "ended" with end_reason to indicate call completion
-    if (status === "ended" && end_reason === "agent_hangup" || status === "ended" && end_reason === "customer_hangup") {
+    if (status === "ended" && (end_reason === "agent_hangup" || end_reason === "customer_hangup")) {
       // Call was answered - this is a positive engagement
       await db.cancelPendingFollowUps(callLog.campaignLeadId);
       console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
     }
+
+    // FALLBACK: If call failed to connect, retry with secondary phone number
+    const failedReasons = ["no_answer", "voicemail_reached", "machine_detected", "dial_busy", "dial_no_answer", "dial_failed"];
+    if (status === "ended" && failedReasons.includes(end_reason)) {
+      await retryWithSecondaryPhone(callLog, end_reason);
+    }
   } catch (error) {
     console.error("[RetellAI] Failed to handle webhook:", error);
+  }
+}
+
+/**
+ * Map Retell.AI status + end_reason to our internal call status
+ */
+function mapRetellStatus(status: string, endReason: string): string {
+  if (status === "ended") {
+    if (endReason === "agent_hangup" || endReason === "customer_hangup") return "completed";
+    if (endReason === "no_answer" || endReason === "dial_no_answer") return "no_answer";
+    if (endReason === "voicemail_reached" || endReason === "machine_detected") return "no_answer";
+    if (endReason === "dial_busy" || endReason === "dial_failed") return "failed";
+    return "failed";
+  }
+  return status;
+}
+
+/**
+ * Retry a failed call with the lead's secondary phone number.
+ * Only retries once — if the secondary also fails, no further retries.
+ */
+async function retryWithSecondaryPhone(callLog: any, endReason: string) {
+  try {
+    // Get the campaign lead to find the lead
+    const campaignLead = await db.getCampaignLeadById(callLog.campaignLeadId);
+    if (!campaignLead) {
+      console.log(`[RetellAI] Fallback skipped - campaignLead not found: ${callLog.campaignLeadId}`);
+      return;
+    }
+
+    // Get the lead to check for secondary phone
+    const lead = await db.getLeadById(campaignLead.leadId);
+    if (!lead || !lead.secondaryPhone) {
+      console.log(`[RetellAI] Fallback skipped - no secondary phone for lead ${campaignLead.leadId}`);
+      return;
+    }
+
+    // Normalize secondary phone
+    const secondaryPhone = lead.secondaryPhone.replace(/[^+\d]/g, "");
+    const primaryPhone = callLog.phoneNumber.replace(/[^+\d]/g, "");
+
+    // Don't retry if secondary is same as primary
+    if (secondaryPhone === primaryPhone) {
+      console.log(`[RetellAI] Fallback skipped - secondary phone same as primary for lead ${campaignLead.leadId}`);
+      return;
+    }
+
+    // Check if we already tried the secondary phone for this campaign lead
+    const existingCalls = await db.getCallLogsByCampaignLead(callLog.campaignLeadId);
+    const alreadyTriedSecondary = existingCalls.some(
+      (c: any) => c.phoneNumber.replace(/[^+\d]/g, "") === secondaryPhone
+    );
+    if (alreadyTriedSecondary) {
+      console.log(`[RetellAI] Fallback skipped - secondary phone already tried for campaignLead ${callLog.campaignLeadId}`);
+      return;
+    }
+
+    // Get user settings for Retell config
+    const campaign = await db.getCampaignById(campaignLead.campaignId);
+    if (!campaign) return;
+    const settings = await db.getUserSettings(campaign.userId);
+    if (!settings?.retellApiKey || !settings?.retellAgentId || !settings?.senderPhoneNumber) {
+      console.log(`[RetellAI] Fallback skipped - missing Retell configuration`);
+      return;
+    }
+
+    console.log(`[RetellAI] ⚡ FALLBACK: Primary (${primaryPhone}) failed (${endReason}). Retrying with secondary: ${secondaryPhone}`);
+
+    // Trigger the fallback call
+    const callId = await triggerRetellCall(
+      callLog.campaignLeadId,
+      secondaryPhone,
+      settings.retellApiKey,
+      settings.retellAgentId,
+      settings.senderPhoneNumber,
+      callLog.triggerType || "email_open",
+      { customerName: lead.ownerName || undefined, customerEmail: lead.email || undefined, companyName: lead.companyName || undefined }
+    );
+
+    if (callId) {
+      console.log(`[RetellAI] ✅ Fallback call created successfully - callId: ${callId}, to: ${secondaryPhone}`);
+    } else {
+      console.log(`[RetellAI] ❌ Fallback call failed to create for secondary: ${secondaryPhone}`);
+    }
+  } catch (error) {
+    console.error("[RetellAI] Error in retryWithSecondaryPhone:", error);
   }
 }
 
