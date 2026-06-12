@@ -633,3 +633,8 @@
 - [x] Filter out leads without a valid US phone number during CSV import
 - [x] Remove the "N/A" phone fallback for Seamless.AI imports
 - [x] Show count of filtered/skipped leads without valid phone
+
+## Feature — Auto-format US Phone Numbers
+- [x] Auto-format imported US phone numbers to (555) 123-4567 format during CSV import
+- [x] Store in +1XXXXXXXXXX format for Retell.AI compatibility
+- [x] Display in (555) 123-4567 format in the UI

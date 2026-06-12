@@ -17,6 +17,22 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
 
+// Format phone number for display: +1XXXXXXXXXX → (XXX) XXX-XXXX
+function formatUSPhone(phone: string | null | undefined): string {
+  if (!phone) return "—";
+  const digits = phone.replace(/[^0-9]/g, "");
+  // Handle +1XXXXXXXXXX or 1XXXXXXXXXX format
+  let local = digits;
+  if (local.length === 11 && local.startsWith("1")) {
+    local = local.slice(1);
+  }
+  if (local.length === 10) {
+    return `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  }
+  // Return as-is if not a standard US number
+  return phone;
+}
+
 const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   hot: { bg: "bg-red-100 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400", label: "Hot" },
   warm: { bg: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-700 dark:text-orange-400", label: "Warm" },
@@ -450,6 +466,18 @@ export default function LeadsPage() {
             errors.push(`Row ${idx + 2}: Invalid or missing US phone number`);
             return;
           }
+
+          // Auto-format US phone number to +1XXXXXXXXXX (for Retell.AI) and display as (XXX) XXX-XXXX
+          let normalizedDigits = phoneDigits;
+          if (normalizedDigits.length === 11 && normalizedDigits.startsWith("1")) {
+            normalizedDigits = normalizedDigits.slice(1); // Remove leading country code
+          } else if (normalizedDigits.length > 10) {
+            normalizedDigits = normalizedDigits.slice(-10); // Take last 10 digits
+          }
+          // Store as +1XXXXXXXXXX for Retell.AI calling compatibility
+          row.phoneNumber = `+1${normalizedDigits}`;
+          // Also store display format
+          row.phoneDisplay = `(${normalizedDigits.slice(0, 3)}) ${normalizedDigits.slice(3, 6)}-${normalizedDigits.slice(6)}`;
 
           rows.push(row);
         });
@@ -1172,7 +1200,7 @@ export default function LeadsPage() {
                     <TableCell className="font-medium text-sm">{row.companyName}</TableCell>
                     <TableCell className="text-sm">{row.ownerName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.email}</TableCell>
-                    <TableCell className="text-sm">{row.phoneNumber}</TableCell>
+                    <TableCell className="text-sm">{row.phoneDisplay || formatUSPhone(row.phoneNumber)}</TableCell>
                     <TableCell>
                       {row.tag && row.tag !== "none" ? (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TAG_COLORS[row.tag]?.bg || ""} ${TAG_COLORS[row.tag]?.text || ""}`}>
@@ -1414,7 +1442,7 @@ export default function LeadsPage() {
                       <TableCell className="font-medium">{lead.companyName}</TableCell>
                       <TableCell>{lead.ownerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
-                      <TableCell className="text-sm">{lead.phoneNumber}</TableCell>
+                      <TableCell className="text-sm">{formatUSPhone(lead.phoneNumber)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           {lead.website && (
