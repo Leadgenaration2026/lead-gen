@@ -614,7 +614,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
           }
         }
-        return { success: true, imported: createdLeads.length, errors };
+        return { success: true, imported: createdLeads.length, errors, leadIds: createdLeads.filter(Boolean).map(Number) };
       }),
 
     // Overwrite existing lead by email (upsert)

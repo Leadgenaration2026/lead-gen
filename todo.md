@@ -616,3 +616,15 @@
 - [x] Show duplicate count and helpful message when all contacts already exist in system
 - [x] Make broader search fallback more aggressive (search nationwide when state results are few)
 - [x] Frontend shows specific error duration (8 seconds) for important messages
+
+## Feature — Seamless.AI Link + CSV Import Flow
+- [x] Research Seamless.AI URL structure for pre-filled search links
+- [x] Add "Open in Seamless.AI" button after search that opens pre-filled search in Seamless.AI
+- [x] Keep "Upload Seamless.AI CSV" button visible after generating the link
+- [x] Auto-detect Seamless.AI CSV column format (First Name, Last Name, Work Email, etc.)
+- [x] Auto-map Seamless.AI columns to our lead fields without manual mapping
+- [x] Auto-assign imported leads to the specified lead set
+- [x] Skip duplicates and show count of new vs skipped leads
+- [x] Show clear instructions in the UI for the workflow steps
+- [x] Auto-run engagement scoring on newly imported leads
+- [x] Sort imported leads by engagement score automatically

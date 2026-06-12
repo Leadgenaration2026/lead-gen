@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, Zap } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, Zap, ExternalLink, CheckCircle2, ArrowRight } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
@@ -76,7 +76,7 @@ export default function LeadsPage() {
 
   // Lead set name for AI generation and CSV import
   const [generateLeadSetName, setGenerateLeadSetName] = useState("");
-  const [generateSource, setGenerateSource] = useState<"ai" | "seamless">("ai");
+  const [generateSource, setGenerateSource] = useState<"ai" | "seamless" | "seamless_csv">("ai");
   const [generateCountry, setGenerateCountry] = useState("");
   const [generateState, setGenerateState] = useState("");
   const [csvLeadSetName, setCsvLeadSetName] = useState("");
@@ -169,7 +169,7 @@ export default function LeadsPage() {
         instruction,
         count,
         leadSetName: generateLeadSetName.trim() || undefined,
-        source: generateSource,
+        source: generateSource === "seamless_csv" ? "seamless" : generateSource,
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
       });
@@ -352,35 +352,92 @@ export default function LeadsPage() {
           return;
         }
 
+        // Detect if this is a Seamless.AI export by checking for their specific columns
+        const headers = Object.keys(results.data[0] || {}).map((h: string) => h.toLowerCase());
+        const isSeamlessFormat = headers.some((h: string) => h.includes("first name")) && 
+          headers.some((h: string) => h.includes("last name")) &&
+          headers.some((h: string) => h.includes("work email") || h.includes("email"));
+        
+        if (isSeamlessFormat) {
+          toast.info("Seamless.AI format detected — auto-mapping columns", { duration: 3000 });
+        }
+
         const rows: any[] = [];
         const errors: string[] = [];
 
         results.data.forEach((record: any, idx: number) => {
           const row: any = {};
+          let firstName = "";
+          let lastName = "";
+          
           for (const [key, val] of Object.entries(record)) {
             const header = (key as string).toLowerCase();
             const value = ((val as string) || "").trim();
             if (!value) continue;
 
-            if (header.includes("company") && (header.includes("name") || header === "company")) row.companyName = value;
-            else if (header === "company") row.companyName = value;
-            else if (header.includes("owner") || header.includes("contact") || header === "name" || header === "full name") row.ownerName = value;
-            else if (header.includes("email") || header.includes("e-mail")) row.email = value;
-            else if (header.includes("phone") || header.includes("mobile") || header.includes("tel")) row.phoneNumber = value;
-            else if (header.includes("website") || header.includes("url")) row.website = value;
-            else if (header.includes("industry") || header.includes("sector") || header.includes("vertical")) row.industry = value;
-            else if (header.includes("size") || header.includes("employees")) row.companySize = value;
-            else if (header.includes("tag") || header.includes("label") || header.includes("priority")) {
+            // Seamless.AI specific column mappings
+            if (header === "first name" || header === "firstname") {
+              firstName = value;
+            } else if (header === "last name" || header === "lastname") {
+              lastName = value;
+            } else if (header === "work email" || header === "work e-mail") {
+              row.email = value;
+            } else if (header === "direct phone" || header === "direct number" || header === "mobile phone") {
+              row.phoneNumber = value;
+            } else if (header === "company phone" && !row.phoneNumber) {
+              row.phoneNumber = value;
+            } else if (header === "company name" || (header.includes("company") && (header.includes("name") || header === "company"))) {
+              row.companyName = value;
+            } else if (header === "company" && !row.companyName) {
+              row.companyName = value;
+            } else if (header === "title" || header === "job title") {
+              row.jobTitle = value;
+            } else if (header.includes("linkedin")) {
+              row.linkedinUrl = value;
+            } else if (header.includes("instagram")) {
+              row.instagramUrl = value;
+            } else if (header.includes("facebook")) {
+              row.facebookUrl = value;
+            } else if (header.includes("website") || header === "company website" || header === "company url") {
+              row.website = value;
+            } else if (header.includes("industry") || header.includes("sector") || header.includes("vertical")) {
+              row.industry = value;
+            } else if (header.includes("size") || header.includes("employees") || header === "# employees" || header === "employee count") {
+              row.companySize = value;
+            } else if (header === "city") {
+              row.city = value;
+            } else if (header === "state" || header === "state/region") {
+              row.state = value;
+            } else if (header === "country") {
+              row.country = value;
+            } else if (header.includes("owner") || header.includes("contact") || header === "name" || header === "full name") {
+              row.ownerName = value;
+            } else if ((header.includes("email") || header.includes("e-mail")) && !row.email) {
+              row.email = value;
+            } else if ((header.includes("phone") || header.includes("mobile") || header.includes("tel")) && !row.phoneNumber) {
+              row.phoneNumber = value;
+            } else if (header.includes("tag") || header.includes("label") || header.includes("priority")) {
               const tagVal = value.toLowerCase().replace(/[\s-]+/g, "_");
               if (["hot", "warm", "cold", "follow_up"].includes(tagVal)) row.tag = tagVal;
             }
           }
 
+          // Combine first + last name for Seamless.AI format
+          if ((firstName || lastName) && !row.ownerName) {
+            row.ownerName = `${firstName} ${lastName}`.trim();
+          }
+
+          // Fallback: positional mapping for unknown formats
           const values = Object.values(record).map((v) => ((v as string) || "").trim());
           if (!row.companyName && values[0]) row.companyName = values[0];
           if (!row.ownerName && values[1]) row.ownerName = values[1];
           if (!row.email && values[2]) row.email = values[2];
           if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
+
+          // For Seamless.AI: phone is optional (many contacts only have email)
+          if (!row.phoneNumber && isSeamlessFormat) {
+            row.phoneNumber = "N/A";
+          }
 
           if (!row.companyName || !row.ownerName || !row.email || !row.phoneNumber) {
             errors.push(`Row ${idx + 2}: Missing required fields`);
@@ -403,6 +460,10 @@ export default function LeadsPage() {
 
         if (errors.length > 0) {
           toast.warning(`${errors.length} rows skipped due to errors`);
+        }
+
+        if (isSeamlessFormat) {
+          toast.success(`${rows.length} Seamless.AI contacts ready to import!`);
         }
 
         setCsvPreview(rows);
@@ -450,6 +511,18 @@ export default function LeadsPage() {
       setCsvLeadSetName("");
       leadsQuery.refetch();
       leadSetsQuery.refetch();
+      
+      // Auto-trigger engagement scoring for newly imported leads
+      if (result.imported > 0 && result.leadIds && result.leadIds.length > 0) {
+        toast.info("Scoring engagement for imported leads...", { duration: 5000 });
+        try {
+          await scoreEngagementBatchMutation.mutateAsync({ leadIds: result.leadIds });
+          toast.success("Engagement scores updated! Leads are now ranked by activity.");
+          leadsQuery.refetch();
+        } catch {
+          toast.info("Leads imported. You can score engagement manually from the leads table.");
+        }
+      }
     } catch (error) {
       toast.error("Failed to import CSV leads");
     }
@@ -832,13 +905,14 @@ export default function LeadsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium">Lead Source</label>
-                      <Select value={generateSource} onValueChange={(v) => setGenerateSource(v as "ai" | "seamless")}>
+                      <Select value={generateSource} onValueChange={(v) => setGenerateSource(v as "ai" | "seamless" | "seamless_csv")}>
                         <SelectTrigger className="mt-1">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ai">AI Generated</SelectItem>
-                          <SelectItem value="seamless">Seamless.ai (Real Data)</SelectItem>
+                          <SelectItem value="seamless">Seamless.AI (API Credits)</SelectItem>
+                          <SelectItem value="seamless_csv">Seamless.AI (Free Daily Credits)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -956,12 +1030,90 @@ export default function LeadsPage() {
                       Generated leads will be added to set: <span className="font-medium">{generateLeadSetName}</span>
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
-                    AI will also extract <strong>website</strong>, <strong>LinkedIn</strong>, <strong>Instagram</strong>, and <strong>Facebook</strong> profile URLs when available.
-                  </p>
-                  <Button onClick={handleGenerateLeads} disabled={isGenerating} className="w-full gap-2">
-                    {isGenerating ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating...</>) : (<><Wand2 className="w-4 h-4" />Generate Leads</>)}
-                  </Button>
+                  {generateSource !== "seamless_csv" && (
+                    <>
+                      <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+                        AI will also extract <strong>website</strong>, <strong>LinkedIn</strong>, <strong>Instagram</strong>, and <strong>Facebook</strong> profile URLs when available.
+                      </p>
+                      <Button onClick={handleGenerateLeads} disabled={isGenerating} className="w-full gap-2">
+                        {isGenerating ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating...</>) : (<><Wand2 className="w-4 h-4" />Generate Leads</>)}
+                      </Button>
+                    </>
+                  )}
+                  {generateSource === "seamless_csv" && (
+                    <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+                      <h4 className="font-semibold text-sm flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-blue-600" />
+                        Seamless.AI Free Credits Workflow
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        Uses your <strong>1,000 free daily credits</strong> from Seamless.AI web app (no API/Universal credits needed).
+                      </p>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="mt-0.5 shrink-0 text-xs">Step 1</Badge>
+                          <span className="text-xs">Click below to open Seamless.AI with your search pre-filled</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="mt-0.5 shrink-0 text-xs">Step 2</Badge>
+                          <span className="text-xs">Research contacts in Seamless.AI (uses free daily credits)</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="mt-0.5 shrink-0 text-xs">Step 3</Badge>
+                          <span className="text-xs">Export as CSV from Seamless.AI</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="mt-0.5 shrink-0 text-xs">Step 4</Badge>
+                          <span className="text-xs">Upload the CSV below — leads auto-import with engagement scoring</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 pt-2">
+                        <Button
+                          variant="default"
+                          className="w-full gap-2"
+                          onClick={() => {
+                            const title = encodeURIComponent(instruction.trim());
+                            const state = generateState && generateState !== "any" ? generateState : "";
+                            // Seamless.AI doesn't support URL params for search, so open the search page
+                            // and show the user what to search for
+                            window.open("https://login.seamless.ai/search", "_blank");
+                            toast.info(
+                              `In Seamless.AI, search for:\n• Title: ${instruction.trim()}${state ? `\n• State: ${state}` : ""}${generateCountry && generateCountry !== "any" ? `\n• Country: ${generateCountry}` : ""}\n\nThen export as CSV and upload below.`,
+                              { duration: 15000 }
+                            );
+                          }}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Open Seamless.AI Search
+                        </Button>
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                          <div className="relative flex justify-center text-xs uppercase"><span className="bg-blue-50 dark:bg-blue-950/20 px-2 text-muted-foreground">then</span></div>
+                        </div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".csv,.txt"
+                          onChange={handleCSVFileSelect}
+                          className="hidden"
+                        />
+                        <Button
+                          variant="outline"
+                          className="w-full gap-2 border-green-300 hover:bg-green-50 dark:hover:bg-green-900/10"
+                          onClick={() => {
+                            // Pre-set the lead set name for the CSV import
+                            if (generateLeadSetName.trim()) {
+                              setCsvLeadSetName(generateLeadSetName.trim());
+                            }
+                            fileInputRef.current?.click();
+                          }}
+                        >
+                          <Upload className="w-4 h-4 text-green-600" />
+                          Upload Seamless.AI CSV
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </DialogContent>
             </Dialog>
