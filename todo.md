@@ -628,3 +628,8 @@
 - [x] Show clear instructions in the UI for the workflow steps
 - [x] Auto-run engagement scoring on newly imported leads
 - [x] Sort imported leads by engagement score automatically
+
+## Feature — CSV Import Validation: Require Valid Email + US Phone
+- [x] Filter out leads without a valid US phone number during CSV import
+- [x] Remove the "N/A" phone fallback for Seamless.AI imports
+- [x] Show count of filtered/skipped leads without valid phone

@@ -434,18 +434,20 @@ export default function LeadsPage() {
           if (!row.email && values[2]) row.email = values[2];
           if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
 
-          // For Seamless.AI: phone is optional (many contacts only have email)
-          if (!row.phoneNumber && isSeamlessFormat) {
-            row.phoneNumber = "N/A";
-          }
-
           if (!row.companyName || !row.ownerName || !row.email || !row.phoneNumber) {
-            errors.push(`Row ${idx + 2}: Missing required fields`);
+            errors.push(`Row ${idx + 2}: Missing required fields (need company, name, email, and phone)`);
             return;
           }
 
           if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
             errors.push(`Row ${idx + 2}: Invalid email "${row.email}"`);
+            return;
+          }
+
+          // Validate US phone number: must contain digits, allow +1, dashes, spaces, parens
+          const phoneDigits = row.phoneNumber.replace(/[^0-9]/g, "");
+          if (phoneDigits.length < 10 || row.phoneNumber === "N/A") {
+            errors.push(`Row ${idx + 2}: Invalid or missing US phone number`);
             return;
           }
 
@@ -459,11 +461,11 @@ export default function LeadsPage() {
         }
 
         if (errors.length > 0) {
-          toast.warning(`${errors.length} rows skipped due to errors`);
+          toast.warning(`${errors.length} rows skipped (missing valid email or US phone number)`, { duration: 6000 });
         }
 
         if (isSeamlessFormat) {
-          toast.success(`${rows.length} Seamless.AI contacts ready to import!`);
+          toast.success(`${rows.length} Seamless.AI contacts with valid email + phone ready to import!`);
         }
 
         setCsvPreview(rows);
