@@ -33,6 +33,7 @@ export const leads = mysqlTable("leads", {
   ownerName: varchar("ownerName", { length: 255 }).notNull(),
   email: varchar("email", { length: 320 }).notNull(),
   phoneNumber: varchar("phoneNumber", { length: 20 }).notNull(),
+  secondaryPhone: varchar("secondaryPhone", { length: 20 }),
   website: varchar("website", { length: 255 }),
   industry: varchar("industry", { length: 100 }),
   customData: json("customData"), // For storing additional lead attributes

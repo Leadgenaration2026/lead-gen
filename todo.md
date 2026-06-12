@@ -638,3 +638,9 @@
 - [x] Auto-format imported US phone numbers to (555) 123-4567 format during CSV import
 - [x] Store in +1XXXXXXXXXX format for Retell.AI compatibility
 - [x] Display in (555) 123-4567 format in the UI
+
+## Feature — Support Dual Phone Numbers from Seamless.AI CSV
+- [x] Add secondaryPhone column to leads table
+- [x] Capture both Direct Phone and Company Phone from Seamless.AI CSV
+- [x] Display both phone numbers in the leads table/detail view
+- [x] Make both numbers available for Retell.AI calling (stored as +1XXXXXXXXXX)

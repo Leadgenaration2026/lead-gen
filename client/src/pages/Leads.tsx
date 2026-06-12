@@ -399,9 +399,19 @@ export default function LeadsPage() {
             } else if (header === "work email" || header === "work e-mail") {
               row.email = value;
             } else if (header === "direct phone" || header === "direct number" || header === "mobile phone") {
-              row.phoneNumber = value;
-            } else if (header === "company phone" && !row.phoneNumber) {
-              row.phoneNumber = value;
+              // If we already have a primary phone, this becomes secondary
+              if (row.phoneNumber && row.phoneNumber !== value) {
+                row.secondaryPhone = value;
+              } else {
+                row.phoneNumber = value;
+              }
+            } else if (header === "company phone") {
+              // Company phone becomes secondary if we already have a direct phone
+              if (row.phoneNumber) {
+                row.secondaryPhone = value;
+              } else {
+                row.phoneNumber = value;
+              }
             } else if (header === "company name" || (header.includes("company") && (header.includes("name") || header === "company"))) {
               row.companyName = value;
             } else if (header === "company" && !row.companyName) {
@@ -478,6 +488,23 @@ export default function LeadsPage() {
           row.phoneNumber = `+1${normalizedDigits}`;
           // Also store display format
           row.phoneDisplay = `(${normalizedDigits.slice(0, 3)}) ${normalizedDigits.slice(3, 6)}-${normalizedDigits.slice(6)}`;
+
+          // Format secondary phone if present
+          if (row.secondaryPhone) {
+            const secDigits = row.secondaryPhone.replace(/[^0-9]/g, "");
+            if (secDigits.length >= 10) {
+              let secNormalized = secDigits;
+              if (secNormalized.length === 11 && secNormalized.startsWith("1")) {
+                secNormalized = secNormalized.slice(1);
+              } else if (secNormalized.length > 10) {
+                secNormalized = secNormalized.slice(-10);
+              }
+              row.secondaryPhone = `+1${secNormalized}`;
+              row.secondaryPhoneDisplay = `(${secNormalized.slice(0, 3)}) ${secNormalized.slice(3, 6)}-${secNormalized.slice(6)}`;
+            } else {
+              row.secondaryPhone = null; // Invalid secondary phone, discard
+            }
+          }
 
           rows.push(row);
         });
@@ -1442,7 +1469,12 @@ export default function LeadsPage() {
                       <TableCell className="font-medium">{lead.companyName}</TableCell>
                       <TableCell>{lead.ownerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
-                      <TableCell className="text-sm">{formatUSPhone(lead.phoneNumber)}</TableCell>
+                      <TableCell className="text-sm">
+                        <div>{formatUSPhone(lead.phoneNumber)}</div>
+                        {(lead as any).secondaryPhone && (
+                          <div className="text-xs text-muted-foreground mt-0.5">{formatUSPhone((lead as any).secondaryPhone)}</div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           {lead.website && (
