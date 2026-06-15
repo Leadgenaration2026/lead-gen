@@ -693,3 +693,12 @@
 ## Feature — Bouncer Credit Balance Widget on Dashboard
 - [x] Add Bouncer credit balance widget to the main dashboard page
 - [x] Show remaining credits, configured status, and link to top up
+
+## Feature — Social Media Scoring (High/Low Activity)
+- [x] Add socialMediaScore column to leads table (high/low/pending)
+- [x] Create LinkedIn scoring logic using built-in Data API
+- [x] Create backend procedure to score a lead's LinkedIn activity
+- [x] Display High Activity / Low Activity badge under each lead in leads list
+- [x] Auto-trigger scoring when leads are imported or created
+- [x] Add manual rescore button for individual leads
+- [x] Sort leads by activity score (High Activity first)

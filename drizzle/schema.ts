@@ -47,6 +47,7 @@ export const leads = mysqlTable("leads", {
   country: varchar("country", { length: 100 }),
   engagementScore: int("engagementScore").default(0), // 0-100 score based on social media activity
   engagementData: json("engagementData"), // Stores raw engagement metrics (followers, posts, etc.)
+  socialMediaScore: mysqlEnum("socialMediaScore", ["high", "low", "pending"]).default("pending").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

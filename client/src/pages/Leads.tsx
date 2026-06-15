@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, Zap, ExternalLink, CheckCircle2, ArrowRight } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
@@ -714,7 +714,12 @@ export default function LeadsPage() {
     });
 
     // Apply sorting
-    if (sortBy === "engagement_desc") {
+    if (sortBy === "social_desc") {
+      return [...filtered].sort((a: any, b: any) => {
+        const scoreOrder = { high: 2, pending: 1, low: 0 };
+        return (scoreOrder[b.socialMediaScore as keyof typeof scoreOrder] || 0) - (scoreOrder[a.socialMediaScore as keyof typeof scoreOrder] || 0);
+      });
+    } else if (sortBy === "engagement_desc") {
       return [...filtered].sort((a: any, b: any) => (b.engagementScore || 0) - (a.engagementScore || 0));
     } else if (sortBy === "engagement_asc") {
       return [...filtered].sort((a: any, b: any) => (a.engagementScore || 0) - (b.engagementScore || 0));
@@ -1404,9 +1409,10 @@ export default function LeadsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="newest">Newest First</SelectItem>
-                  <SelectItem value="engagement_desc">Engagement: High → Low</SelectItem>
-                  <SelectItem value="engagement_asc">Engagement: Low → High</SelectItem>
-                  <SelectItem value="name_asc">Name: A → Z</SelectItem>
+                   <SelectItem value="social_desc">Social Activity: High First</SelectItem>
+                   <SelectItem value="engagement_desc">Engagement: High → Low</SelectItem>
+                   <SelectItem value="engagement_asc">Engagement: Low → High</SelectItem>
+                   <SelectItem value="name_asc">Name: A → Z</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -1502,6 +1508,7 @@ export default function LeadsPage() {
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
                     <TableHead className="text-center">Engagement</TableHead>
+                    <TableHead className="text-center">Social Activity</TableHead>
                     <TableHead>Country</TableHead>
                     <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
@@ -1568,6 +1575,24 @@ export default function LeadsPage() {
                           </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {lead.socialMediaScore === "high" ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800 text-xs gap-1">
+                            <TrendingUp className="w-3 h-3" />
+                            High Activity
+                          </Badge>
+                        ) : lead.socialMediaScore === "low" ? (
+                          <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs gap-1">
+                            <TrendingDown className="w-3 h-3" />
+                            Low Activity
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 text-xs gap-1 animate-pulse">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Scoring...
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-sm">

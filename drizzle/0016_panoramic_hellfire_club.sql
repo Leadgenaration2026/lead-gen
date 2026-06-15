@@ -1,0 +1,1 @@
+ALTER TABLE `leads` ADD `socialMediaScore` enum('high','low','pending') DEFAULT 'pending' NOT NULL;
