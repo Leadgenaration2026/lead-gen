@@ -538,14 +538,17 @@ export default function LeadsPage() {
             if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
           }
 
-          // For Seamless.AI format: only require name + company. Email and phone can be empty.
+          // Require name + company + email + phone
           if (!row.companyName || !row.ownerName) {
-            errors.push(`Row ${idx + 2}: Missing required fields (need at least company name and contact name)`);
+            errors.push(`Row ${idx + 2}: Missing company name or contact name`);
             return;
           }
-          // If no email and no phone at all, skip the row
-          if (!row.email && !row.phoneNumber) {
-            errors.push(`Row ${idx + 2}: No email or phone number found — skipping`);
+          if (!row.email) {
+            errors.push(`Row ${idx + 2}: Missing email address — skipping`);
+            return;
+          }
+          if (!row.phoneNumber) {
+            errors.push(`Row ${idx + 2}: Missing phone number — skipping`);
             return;
           }
 
@@ -573,14 +576,15 @@ export default function LeadsPage() {
             }
           }
 
-          // After validation, ensure we still have at least email OR phone
-          if (!row.email && !row.phoneNumber) {
-            errors.push(`Row ${idx + 2}: No valid email or phone number — skipping`);
+          // After validation, ensure we have both valid email AND phone
+          if (!row.email) {
+            errors.push(`Row ${idx + 2}: Invalid email — skipping`);
             return;
           }
-          // Set defaults for missing optional fields
-          if (!row.email) row.email = "";
-          if (!row.phoneNumber) row.phoneNumber = "";
+          if (!row.phoneNumber) {
+            errors.push(`Row ${idx + 2}: Invalid phone number — skipping`);
+            return;
+          }
 
           // Format secondary phone if present
           if (row.secondaryPhone) {
@@ -603,7 +607,7 @@ export default function LeadsPage() {
         });
 
         if (rows.length === 0) {
-          toast.error("No valid leads found. Ensure CSV has at least: Name + Company Name + (Email or Phone)");
+          toast.error("No valid leads found. Ensure CSV has: Name + Company Name + Email + Phone Number");
           if (errors.length > 0) toast.error(errors.slice(0, 3).join("\n"));
           return;
         }
@@ -613,9 +617,7 @@ export default function LeadsPage() {
         }
 
         if (isSeamlessFormat) {
-          const withEmail = rows.filter((r: any) => r.email).length;
-          const withPhone = rows.filter((r: any) => r.phoneNumber).length;
-          toast.success(`${rows.length} Seamless.AI contacts ready to import! (${withEmail} with email, ${withPhone} with phone)`);
+          toast.success(`${rows.length} Seamless.AI contacts with email + phone ready to import!`);
         }
 
         setCsvPreview(rows);

@@ -679,8 +679,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         leads: z.array(z.object({
           companyName: z.string().min(1),
           ownerName: z.string().min(1),
-          email: z.string().optional().default(""),
-          phoneNumber: z.string().optional().default(""),
+          email: z.string().min(1),
+          phoneNumber: z.string().min(1),
           secondaryPhone: z.string().optional().nullable(),
           website: z.string().optional(),
           industry: z.string().optional(),
@@ -845,8 +845,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         leads: z.array(z.object({
           companyName: z.string().min(1),
           ownerName: z.string().min(1),
-          email: z.string().optional().default(""),
-          phoneNumber: z.string().optional().default(""),
+          email: z.string().min(1),
+          phoneNumber: z.string().min(1),
           website: z.string().optional(),
           industry: z.string().optional(),
           linkedinUrl: z.string().optional(),
