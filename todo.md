@@ -662,3 +662,19 @@
 - [x] Show fallback status in activity feed (logged in server console)
 - [x] Don't retry if secondary phone is same as primary or missing
 - [x] Don't retry if secondary was already tried for this campaign lead
+
+## Feature — Consolidate to ZeroBounce Only (Remove GlockApps)
+- [ ] Research ZeroBounce inbox placement / email server test API
+- [ ] Update zeroBounce.ts module to include inbox placement testing
+- [ ] Remove glockApps.ts module and all GlockApps references
+- [ ] Remove glockAppsApiKey from Settings UI and database schema
+- [ ] Update campaign launch flow to use ZeroBounce for inbox testing
+- [ ] Simplify Settings page — single ZeroBounce API key for both features
+
+## Bug Fix — CSV Import Column Mapping Incorrect
+- [x] Research exact Seamless.AI CSV export column headers
+- [x] Fix column mapping — owner name showing address instead of name
+- [x] Fix phone number format to be Retell.AI compatible (+1XXXXXXXXXX)
+- [x] Match all system columns to Seamless.AI export columns exactly
+- [x] Add all relevant Seamless.AI columns to our leads system
+- [x] Verify CSV import works correctly with real Seamless.AI export

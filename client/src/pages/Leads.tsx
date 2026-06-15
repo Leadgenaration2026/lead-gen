@@ -361,18 +361,22 @@ export default function LeadsPage() {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (header: string) => header.trim().toLowerCase().replace(/[\s_]+/g, " "),
+      transformHeader: (header: string) => header.trim(),
       complete: (results: any) => {
         if (!results.data || results.data.length === 0) {
           toast.error("CSV file is empty or has no valid data rows");
           return;
         }
 
-        // Detect if this is a Seamless.AI export by checking for their specific columns
-        const headers = Object.keys(results.data[0] || {}).map((h: string) => h.toLowerCase());
-        const isSeamlessFormat = headers.some((h: string) => h.includes("first name")) && 
-          headers.some((h: string) => h.includes("last name")) &&
-          headers.some((h: string) => h.includes("work email") || h.includes("email"));
+        // Get original headers (preserving case for detection)
+        const rawHeaders = Object.keys(results.data[0] || {});
+        const headersLower = rawHeaders.map((h: string) => h.toLowerCase().trim());
+        
+        // Detect Seamless.AI format by checking for their specific column patterns
+        const isSeamlessFormat = (
+          headersLower.some((h: string) => h === "first name" || h === "first_name") && 
+          headersLower.some((h: string) => h === "last name" || h === "last_name")
+        ) || headersLower.some((h: string) => h === "full name");
         
         if (isSeamlessFormat) {
           toast.info("Seamless.AI format detected — auto-mapping columns", { duration: 3000 });
@@ -385,67 +389,107 @@ export default function LeadsPage() {
           const row: any = {};
           let firstName = "";
           let lastName = "";
+          let phones: string[] = [];
           
           for (const [key, val] of Object.entries(record)) {
-            const header = (key as string).toLowerCase();
+            const header = (key as string).toLowerCase().trim();
             const value = ((val as string) || "").trim();
-            if (!value) continue;
+            if (!value || value === "N/A" || value === "n/a" || value === "NA") continue;
 
-            // Seamless.AI specific column mappings
-            if (header === "first name" || header === "firstname") {
+            // === NAME FIELDS ===
+            if (header === "first name" || header === "first_name" || header === "firstname") {
               firstName = value;
-            } else if (header === "last name" || header === "lastname") {
+            } else if (header === "last name" || header === "last_name" || header === "lastname") {
               lastName = value;
-            } else if (header === "work email" || header === "work e-mail") {
+            } else if (header === "full name" || header === "full_name" || header === "fullname") {
+              row.ownerName = value;
+            }
+            // === EMAIL FIELDS (Seamless uses Email 1, Email 2, Email 3, Work Email, Personal Email) ===
+            else if (
+              header === "email 1" || header === "email1" || 
+              header === "work email" || header === "work e-mail" ||
+              header === "email" || header === "e-mail"
+            ) {
               row.email = value;
-            } else if (header === "direct phone" || header === "direct number" || header === "mobile phone") {
-              // If we already have a primary phone, this becomes secondary
-              if (row.phoneNumber && row.phoneNumber !== value) {
-                row.secondaryPhone = value;
-              } else {
-                row.phoneNumber = value;
+            } else if (
+              (header === "email 2" || header === "email2" || 
+               header === "email 3" || header === "email3" ||
+               header === "personal email 1" || header === "personal email 2" || header === "personal email 3" ||
+               header.includes("email")) && !row.email
+            ) {
+              row.email = value;
+            }
+            // === PHONE FIELDS (Seamless uses Contact Phone 1-10, Company Phone 1-10) ===
+            else if (
+              header.match(/^contact phone\s*\d*$/) ||
+              header.match(/^contact_phone\s*\d*$/) ||
+              header === "direct phone" || header === "direct number" ||
+              header === "mobile phone" || header === "mobile" ||
+              header.match(/^phone\s*\d*$/) ||
+              header === "phone" || header === "phone number"
+            ) {
+              if (value.replace(/[^0-9]/g, "").length >= 7) {
+                phones.push(value);
               }
-            } else if (header === "company phone") {
-              // Company phone becomes secondary if we already have a direct phone
-              if (row.phoneNumber) {
-                row.secondaryPhone = value;
-              } else {
-                row.phoneNumber = value;
+            } else if (
+              header.match(/^company phone\s*\d*$/) ||
+              header.match(/^company_phone\s*\d*$/)
+            ) {
+              if (value.replace(/[^0-9]/g, "").length >= 7) {
+                phones.push(value);
               }
-            } else if (header === "company name" || (header.includes("company") && (header.includes("name") || header === "company"))) {
+            }
+            // === COMPANY FIELDS ===
+            else if (header === "company name" || header === "company_name" || header === "company") {
               row.companyName = value;
-            } else if (header === "company" && !row.companyName) {
-              row.companyName = value;
-            } else if (header === "title" || header === "job title") {
+            } else if (header === "title" || header === "job title" || header === "job_title") {
               row.jobTitle = value;
-            } else if (header.includes("linkedin")) {
-              row.linkedinUrl = value;
+            } else if (header === "company industry" || header === "industry") {
+              row.industry = value;
+            } else if (
+              header === "company employee size" || header === "company employee size range" ||
+              header === "# employees" || header === "employee count" ||
+              header === "employees" || header.includes("employee size")
+            ) {
+              row.companySize = value;
+            } else if (header === "website" || header === "company website" || header === "company url") {
+              row.website = value;
+            }
+            // === SOCIAL FIELDS ===
+            else if (header === "linkedin profile url" || header === "linkedin url" || header === "linkedin" || header === "company linkedin url") {
+              if (!row.linkedinUrl) row.linkedinUrl = value;
             } else if (header.includes("instagram")) {
               row.instagramUrl = value;
             } else if (header.includes("facebook")) {
               row.facebookUrl = value;
-            } else if (header.includes("website") || header === "company website" || header === "company url") {
-              row.website = value;
-            } else if (header.includes("industry") || header.includes("sector") || header.includes("vertical")) {
-              row.industry = value;
-            } else if (header.includes("size") || header.includes("employees") || header === "# employees" || header === "employee count") {
-              row.companySize = value;
-            } else if (header === "city") {
+            }
+            // === LOCATION FIELDS (Seamless uses "Company Location - City", "Contact Location - State", etc.) ===
+            else if (
+              header === "city" || header === "company location - city" ||
+              header === "contact location - city"
+            ) {
               row.city = value;
-            } else if (header === "state" || header === "state/region") {
+            } else if (
+              header === "state" || header === "state/region" ||
+              header === "company location - state" || header === "contact location - state" ||
+              header === "company location - state abbreviation" || header === "contact location - state abbreviation"
+            ) {
               row.state = value;
-            } else if (header === "country") {
+            } else if (
+              header === "country" || 
+              header === "company location - country" || header === "contact location - country" ||
+              header === "company location - country alpha-2 code" || header === "contact location - country alpha-2 code"
+            ) {
               row.country = value;
-            } else if (header.includes("owner") || header.includes("contact") || header === "name" || header === "full name") {
-              row.ownerName = value;
-            } else if ((header.includes("email") || header.includes("e-mail")) && !row.email) {
-              row.email = value;
-            } else if ((header.includes("phone") || header.includes("mobile") || header.includes("tel")) && !row.phoneNumber) {
-              row.phoneNumber = value;
+            }
+            // === GENERIC FALLBACKS (only if not already matched) ===
+            else if (header === "owner name" || header === "owner" || header === "contact name" || header === "name") {
+              if (!row.ownerName) row.ownerName = value;
             } else if (header.includes("tag") || header.includes("label") || header.includes("priority")) {
               const tagVal = value.toLowerCase().replace(/[\s-]+/g, "_");
               if (["hot", "warm", "cold", "follow_up"].includes(tagVal)) row.tag = tagVal;
             }
+            // NOTE: We intentionally do NOT match "location", "street address", "zip" etc. to ownerName
           }
 
           // Combine first + last name for Seamless.AI format
@@ -453,12 +497,22 @@ export default function LeadsPage() {
             row.ownerName = `${firstName} ${lastName}`.trim();
           }
 
-          // Fallback: positional mapping for unknown formats
-          const values = Object.values(record).map((v) => ((v as string) || "").trim());
-          if (!row.companyName && values[0]) row.companyName = values[0];
-          if (!row.ownerName && values[1]) row.ownerName = values[1];
-          if (!row.email && values[2]) row.email = values[2];
-          if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
+          // Assign phones: first valid = primary, second = secondary
+          if (phones.length > 0) {
+            row.phoneNumber = phones[0];
+            if (phones.length > 1 && phones[1] !== phones[0]) {
+              row.secondaryPhone = phones[1];
+            }
+          }
+
+          // Only use positional fallback for NON-Seamless formats
+          if (!isSeamlessFormat) {
+            const values = Object.values(record).map((v) => ((v as string) || "").trim());
+            if (!row.companyName && values[0]) row.companyName = values[0];
+            if (!row.ownerName && values[1]) row.ownerName = values[1];
+            if (!row.email && values[2]) row.email = values[2];
+            if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
+          }
 
           if (!row.companyName || !row.ownerName || !row.email || !row.phoneNumber) {
             errors.push(`Row ${idx + 2}: Missing required fields (need company, name, email, and phone)`);
@@ -470,14 +524,14 @@ export default function LeadsPage() {
             return;
           }
 
-          // Validate US phone number: must contain digits, allow +1, dashes, spaces, parens
+          // Validate phone number: must contain at least 10 digits
           const phoneDigits = row.phoneNumber.replace(/[^0-9]/g, "");
-          if (phoneDigits.length < 10 || row.phoneNumber === "N/A") {
-            errors.push(`Row ${idx + 2}: Invalid or missing US phone number`);
+          if (phoneDigits.length < 10) {
+            errors.push(`Row ${idx + 2}: Invalid or missing phone number (need 10+ digits)`);
             return;
           }
 
-          // Auto-format US phone number to +1XXXXXXXXXX (for Retell.AI) and display as (XXX) XXX-XXXX
+          // Auto-format phone number to +1XXXXXXXXXX (for Retell.AI)
           let normalizedDigits = phoneDigits;
           if (normalizedDigits.length === 11 && normalizedDigits.startsWith("1")) {
             normalizedDigits = normalizedDigits.slice(1); // Remove leading country code
@@ -486,7 +540,6 @@ export default function LeadsPage() {
           }
           // Store as +1XXXXXXXXXX for Retell.AI calling compatibility
           row.phoneNumber = `+1${normalizedDigits}`;
-          // Also store display format
           row.phoneDisplay = `(${normalizedDigits.slice(0, 3)}) ${normalizedDigits.slice(3, 6)}-${normalizedDigits.slice(6)}`;
 
           // Format secondary phone if present
@@ -510,13 +563,13 @@ export default function LeadsPage() {
         });
 
         if (rows.length === 0) {
-          toast.error("No valid leads found. Ensure columns: Company Name, Owner Name, Email, Phone Number");
+          toast.error("No valid leads found. Ensure CSV has: First Name, Last Name, Email, Phone, Company Name");
           if (errors.length > 0) toast.error(errors.slice(0, 3).join("\n"));
           return;
         }
 
         if (errors.length > 0) {
-          toast.warning(`${errors.length} rows skipped (missing valid email or US phone number)`, { duration: 6000 });
+          toast.warning(`${errors.length} rows skipped (missing valid email or phone number)`, { duration: 6000 });
         }
 
         if (isSeamlessFormat) {
