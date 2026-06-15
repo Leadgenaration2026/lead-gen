@@ -702,3 +702,11 @@
 - [x] Auto-trigger scoring when leads are imported or created
 - [x] Add manual rescore button for individual leads
 - [x] Sort leads by activity score (High Activity first)
+
+## Feature — Auto-Block Undeliverable Emails
+- [x] Add emailVerificationStatus column to leads table (verified/undeliverable/risky/unknown/pending)
+- [x] Update Bouncer verification flow to save status per lead
+- [x] Auto-exclude undeliverable leads when launching campaigns
+- [x] Show verification status badge in leads table
+- [x] Show count of blocked leads when campaign launches
+- [x] Allow manual override to include risky leads if desired

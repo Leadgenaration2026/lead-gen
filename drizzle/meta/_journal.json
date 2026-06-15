@@ -120,6 +120,13 @@
       "when": 1781546407721,
       "tag": "0016_panoramic_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1781547661580,
+      "tag": "0017_smart_iron_lad",
+      "breakpoints": true
     }
   ]
 }

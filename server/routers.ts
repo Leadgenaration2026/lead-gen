@@ -1330,6 +1330,19 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         let sentCount = 0;
         let skippedInvalid = 0;
+        let skippedUndeliverable = 0;
+
+        // Auto-block: collect leads with Bouncer "undeliverable" status
+        const undeliverableLeadIds = new Set<number>();
+        for (const cl of campaignLeads) {
+          const lead = await db.getLeadById(cl.leadId);
+          if (lead && lead.emailVerificationStatus === "undeliverable") {
+            undeliverableLeadIds.add(lead.id);
+          }
+        }
+        if (undeliverableLeadIds.size > 0) {
+          console.log(`[Campaign ${campaignId}] Auto-blocking ${undeliverableLeadIds.size} leads with undeliverable emails`);
+        }
 
         // Determine how many to send today based on dailySendLimit
         const dailyLimit = (campaign as any).dailySendLimit || null;
@@ -1349,6 +1362,13 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             if (invalidEmails.has(lead.email.toLowerCase())) {
               skippedInvalid++;
               console.log(`[Campaign ${campaignId}] Skipped invalid email: ${lead.email}`);
+              continue;
+            }
+
+            // Auto-block: skip leads with Bouncer "undeliverable" verification status
+            if (undeliverableLeadIds.has(lead.id)) {
+              skippedUndeliverable++;
+              console.log(`[Campaign ${campaignId}] Auto-blocked undeliverable email: ${lead.email}`);
               continue;
             }
 
@@ -1549,7 +1569,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           }
         }
 
-        return { success: true, sentCount, remaining, dailyLimit };
+        return { success: true, sentCount, remaining, dailyLimit, skippedUndeliverable };
       }),
 
     // Pause campaign
@@ -3692,6 +3712,27 @@ Use the website data to:
               toxicity: r.toxicity,
             };
           });
+
+          // Save verification status per lead in the database
+          for (const result of detailedResults) {
+            if (result.leadId) {
+              try {
+                await db.updateLead(Number(result.leadId), {
+                  emailVerificationStatus: result.status as any,
+                  emailVerificationData: {
+                    score: result.score,
+                    reason: result.subStatus,
+                    toxic: result.toxic,
+                    toxicity: result.toxicity,
+                    shouldSend: result.shouldSend,
+                    verifiedAt: new Date().toISOString(),
+                  },
+                });
+              } catch (e: any) {
+                console.warn(`[Bouncer] Failed to save verification for lead ${result.leadId}:`, e.message);
+              }
+            }
+          }
 
           const safeToSend = detailedResults.filter(r => r.shouldSend);
           const doNotSend = detailedResults.filter(r => !r.shouldSend);

@@ -81,8 +81,13 @@ export default function CampaignsPage() {
 
   const handleLaunchCampaign = async (campaignId: number) => {
     try {
-      await launchCampaignMutation.mutateAsync(campaignId);
-      toast.success("Campaign launched successfully");
+      const result = await launchCampaignMutation.mutateAsync(campaignId);
+      const blocked = (result as any)?.skippedUndeliverable || 0;
+      if (blocked > 0) {
+        toast.success(`Campaign launched! ${(result as any)?.sentCount || 0} emails sent. ${blocked} undeliverable email(s) auto-blocked.`);
+      } else {
+        toast.success(`Campaign launched! ${(result as any)?.sentCount || 0} emails sent.`);
+      }
       campaignsQuery.refetch();
     } catch (error: any) {
       const msg = error?.message || "Failed to launch campaign";

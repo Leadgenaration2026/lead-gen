@@ -48,6 +48,8 @@ export const leads = mysqlTable("leads", {
   engagementScore: int("engagementScore").default(0), // 0-100 score based on social media activity
   engagementData: json("engagementData"), // Stores raw engagement metrics (followers, posts, etc.)
   socialMediaScore: mysqlEnum("socialMediaScore", ["high", "low", "pending"]).default("pending").notNull(),
+  emailVerificationStatus: mysqlEnum("emailVerificationStatus", ["deliverable", "undeliverable", "risky", "unknown", "pending"]).default("pending").notNull(),
+  emailVerificationData: json("emailVerificationData"), // Stores Bouncer verification result details
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

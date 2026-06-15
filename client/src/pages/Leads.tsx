@@ -1509,7 +1509,8 @@ export default function LeadsPage() {
                     <TableHead>Socials</TableHead>
                     <TableHead className="text-center">Engagement</TableHead>
                     <TableHead className="text-center">Social Activity</TableHead>
-                    <TableHead>Country</TableHead>
+                     <TableHead className="text-center">Email Status</TableHead>
+                     <TableHead>Country</TableHead>
                     <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
@@ -1593,6 +1594,30 @@ export default function LeadsPage() {
                             <Loader2 className="w-3 h-3 animate-spin" />
                             Scoring...
                           </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {lead.emailVerificationStatus === "deliverable" ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800 text-xs gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Verified
+                          </Badge>
+                        ) : lead.emailVerificationStatus === "undeliverable" ? (
+                          <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800 text-xs gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            Blocked
+                          </Badge>
+                        ) : lead.emailVerificationStatus === "risky" ? (
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 text-xs gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            Risky
+                          </Badge>
+                        ) : lead.emailVerificationStatus === "unknown" ? (
+                          <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs gap-1">
+                            Unknown
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-sm">

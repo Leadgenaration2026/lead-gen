@@ -1,0 +1,2 @@
+ALTER TABLE `leads` ADD `emailVerificationStatus` enum('deliverable','undeliverable','risky','unknown','pending') DEFAULT 'pending' NOT NULL;--> statement-breakpoint
+ALTER TABLE `leads` ADD `emailVerificationData` json;
