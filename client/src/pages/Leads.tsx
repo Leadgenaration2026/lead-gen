@@ -1586,6 +1586,7 @@ export default function LeadsPage() {
                     <TableHead>Company</TableHead>
                     <TableHead>Owner</TableHead>
                     <TableHead>Job Title</TableHead>
+                    <TableHead>Industry</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
@@ -1612,6 +1613,7 @@ export default function LeadsPage() {
                       <TableCell className="font-medium">{lead.companyName}</TableCell>
                       <TableCell>{lead.ownerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{(lead as any).jobTitle || "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{lead.industry || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                       <TableCell className="text-sm">
                         <div>{formatUSPhone(lead.phoneNumber)}</div>
