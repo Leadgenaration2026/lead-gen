@@ -725,3 +725,12 @@
 - [x] Make email and phone optional (only require name + company + at least one of email/phone)
 - [x] Fix backend schema to accept leads without email or phone
 - [x] Fix email matching to not pick up 'Email Validation' or 'Total AI' columns
+
+## Feature — Add Job Title, Website, and Industry Filter to Leads
+- [x] Add jobTitle column to leads table schema
+- [x] Extract job title from CSV (Seamless.AI "Title" column)
+- [x] Add job title field to manual lead creation form
+- [x] Extract job title from AI-generated leads
+- [x] Ensure website is extracted from CSV, manual, and AI sources
+- [x] Display job title in leads table
+- [x] Add industry filter/tab to leads page for filtering leads by industry

@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
@@ -63,6 +63,7 @@ export default function LeadsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
+  const [filterIndustry, setFilterIndustry] = useState<string>("all");
 
   // Support URL param ?setId=123 to pre-filter by lead set
   useEffect(() => {
@@ -80,6 +81,7 @@ export default function LeadsPage() {
   const [manualLead, setManualLead] = useState({
     companyName: "",
     ownerName: "",
+    jobTitle: "",
     email: "",
     phoneNumber: "",
     industry: "",
@@ -249,6 +251,7 @@ export default function LeadsPage() {
       await addLeadMutation.mutateAsync({
         companyName: manualLead.companyName,
         ownerName: manualLead.ownerName,
+        jobTitle: manualLead.jobTitle || undefined,
         email: manualLead.email,
         phoneNumber: manualLead.phoneNumber,
         industry: manualLead.industry || "Unknown",
@@ -259,7 +262,7 @@ export default function LeadsPage() {
         facebookUrl: manualLead.facebookUrl || undefined,
       });
       toast.success("Lead added successfully");
-      setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
+      setManualLead({ companyName: "", ownerName: "", jobTitle: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
       leadsQuery.refetch();
     } catch (error) {
       toast.error("Failed to add lead");
@@ -316,7 +319,7 @@ export default function LeadsPage() {
           companySize: lead.companySize || "Unknown",
         });
         toast.success("Lead updated (existing record overwritten)");
-        setManualLead({ companyName: "", ownerName: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
+        setManualLead({ companyName: "", ownerName: "", jobTitle: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
         leadsQuery.refetch();
       } catch (error) {
         toast.error("Failed to overwrite lead");
@@ -746,6 +749,17 @@ export default function LeadsPage() {
   };
 
   // Filter leads
+  // Get unique industries for filter dropdown
+  const industries = useMemo(() => {
+    const industrySet = new Set<string>();
+    (leadsQuery.data || []).forEach((lead: any) => {
+      if (lead.industry && lead.industry !== "Unknown") {
+        industrySet.add(lead.industry);
+      }
+    });
+    return Array.from(industrySet).sort();
+  }, [leadsQuery.data]);
+
   const filteredLeads = useMemo(() => {
     const filtered = (leadsQuery.data || []).filter((lead: any) => {
       const matchesTag = filterTag === "all" || lead.tag === filterTag;
@@ -757,7 +771,9 @@ export default function LeadsPage() {
       const matchesSet =
         filterLeadSet === "all" ||
         (filterLeadSet === "unassigned" ? !lead.leadSetId : lead.leadSetId === parseInt(filterLeadSet));
-      return matchesTag && matchesSearch && matchesSet;
+      const matchesIndustry =
+        filterIndustry === "all" || lead.industry === filterIndustry;
+      return matchesTag && matchesSearch && matchesSet && matchesIndustry;
     });
 
     // Apply sorting
@@ -776,7 +792,7 @@ export default function LeadsPage() {
       return [...filtered].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
     return filtered;
-  }, [leadsQuery.data, filterTag, searchQuery, filterLeadSet, sortBy]);
+  }, [leadsQuery.data, filterTag, searchQuery, filterLeadSet, filterIndustry, sortBy]);
 
   const leadSets = leadSetsQuery.data || [];
 
@@ -966,6 +982,10 @@ export default function LeadsPage() {
                   <div>
                     <label className="text-sm font-medium">Owner/Contact Name *</label>
                     <Input placeholder="e.g., John Smith" value={manualLead.ownerName} onChange={(e) => setManualLead({ ...manualLead, ownerName: e.target.value })} className="mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Job Title</label>
+                    <Input placeholder="e.g., CEO, Marketing Director" value={manualLead.jobTitle || ""} onChange={(e) => setManualLead({ ...manualLead, jobTitle: e.target.value })} className="mt-1" />
                   </div>
                   <div>
                     <label className="text-sm font-medium">Email Address *</label>
@@ -1449,6 +1469,20 @@ export default function LeadsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={filterIndustry} onValueChange={setFilterIndustry}>
+                <SelectTrigger className="w-40">
+                  <Building2 className="w-3.5 h-3.5 mr-1.5" />
+                  <SelectValue placeholder="Filter by industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Industries</SelectItem>
+                  {industries.map((industry: string) => (
+                    <SelectItem key={industry} value={industry}>
+                      {industry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-44">
                   <ArrowUpDown className="w-3.5 h-3.5 mr-1.5" />
@@ -1551,6 +1585,7 @@ export default function LeadsPage() {
                     </TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Owner</TableHead>
+                    <TableHead>Job Title</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
@@ -1576,6 +1611,7 @@ export default function LeadsPage() {
                       </TableCell>
                       <TableCell className="font-medium">{lead.companyName}</TableCell>
                       <TableCell>{lead.ownerName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{(lead as any).jobTitle || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                       <TableCell className="text-sm">
                         <div>{formatUSPhone(lead.phoneNumber)}</div>
@@ -1742,7 +1778,7 @@ export default function LeadsPage() {
             <div className="text-center py-12">
               <Plus className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground">
-                {searchQuery || filterTag !== "all" || filterLeadSet !== "all"
+                {searchQuery || filterTag !== "all" || filterLeadSet !== "all" || filterIndustry !== "all"
                   ? "No leads match your filters"
                   : "No leads yet. Add manually, import CSV, or generate with AI!"}
               </p>

@@ -1,0 +1,1 @@
+ALTER TABLE `leads` ADD `jobTitle` varchar(255);

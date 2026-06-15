@@ -245,6 +245,7 @@ export const appRouter = router({
       .input(z.object({
         companyName: z.string().min(1),
         ownerName: z.string().min(1),
+        jobTitle: z.string().optional(),
         email: z.string().email(),
         phoneNumber: z.string().min(1),
         industry: z.string().optional(),
@@ -258,6 +259,7 @@ export const appRouter = router({
         const result = await db.createLead({
           companyName: input.companyName,
           ownerName: input.ownerName,
+          jobTitle: input.jobTitle || undefined,
           email: input.email,
           phoneNumber: input.phoneNumber,
           industry: input.industry,
@@ -317,6 +319,7 @@ export const appRouter = router({
         let leadsData: Array<{
           companyName: string;
           ownerName: string;
+          jobTitle?: string;
           email: string;
           phoneNumber: string;
           website?: string;
@@ -538,6 +541,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             const result = await db.createLead({
               companyName: leadData.companyName || "Unknown",
               ownerName: leadData.ownerName || "Unknown",
+              jobTitle: leadData.jobTitle || undefined,
               email: leadData.email || "",
               phoneNumber: leadData.phoneNumber || "",
               website: leadData.website,
@@ -679,6 +683,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         leads: z.array(z.object({
           companyName: z.string().min(1),
           ownerName: z.string().min(1),
+          jobTitle: z.string().optional(),
           email: z.string().min(1),
           phoneNumber: z.string().min(1),
           secondaryPhone: z.string().optional().nullable(),
@@ -715,6 +720,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             const result = await db.createLead({
               companyName: leadData.companyName,
               ownerName: leadData.ownerName,
+              jobTitle: leadData.jobTitle || undefined,
               email: leadData.email,
               phoneNumber: leadData.phoneNumber,
               secondaryPhone: leadData.secondaryPhone || undefined,
@@ -845,6 +851,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         leads: z.array(z.object({
           companyName: z.string().min(1),
           ownerName: z.string().min(1),
+          jobTitle: z.string().optional(),
           email: z.string().min(1),
           phoneNumber: z.string().min(1),
           website: z.string().optional(),
@@ -864,6 +871,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             const resultId = await db.upsertLeadByEmail({
               companyName: leadData.companyName,
               ownerName: leadData.ownerName,
+              jobTitle: leadData.jobTitle || undefined,
               email: leadData.email.toLowerCase(),
               phoneNumber: leadData.phoneNumber,
               website: leadData.website,

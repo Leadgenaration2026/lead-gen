@@ -31,6 +31,7 @@ export const leads = mysqlTable("leads", {
   userId: int("userId").notNull(),
   companyName: varchar("companyName", { length: 255 }).notNull(),
   ownerName: varchar("ownerName", { length: 255 }).notNull(),
+  jobTitle: varchar("jobTitle", { length: 255 }),
   email: varchar("email", { length: 320 }).notNull(),
   phoneNumber: varchar("phoneNumber", { length: 20 }).notNull(),
   secondaryPhone: varchar("secondaryPhone", { length: 20 }),
