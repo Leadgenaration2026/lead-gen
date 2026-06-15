@@ -283,6 +283,29 @@ export const appRouter = router({
               await db.updateLead(newLeadId, { socialMediaScore: "low" });
             }
           });
+          // Auto-verify email via Bouncer in background
+          setImmediate(async () => {
+            try {
+              const settings = await db.getUserSettings(ctx.user.id);
+              if (!settings?.bouncerApiKey) return;
+              const { validateEmail } = await import("./bouncer");
+              const result = await validateEmail(settings.bouncerApiKey, input.email);
+              await db.updateLead(newLeadId, {
+                emailVerificationStatus: result.status as any,
+                emailVerificationData: {
+                  score: result.score,
+                  reason: result.reason,
+                  toxic: result.toxic,
+                  toxicity: result.toxicity,
+                  shouldSend: result.status !== "undeliverable",
+                  verifiedAt: new Date().toISOString(),
+                },
+              });
+              console.log(`[AutoVerify] Manual lead ${newLeadId} verified: ${result.status}`);
+            } catch (e: any) {
+              console.warn(`[AutoVerify] Failed for manual lead ${newLeadId}:`, e.message);
+            }
+          });
         }
         return result;
       }),
@@ -599,6 +622,48 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           }
         });
 
+        // Auto-verify emails via Bouncer in background for AI-generated leads
+        setImmediate(async () => {
+          try {
+            const settings = await db.getUserSettings(ctx.user.id);
+            if (!settings?.bouncerApiKey) {
+              console.log(`[AutoVerify] Skipping AI batch - no Bouncer API key configured`);
+              return;
+            }
+            const { validateEmail } = await import("./bouncer");
+            const allLeads = await db.getLeadsByUserId(ctx.user.id);
+            for (let i = 0; i < uniqueLeadsData.length; i++) {
+              const matchingLead = allLeads.find(l => l.email === uniqueLeadsData[i].email);
+              if (!matchingLead) continue;
+              try {
+                const result = await validateEmail(settings.bouncerApiKey, matchingLead.email);
+                await db.updateLead(matchingLead.id, {
+                  emailVerificationStatus: result.status as any,
+                  emailVerificationData: {
+                    score: result.score,
+                    reason: result.reason,
+                    toxic: result.toxic,
+                    toxicity: result.toxicity,
+                    shouldSend: result.status !== "undeliverable",
+                    verifiedAt: new Date().toISOString(),
+                  },
+                });
+              } catch (e: any) {
+                if (e.message === "BOUNCER_NO_CREDITS" || e.message === "BOUNCER_INVALID_API_KEY") break;
+                if (e.message === "BOUNCER_RATE_LIMIT") {
+                  await new Promise(r => setTimeout(r, 5000));
+                  i--;
+                  continue;
+                }
+              }
+              if (i < uniqueLeadsData.length - 1) await new Promise(r => setTimeout(r, 100));
+            }
+            console.log(`[AutoVerify] AI-generated leads batch verified`);
+          } catch (e: any) {
+            console.warn(`[AutoVerify] AI batch verification failed:`, e.message);
+          }
+        });
+
         return {
           success: true,
           count: createdLeads.length,
@@ -696,6 +761,56 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               console.warn(`[SocialScoring] CSV batch scoring failed:`, e.message);
             }
           });
+
+          // Auto-verify emails via Bouncer in background
+          setImmediate(async () => {
+            try {
+              const settings = await db.getUserSettings(ctx.user.id);
+              if (!settings?.bouncerApiKey) {
+                console.log(`[AutoVerify] Skipping - no Bouncer API key configured`);
+                return;
+              }
+              const { validateEmail } = await import("./bouncer");
+              for (let i = 0; i < importedIds.length; i++) {
+                try {
+                  const lead = await db.getLeadById(importedIds[i]);
+                  if (!lead || !lead.email) continue;
+                  const result = await validateEmail(settings.bouncerApiKey, lead.email);
+                  await db.updateLead(importedIds[i], {
+                    emailVerificationStatus: result.status as any,
+                    emailVerificationData: {
+                      score: result.score,
+                      reason: result.reason,
+                      toxic: result.toxic,
+                      toxicity: result.toxicity,
+                      shouldSend: result.status !== "undeliverable",
+                      verifiedAt: new Date().toISOString(),
+                    },
+                  });
+                } catch (e: any) {
+                  if (e.message === "BOUNCER_NO_CREDITS") {
+                    console.warn(`[AutoVerify] Ran out of Bouncer credits at lead index ${i}`);
+                    break;
+                  }
+                  if (e.message === "BOUNCER_INVALID_API_KEY") {
+                    console.warn(`[AutoVerify] Invalid Bouncer API key`);
+                    break;
+                  }
+                  // Rate limit - wait and retry
+                  if (e.message === "BOUNCER_RATE_LIMIT") {
+                    await new Promise(r => setTimeout(r, 5000));
+                    i--; // retry this one
+                    continue;
+                  }
+                }
+                // Respect rate limit: ~16 req/sec max, we do 1 per 100ms
+                if (i < importedIds.length - 1) await new Promise(r => setTimeout(r, 100));
+              }
+              console.log(`[AutoVerify] CSV import batch verified ${importedIds.length} leads`);
+            } catch (e: any) {
+              console.warn(`[AutoVerify] CSV batch verification failed:`, e.message);
+            }
+          });
         }
         return { success: true, imported: createdLeads.length, errors, leadIds: importedIds };
       }),
@@ -785,6 +900,54 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               console.log(`[SocialScoring] CSV overwrite batch scored ${upsertedIds.length} leads`);
             } catch (e: any) {
               console.warn(`[SocialScoring] CSV overwrite batch scoring failed:`, e.message);
+            }
+          });
+
+          // Auto-verify emails via Bouncer in background
+          setImmediate(async () => {
+            try {
+              const settings = await db.getUserSettings(ctx.user.id);
+              if (!settings?.bouncerApiKey) {
+                console.log(`[AutoVerify] Skipping overwrite batch - no Bouncer API key configured`);
+                return;
+              }
+              const { validateEmail } = await import("./bouncer");
+              for (let i = 0; i < upsertedIds.length; i++) {
+                try {
+                  const lead = await db.getLeadById(upsertedIds[i]);
+                  if (!lead || !lead.email) continue;
+                  const result = await validateEmail(settings.bouncerApiKey, lead.email);
+                  await db.updateLead(upsertedIds[i], {
+                    emailVerificationStatus: result.status as any,
+                    emailVerificationData: {
+                      score: result.score,
+                      reason: result.reason,
+                      toxic: result.toxic,
+                      toxicity: result.toxicity,
+                      shouldSend: result.status !== "undeliverable",
+                      verifiedAt: new Date().toISOString(),
+                    },
+                  });
+                } catch (e: any) {
+                  if (e.message === "BOUNCER_NO_CREDITS") {
+                    console.warn(`[AutoVerify] Ran out of Bouncer credits at lead index ${i}`);
+                    break;
+                  }
+                  if (e.message === "BOUNCER_INVALID_API_KEY") {
+                    console.warn(`[AutoVerify] Invalid Bouncer API key`);
+                    break;
+                  }
+                  if (e.message === "BOUNCER_RATE_LIMIT") {
+                    await new Promise(r => setTimeout(r, 5000));
+                    i--;
+                    continue;
+                  }
+                }
+                if (i < upsertedIds.length - 1) await new Promise(r => setTimeout(r, 100));
+              }
+              console.log(`[AutoVerify] CSV overwrite batch verified ${upsertedIds.length} leads`);
+            } catch (e: any) {
+              console.warn(`[AutoVerify] CSV overwrite batch verification failed:`, e.message);
             }
           });
         }

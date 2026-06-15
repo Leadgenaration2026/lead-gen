@@ -710,3 +710,9 @@
 - [x] Show verification status badge in leads table
 - [x] Show count of blocked leads when campaign launches
 - [x] Allow manual override to include risky leads if desired
+
+## Feature — Auto-Verify Emails on CSV Import
+- [x] Trigger Bouncer email verification automatically after CSV import
+- [x] Also auto-verify on manual lead creation and AI generation
+- [x] Run verification in background (non-blocking) so import completes immediately
+- [x] Update lead status as verification results come in
