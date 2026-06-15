@@ -1610,9 +1610,10 @@ export default function EmailComposer() {
                                 onClick={async () => {
                                   try {
                                     const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
-                                    toast.success(`Inbox test created! Send to ${result.seedAddresses.length} seeds. Results in 2-5 min.`, { duration: 10000 });
-                                    await navigator.clipboard.writeText(result.seedAddresses.join(", "));
-                                    toast.info("Seed addresses copied to clipboard!");
+                                    if (result.dashboardUrl) {
+                                      window.open(result.dashboardUrl, "_blank");
+                                      toast.success("Opening ZeroBounce Inbox Tester. Follow the instructions to test your inbox placement.", { duration: 8000 });
+                                    }
                                   } catch (error: any) {
                                     toast.error(error?.message || "Inbox test failed");
                                   }
@@ -1621,7 +1622,7 @@ export default function EmailComposer() {
                                 className="gap-2"
                               >
                                 <Inbox className="w-3.5 h-3.5" />
-                                {createInboxTestMutation.isPending ? "Creating..." : "Test Inbox"}
+                                {createInboxTestMutation.isPending ? "Loading..." : "Test Inbox"}
                               </Button>
                               <Button size="sm" onClick={() => handleLaunchCampaign(campaign.id)} disabled={launchCampaignMutation.isPending} className="gap-2">
                                 <Play className="w-4 h-4" /> Launch

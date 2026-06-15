@@ -1,0 +1,1 @@
+ALTER TABLE `userSettings` DROP COLUMN `glockAppsApiKey`;

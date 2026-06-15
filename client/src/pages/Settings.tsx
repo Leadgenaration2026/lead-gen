@@ -36,14 +36,13 @@ export default function SettingsPage() {
     senderName: "",
     seamlessApiKey: "",
     zeroBounceApiKey: "",
-    glockAppsApiKey: "",
   });
 
   // Track whether user has typed into password fields
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [retellKeyTouched, setRetellKeyTouched] = useState(false);
   const [zeroBounceKeyTouched, setZeroBounceKeyTouched] = useState(false);
-  const [glockAppsKeyTouched, setGlockAppsKeyTouched] = useState(false);
+
 
   const [signatureHtml, setSignatureHtml] = useState("");
   const [signaturePlainText, setSignaturePlainText] = useState("");
@@ -107,10 +106,10 @@ export default function SettingsPage() {
         senderName: settingsQuery.data.senderName || "",
         seamlessApiKey: "",
         zeroBounceApiKey: "",
-        glockAppsApiKey: "",
+
       });
       setZeroBounceKeyTouched(false);
-      setGlockAppsKeyTouched(false);
+
       setSocialProfiles({
         linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
         linkedinType: (settingsQuery.data as any).linkedinType || "personal",
@@ -723,10 +722,10 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-green-600" />
-                ZeroBounce — Email Verification
+                ZeroBounce — Email Verification & Deliverability
               </CardTitle>
               <CardDescription>
-                Verify email addresses before sending campaigns. Removes invalid, spam traps, and risky emails to protect your sender reputation.
+                One API key for email verification and inbox placement testing. Removes invalid, spam traps, and risky emails to protect your sender reputation.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -773,57 +772,35 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* GlockApps Inbox Placement */}
+          {/* ZeroBounce Inbox Placement Testing */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Mail className="w-5 h-5 text-purple-600" />
-                GlockApps — Inbox Placement Testing
+                Inbox Placement Testing
               </CardTitle>
               <CardDescription>
                 Test where your emails land (Inbox, Promotions, or Spam) across Gmail, Outlook, Yahoo, and more before sending campaigns.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>GlockApps API Key</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    placeholder="Enter your GlockApps API key"
-                    value={formData.glockAppsApiKey || ""}
-                    onChange={(e) => { setFormData({ ...formData, glockAppsApiKey: e.target.value }); setGlockAppsKeyTouched(true); }}
-                  />
-                  <Button variant="outline" size="icon" onClick={() => {
-                    const input = document.querySelector('input[placeholder="Enter your GlockApps API key"]') as HTMLInputElement;
-                    if (input) input.type = input.type === 'password' ? 'text' : 'password';
-                  }}>
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Get your API key from <a href="https://glockapps.com/app/api-settings" target="_blank" rel="noopener" className="text-blue-600 underline">GlockApps → Settings → API</a>
-                </p>
-              </div>
               <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
                 <h4 className="font-medium text-sm">How it works</h4>
                 <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                  <li>Before launching a campaign, a test email is sent to GlockApps seed addresses</li>
-                  <li>GlockApps checks inbox placement across 70+ mailboxes (Gmail, Outlook, Yahoo, AOL)</li>
-                  <li>Results show: % Inbox, % Promotions, % Spam per provider</li>
-                  <li>You can choose to proceed or fix issues based on the results</li>
+                  <li>Inbox placement testing uses your ZeroBounce account (same API key as above)</li>
+                  <li>Click "Test Inbox" on any campaign to get step-by-step instructions</li>
+                  <li>Send your email to ZeroBounce seed addresses across 20+ providers</li>
+                  <li>Results show: Inbox, Spam, Promotions, or Missing per provider</li>
+                  <li>Review results in your ZeroBounce dashboard before launching</li>
                 </ul>
               </div>
-              <Button onClick={async () => {
-                try {
-                  await updateSettingsMutation.mutateAsync({ glockAppsApiKey: glockAppsKeyTouched ? formData.glockAppsApiKey || undefined : undefined });
-                  toast.success("GlockApps API key saved");
-                  settingsQuery.refetch();
-                  setGlockAppsKeyTouched(false);
-                } catch { toast.error("Failed to save GlockApps settings"); }
-              }} disabled={updateSettingsMutation.isPending || !glockAppsKeyTouched} className="gap-2">
-                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save GlockApps Settings
+              <Button
+                variant="outline"
+                onClick={() => window.open("https://www.zerobounce.net/members/inbox-tester", "_blank")}
+                className="gap-2"
+              >
+                <Mail className="w-4 h-4" />
+                Open ZeroBounce Inbox Tester
               </Button>
             </CardContent>
           </Card>

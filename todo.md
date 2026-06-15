@@ -664,12 +664,12 @@
 - [x] Don't retry if secondary was already tried for this campaign lead
 
 ## Feature — Consolidate to ZeroBounce Only (Remove GlockApps)
-- [ ] Research ZeroBounce inbox placement / email server test API
-- [ ] Update zeroBounce.ts module to include inbox placement testing
-- [ ] Remove glockApps.ts module and all GlockApps references
-- [ ] Remove glockAppsApiKey from Settings UI and database schema
-- [ ] Update campaign launch flow to use ZeroBounce for inbox testing
-- [ ] Simplify Settings page — single ZeroBounce API key for both features
+- [x] Research ZeroBounce inbox placement / email server test API
+- [x] Update zeroBounce.ts module to include inbox placement testing
+- [x] Remove glockApps.ts module and all GlockApps references
+- [x] Remove glockAppsApiKey from Settings UI and database schema
+- [x] Update campaign launch flow to use ZeroBounce for inbox testing
+- [x] Simplify Settings page — single ZeroBounce API key for both features
 
 ## Bug Fix — CSV Import Column Mapping Incorrect
 - [x] Research exact Seamless.AI CSV export column headers

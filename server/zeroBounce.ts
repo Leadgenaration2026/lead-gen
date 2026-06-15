@@ -1,8 +1,9 @@
 /**
- * ZeroBounce Email Verification Integration
+ * ZeroBounce Email Verification & Deliverability Integration
  * API Docs: https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-validate-emails
  * 
  * Validates email addresses before campaign sends to protect sender reputation.
+ * Also provides inbox placement testing guidance via ZeroBounce dashboard.
  * Statuses: valid, invalid, catch-all, unknown, spamtrap, abuse, do_not_mail
  */
 
@@ -32,6 +33,12 @@ export interface VerificationSummary {
   abuse: number;
   doNotMail: number;
   results: ZeroBounceResult[];
+}
+
+export interface InboxPlacementInfo {
+  dashboardUrl: string;
+  instructions: string[];
+  providers: string[];
 }
 
 /**
@@ -166,4 +173,32 @@ export function shouldSendToEmail(status: string): { send: boolean; reason: stri
     default:
       return { send: true, reason: "Unknown status" };
   }
+}
+
+/**
+ * Get inbox placement testing instructions for ZeroBounce
+ * ZeroBounce's Inbox Placement Tester is a web dashboard tool (not a REST API),
+ * so we provide the user with instructions and a direct link to run the test.
+ */
+export function getInboxPlacementInstructions(senderEmail?: string): InboxPlacementInfo {
+  return {
+    dashboardUrl: "https://www.zerobounce.net/members/inbox-tester",
+    instructions: [
+      "1. Log in to your ZeroBounce dashboard",
+      "2. Go to Deliverability Tools → Inbox Placement Tester",
+      "3. Click 'Create New Test' and enter a test name",
+      `4. Set the sender email to: ${senderEmail || "your campaign sender address"}`,
+      "5. Select providers to test (Gmail, Outlook, Yahoo, etc.)",
+      "6. Copy the generated seed addresses",
+      "7. Send your campaign email to ALL seed addresses",
+      "8. Wait 2-5 minutes for results to appear in the dashboard",
+      "9. Check results: Inbox, Spam, Promotions, or Missing per provider",
+    ],
+    providers: [
+      "Gmail", "Outlook/Hotmail", "Yahoo", "AOL", "Comcast",
+      "iCloud", "Zoho", "Mail.ru", "GMX", "Yandex",
+      "ProtonMail", "FastMail", "Rackspace", "Cox", "Charter",
+      "AT&T", "Verizon", "Earthlink", "USA.net", "Mail.com",
+    ],
+  };
 }

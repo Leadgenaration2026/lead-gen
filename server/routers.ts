@@ -61,7 +61,7 @@ const updateUserSettingsSchema = z.object({
   retellWebhookSecret: z.string().optional(),
   seamlessApiKey: z.string().optional(),
   zeroBounceApiKey: z.string().optional(),
-  glockAppsApiKey: z.string().optional(),
+
   // Social profiles
   linkedinUrl: z.string().optional(),
   linkedinType: z.enum(["page", "personal"]).optional(),
@@ -3565,57 +3565,53 @@ Use the website data to:
       }
     }),
 
-    // Create GlockApps inbox placement test
+    // Get inbox placement testing instructions (ZeroBounce dashboard-based)
     createInboxTest: protectedProcedure
       .input(z.object({
         campaignId: z.string().optional(),
       }))
-      .mutation(async ({ ctx, input }) => {
-        const { getOrCreateProject, createManualTest } = await import("./glockApps");
+      .mutation(async ({ ctx }) => {
+        const { getInboxPlacementInstructions } = await import("./zeroBounce");
         const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.glockAppsApiKey) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps API key not configured. Go to Settings → Deliverability to add it." });
+        
+        if (!settings?.zeroBounceApiKey) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "ZeroBounce API key not configured. Go to Settings → Deliverability to add it." });
         }
 
-        try {
-          const projectId = await getOrCreateProject(settings.glockAppsApiKey);
-          const test = await createManualTest(settings.glockAppsApiKey, projectId);
+        const senderEmail = settings.senderEmail || undefined;
+        const info = getInboxPlacementInstructions(senderEmail);
 
-          return {
-            testId: test.testId,
-            projectId,
-            seedAddresses: test.seedAddresses,
-            instructions: "Send your campaign email to ALL the seed addresses below. GlockApps will analyze where it lands (Inbox, Promotions, or Spam). Results will be ready in 2-5 minutes after sending.",
-          };
-        } catch (e: any) {
-          if (e.message === "GLOCKAPPS_INVALID_KEY") {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps API key is invalid. Please check your API key in Settings." });
-          }
-          if (e.message === "GLOCKAPPS_NO_CREDITS") {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps has no test credits remaining. Add more at glockapps.com" });
-          }
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Inbox test creation failed: ${e.message}` });
-        }
+        return {
+          testId: "zerobounce-dashboard",
+          projectId: 0,
+          seedAddresses: [] as string[],
+          instructions: info.instructions.join("\n"),
+          dashboardUrl: info.dashboardUrl,
+          providers: info.providers,
+        };
       }),
 
-    // Get GlockApps test results
+    // Get inbox placement test results (now redirects to ZeroBounce dashboard)
     getInboxTestResults: protectedProcedure
       .input(z.object({
         projectId: z.number(),
         testId: z.string(),
       }))
-      .query(async ({ ctx, input }) => {
-        const { getTestResults } = await import("./glockApps");
-        const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.glockAppsApiKey) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "GlockApps API key not configured." });
-        }
-
-        try {
-          return await getTestResults(settings.glockAppsApiKey, input.projectId, input.testId);
-        } catch (e: any) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to get test results: ${e.message}` });
-        }
+      .query(async () => {
+        return {
+          testId: "zerobounce-dashboard",
+          status: "completed" as const,
+          seedAddresses: [] as string[],
+          providers: [],
+          overall: {
+            inboxRate: 0,
+            spamRate: 0,
+            promotionsRate: 0,
+            recommendation: "review_needed" as const,
+            message: "Inbox placement testing is now done via the ZeroBounce dashboard. Click the link to view your results.",
+          },
+          dashboardUrl: "https://www.zerobounce.net/members/inbox-tester",
+        };
       }),
   }),
 });

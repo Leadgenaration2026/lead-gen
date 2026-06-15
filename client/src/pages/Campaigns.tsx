@@ -416,20 +416,19 @@ export default function CampaignsPage() {
                           onClick={async () => {
                             try {
                               const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
-                              toast.success(`Inbox test created! Send your email to ${result.seedAddresses.length} seed addresses. Results in 2-5 min.`, { duration: 10000 });
-                              // Copy seed addresses to clipboard
-                              const seedList = result.seedAddresses.join(", ");
-                              await navigator.clipboard.writeText(seedList);
-                              toast.info("Seed addresses copied to clipboard!");
+                              if (result.dashboardUrl) {
+                                window.open(result.dashboardUrl, "_blank");
+                                toast.success("Opening ZeroBounce Inbox Tester. Follow the instructions to test your inbox placement.", { duration: 8000 });
+                              }
                             } catch (error: any) {
-                              toast.error(error?.message || "Inbox test creation failed");
+                              toast.error(error?.message || "Inbox test failed");
                             }
                           }}
                           disabled={createInboxTestMutation.isPending}
                           className="gap-2"
                         >
                           <Inbox className="w-4 h-4" />
-                          {createInboxTestMutation.isPending ? "Creating..." : "Test Inbox"}
+                          {createInboxTestMutation.isPending ? "Loading..." : "Test Inbox"}
                         </Button>
                         <Button
                           size="sm"
