@@ -689,3 +689,7 @@
 - [x] Update campaign pages (Campaigns.tsx, EmailComposer.tsx) for Bouncer
 - [x] Rename zeroBounceApiKey to bouncerApiKey in database schema
 - [x] Run migration and verify all tests pass
+
+## Feature — Bouncer Credit Balance Widget on Dashboard
+- [x] Add Bouncer credit balance widget to the main dashboard page
+- [x] Show remaining credits, configured status, and link to top up

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick } from "lucide-react";
+import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import LeadsPage from "./Leads";
 import SettingsPage from "./Settings";
@@ -107,6 +107,7 @@ export default function Dashboard() {
 
 function OverviewTab() {
   const campaignsQuery = trpc.campaigns.list.useQuery();
+  const bouncerCreditsQuery = trpc.verification.getBouncerCredits.useQuery();
 
   const totalCampaigns = campaignsQuery.data?.length || 0;
   const activeCampaigns = campaignsQuery.data?.filter(c => c.status === "active").length || 0;
@@ -175,6 +176,54 @@ function OverviewTab() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Bouncer Credit Balance Widget */}
+      <Card className="border-green-200 bg-gradient-to-r from-green-50/50 to-emerald-50/50">
+        <CardContent className="flex items-center justify-between py-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-100">
+              <ShieldCheck className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">Bouncer Email Verification</p>
+              {bouncerCreditsQuery.isLoading ? (
+                <p className="text-xs text-muted-foreground">Checking credits...</p>
+              ) : !bouncerCreditsQuery.data?.configured ? (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  API key not configured
+                </p>
+              ) : bouncerCreditsQuery.data.credits === -1 ? (
+                <p className="text-xs text-red-600">Unable to fetch credits — check API key</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {bouncerCreditsQuery.data.credits.toLocaleString()} verification credits remaining
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {bouncerCreditsQuery.data?.configured && bouncerCreditsQuery.data.credits >= 0 && (
+              <span className={`text-lg font-bold ${
+                bouncerCreditsQuery.data.credits > 500 ? "text-green-600" :
+                bouncerCreditsQuery.data.credits > 100 ? "text-amber-600" :
+                "text-red-600"
+              }`}>
+                {bouncerCreditsQuery.data.credits.toLocaleString()}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => window.open("https://app.usebouncer.com", "_blank")}
+            >
+              {bouncerCreditsQuery.data?.configured ? "Top Up" : "Configure"}
+              <ExternalLink className="w-3 h-3" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card>
