@@ -60,7 +60,7 @@ const updateUserSettingsSchema = z.object({
   calendlyWebhookSecret: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
   seamlessApiKey: z.string().optional(),
-  zeroBounceApiKey: z.string().optional(),
+  bouncerApiKey: z.string().optional(),
 
   // Social profiles
   linkedinUrl: z.string().optional(),
@@ -3448,9 +3448,9 @@ Use the website data to:
       }),
   }),
 
-  // Email Verification & Inbox Placement
+  // Email Verification via Bouncer API
   verification: router({
-    // Verify emails via ZeroBounce before campaign send
+    // Verify emails via Bouncer before campaign send
     verifyEmails: protectedProcedure
       .input(z.object({
         campaignId: z.string().optional(),
@@ -3458,10 +3458,10 @@ Use the website data to:
         emails: z.array(z.string()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { validateEmails, shouldSendToEmail, getCreditsBalance } = await import("./zeroBounce");
+        const { validateEmails, shouldSendToEmail, getCreditsBalance } = await import("./bouncer");
         const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.zeroBounceApiKey) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "ZeroBounce API key not configured. Go to Settings → Deliverability to add it." });
+        if (!settings?.bouncerApiKey) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer API key not configured. Go to Settings → Deliverability to add it." });
         }
 
         // Get emails to verify
@@ -3492,11 +3492,11 @@ Use the website data to:
 
         // Check credits first
         try {
-          const credits = await getCreditsBalance(settings.zeroBounceApiKey);
+          const credits = await getCreditsBalance(settings.bouncerApiKey);
           if (credits < emailsToVerify.length) {
             throw new TRPCError({ 
               code: "BAD_REQUEST", 
-              message: `Insufficient ZeroBounce credits. Need ${emailsToVerify.length}, have ${credits}. Add more credits at zerobounce.net/members/pricing` 
+              message: `Insufficient Bouncer credits. Need ${emailsToVerify.length}, have ${credits}. Add more credits at usebouncer.com` 
             });
           }
         } catch (e: any) {
@@ -3507,22 +3507,25 @@ Use the website data to:
         // Run verification
         try {
           const summary = await validateEmails(
-            settings.zeroBounceApiKey,
+            settings.bouncerApiKey,
             emailsToVerify.map(e => e.email)
           );
 
           // Build detailed results with send/don't-send recommendation
           const detailedResults = summary.results.map((r, idx) => {
-            const decision = shouldSendToEmail(r.status);
+            const decision = shouldSendToEmail(r);
             return {
-              email: r.address,
+              email: r.email,
               leadId: emailsToVerify[idx]?.leadId,
               status: r.status,
-              subStatus: r.sub_status,
+              subStatus: r.reason,
               shouldSend: decision.send,
               reason: decision.reason,
-              freeEmail: r.free_email,
-              didYouMean: r.did_you_mean,
+              freeEmail: r.domain.free === "yes",
+              didYouMean: null as string | null,
+              score: r.score,
+              toxic: r.toxic,
+              toxicity: r.toxicity,
             };
           });
 
@@ -3531,67 +3534,61 @@ Use the website data to:
 
           return {
             total: summary.total,
-            valid: summary.valid,
-            invalid: summary.invalid,
-            catchAll: summary.catchAll,
-            spamtrap: summary.spamtrap,
-            abuse: summary.abuse,
-            doNotMail: summary.doNotMail,
+            deliverable: summary.deliverable,
+            risky: summary.risky,
+            undeliverable: summary.undeliverable,
             unknown: summary.unknown,
             safeToSendCount: safeToSend.length,
             doNotSendCount: doNotSend.length,
             results: detailedResults,
           };
         } catch (e: any) {
-          if (e.message === "ZEROBOUNCE_INVALID_KEY_OR_NO_CREDITS") {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "ZeroBounce API key is invalid or your account has no credits. Please check your API key and credit balance at zerobounce.net" });
+          if (e.message === "BOUNCER_INVALID_API_KEY") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer API key is invalid. Please check your API key in Settings." });
+          }
+          if (e.message === "BOUNCER_NO_CREDITS") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer account has no credits remaining. Add more at usebouncer.com" });
           }
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Email verification failed: ${e.message}` });
         }
       }),
 
-    // Get ZeroBounce credit balance
-    getZeroBounceCredits: protectedProcedure.query(async ({ ctx }) => {
-      const { getCreditsBalance } = await import("./zeroBounce");
+    // Get Bouncer credit balance
+    getBouncerCredits: protectedProcedure.query(async ({ ctx }) => {
+      const { getCreditsBalance } = await import("./bouncer");
       const settings = await db.getUserSettings(ctx.user.id);
-      if (!settings?.zeroBounceApiKey) {
+      if (!settings?.bouncerApiKey) {
         return { configured: false, credits: 0 };
       }
       try {
-        const credits = await getCreditsBalance(settings.zeroBounceApiKey);
+        const credits = await getCreditsBalance(settings.bouncerApiKey);
         return { configured: true, credits };
       } catch {
         return { configured: true, credits: -1 };
       }
     }),
 
-    // Get inbox placement testing instructions (ZeroBounce dashboard-based)
+    // Inbox test placeholder (no longer uses external service)
     createInboxTest: protectedProcedure
       .input(z.object({
         campaignId: z.string().optional(),
       }))
       .mutation(async ({ ctx }) => {
-        const { getInboxPlacementInstructions } = await import("./zeroBounce");
         const settings = await db.getUserSettings(ctx.user.id);
-        
-        if (!settings?.zeroBounceApiKey) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "ZeroBounce API key not configured. Go to Settings → Deliverability to add it." });
+        if (!settings?.bouncerApiKey) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer API key not configured. Go to Settings → Deliverability to add it." });
         }
-
-        const senderEmail = settings.senderEmail || undefined;
-        const info = getInboxPlacementInstructions(senderEmail);
-
         return {
-          testId: "zerobounce-dashboard",
+          testId: "bouncer-verify",
           projectId: 0,
           seedAddresses: [] as string[],
-          instructions: info.instructions.join("\n"),
-          dashboardUrl: info.dashboardUrl,
-          providers: info.providers,
+          instructions: "Email verification is handled by Bouncer. Use the 'Verify Emails' button to validate all recipient emails before sending.",
+          dashboardUrl: "https://app.usebouncer.com",
+          providers: [],
         };
       }),
 
-    // Get inbox placement test results (now redirects to ZeroBounce dashboard)
+    // Get inbox test results placeholder
     getInboxTestResults: protectedProcedure
       .input(z.object({
         projectId: z.number(),
@@ -3599,7 +3596,7 @@ Use the website data to:
       }))
       .query(async () => {
         return {
-          testId: "zerobounce-dashboard",
+          testId: "bouncer-verify",
           status: "completed" as const,
           seedAddresses: [] as string[],
           providers: [],
@@ -3608,9 +3605,9 @@ Use the website data to:
             spamRate: 0,
             promotionsRate: 0,
             recommendation: "review_needed" as const,
-            message: "Inbox placement testing is now done via the ZeroBounce dashboard. Click the link to view your results.",
+            message: "Use Bouncer email verification to validate emails before sending. Visit app.usebouncer.com for your dashboard.",
           },
-          dashboardUrl: "https://www.zerobounce.net/members/inbox-tester",
+          dashboardUrl: "https://app.usebouncer.com",
         };
       }),
   }),

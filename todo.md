@@ -678,3 +678,14 @@
 - [x] Match all system columns to Seamless.AI export columns exactly
 - [x] Add all relevant Seamless.AI columns to our leads system
 - [x] Verify CSV import works correctly with real Seamless.AI export
+
+## Feature — Replace ZeroBounce with Bouncer API
+- [x] Research Bouncer API documentation and endpoints
+- [x] Create bouncer.ts module implementing Bouncer email verification API
+- [x] Remove zeroBounce.ts module entirely
+- [x] Update routers.ts to use Bouncer instead of ZeroBounce
+- [x] Update Settings UI — replace ZeroBounce card with Bouncer API key card
+- [x] Remove ZeroBounce inbox placement testing card from Settings
+- [x] Update campaign pages (Campaigns.tsx, EmailComposer.tsx) for Bouncer
+- [x] Rename zeroBounceApiKey to bouncerApiKey in database schema
+- [x] Run migration and verify all tests pass

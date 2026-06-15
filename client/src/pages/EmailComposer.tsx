@@ -1590,7 +1590,7 @@ export default function EmailComposer() {
                                   try {
                                     const result = await verifyEmailsMutation.mutateAsync({ campaignId: String(campaign.id) });
                                     if (result.doNotSendCount > 0) {
-                                      toast.warning(`Verification: ${result.safeToSendCount} safe, ${result.doNotSendCount} unsafe (${result.invalid} invalid, ${result.spamtrap} traps)`);
+                                      toast.warning(`Verification: ${result.safeToSendCount} safe, ${result.doNotSendCount} unsafe (${result.undeliverable} undeliverable, ${result.risky} risky)`);
                                     } else {
                                       toast.success(`All ${result.safeToSendCount} emails verified safe!`);
                                     }
@@ -1612,7 +1612,7 @@ export default function EmailComposer() {
                                     const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
                                     if (result.dashboardUrl) {
                                       window.open(result.dashboardUrl, "_blank");
-                                      toast.success("Opening ZeroBounce Inbox Tester. Follow the instructions to test your inbox placement.", { duration: 8000 });
+                                      toast.success("Opening Bouncer dashboard. Use email verification to check your list before sending.", { duration: 8000 });
                                     }
                                   } catch (error: any) {
                                     toast.error(error?.message || "Inbox test failed");

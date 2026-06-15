@@ -396,7 +396,7 @@ export default function CampaignsPage() {
                             try {
                               const result = await verifyEmailsMutation.mutateAsync({ campaignId: String(campaign.id) });
                               if (result.doNotSendCount > 0) {
-                                toast.warning(`Email Verification: ${result.safeToSendCount} safe to send, ${result.doNotSendCount} should NOT be sent (${result.invalid} invalid, ${result.spamtrap} spam traps, ${result.abuse} abuse)`);
+                                toast.warning(`Email Verification: ${result.safeToSendCount} safe to send, ${result.doNotSendCount} should NOT be sent (${result.undeliverable} undeliverable, ${result.risky} risky)`);
                               } else {
                                 toast.success(`All ${result.safeToSendCount} emails verified as safe to send!`);
                               }
@@ -418,7 +418,7 @@ export default function CampaignsPage() {
                               const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
                               if (result.dashboardUrl) {
                                 window.open(result.dashboardUrl, "_blank");
-                                toast.success("Opening ZeroBounce Inbox Tester. Follow the instructions to test your inbox placement.", { duration: 8000 });
+                                toast.success("Opening Bouncer dashboard. Use email verification to check your list before sending.", { duration: 8000 });
                               }
                             } catch (error: any) {
                               toast.error(error?.message || "Inbox test failed");

@@ -1,0 +1,1 @@
+ALTER TABLE `userSettings` RENAME COLUMN `zeroBounceApiKey` TO `bouncerApiKey`;

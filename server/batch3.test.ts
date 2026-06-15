@@ -46,7 +46,7 @@ describe("Email Scheduling", () => {
       leadId: 1,
       subject: "Quick question about your company",
       emailBody: "<p>Hi John, I noticed...</p>",
-      scheduledFor: new Date("2026-06-15T09:00:00Z"),
+      scheduledFor: new Date("2027-06-15T09:00:00Z"),
       status: "pending" as const,
     };
 

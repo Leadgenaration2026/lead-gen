@@ -165,7 +165,7 @@ export const userSettings = mysqlTable("userSettings", {
   facebookUrl: varchar("facebookUrl", { length: 500 }),
   facebookType: mysqlEnum("facebookType", ["page", "personal"]).default("personal"),
   // Email verification & deliverability
-  zeroBounceApiKey: varchar("zeroBounceApiKey", { length: 500 }), // ZeroBounce API key for email verification
+  bouncerApiKey: varchar("bouncerApiKey", { length: 500 }), // Bouncer API key for email verification
   // Social outreach limits
   socialDailyLimit: int("socialDailyLimit").default(20), // Max connection requests per day across all platforms
   socialMessageCharLimit: int("socialMessageCharLimit").default(300), // Max characters for social messages

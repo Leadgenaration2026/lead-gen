@@ -35,13 +35,13 @@ export default function SettingsPage() {
     senderEmail: "",
     senderName: "",
     seamlessApiKey: "",
-    zeroBounceApiKey: "",
+    bouncerApiKey: "",
   });
 
   // Track whether user has typed into password fields
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [retellKeyTouched, setRetellKeyTouched] = useState(false);
-  const [zeroBounceKeyTouched, setZeroBounceKeyTouched] = useState(false);
+  const [bouncerKeyTouched, setBouncerKeyTouched] = useState(false);
 
 
   const [signatureHtml, setSignatureHtml] = useState("");
@@ -105,10 +105,10 @@ export default function SettingsPage() {
         senderEmail: settingsQuery.data.senderEmail || "",
         senderName: settingsQuery.data.senderName || "",
         seamlessApiKey: "",
-        zeroBounceApiKey: "",
+        bouncerApiKey: "",
 
       });
-      setZeroBounceKeyTouched(false);
+      setBouncerKeyTouched(false);
 
       setSocialProfiles({
         linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
@@ -717,93 +717,62 @@ export default function SettingsPage() {
                         </CardContent>
           </Card>
 
-          {/* ZeroBounce Email Verification */}
+          {/* Bouncer Email Verification */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-green-600" />
-                ZeroBounce — Email Verification & Deliverability
+                Bouncer — Email Verification
               </CardTitle>
               <CardDescription>
-                One API key for email verification and inbox placement testing. Removes invalid, spam traps, and risky emails to protect your sender reputation.
+                Verify email addresses before sending campaigns. Removes undeliverable, risky, and toxic emails to protect your sender reputation.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>ZeroBounce API Key</Label>
+                <Label>Bouncer API Key</Label>
                 <div className="flex gap-2">
                   <Input
                     type="password"
-                    placeholder="Enter your ZeroBounce API key"
-                    value={formData.zeroBounceApiKey || ""}
-                    onChange={(e) => { setFormData({ ...formData, zeroBounceApiKey: e.target.value }); setZeroBounceKeyTouched(true); }}
+                    placeholder="Enter your Bouncer API key"
+                    value={formData.bouncerApiKey || ""}
+                    onChange={(e) => { setFormData({ ...formData, bouncerApiKey: e.target.value }); setBouncerKeyTouched(true); }}
                   />
                   <Button variant="outline" size="icon" onClick={() => {
-                    const input = document.querySelector('input[placeholder="Enter your ZeroBounce API key"]') as HTMLInputElement;
+                    const input = document.querySelector('input[placeholder="Enter your Bouncer API key"]') as HTMLInputElement;
                     if (input) input.type = input.type === 'password' ? 'text' : 'password';
                   }}>
                     <Eye className="w-4 h-4" />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Get your API key from <a href="https://www.zerobounce.net/members/apikey" target="_blank" rel="noopener" className="text-blue-600 underline">ZeroBounce Dashboard → API</a>
+                  Get your API key from <a href="https://app.usebouncer.com" target="_blank" rel="noopener" className="text-blue-600 underline">Bouncer Dashboard → API Settings</a>
                 </p>
               </div>
               <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
                 <h4 className="font-medium text-sm">How it works</h4>
                 <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                  <li>Before sending a campaign, all recipient emails are verified via ZeroBounce</li>
-                  <li>Invalid, spam-trap, and abuse emails are automatically removed</li>
-                  <li>Only verified "valid" emails proceed to the campaign send</li>
-                  <li>Results are cached for 30 days to avoid re-verification costs</li>
+                  <li>Before sending a campaign, all recipient emails are verified via Bouncer</li>
+                  <li>Undeliverable, risky, and toxic emails are automatically flagged</li>
+                  <li>Only verified "deliverable" emails proceed to the campaign send</li>
+                  <li>Includes toxicity scoring to identify spam traps and complainers</li>
                 </ul>
               </div>
               <Button onClick={async () => {
                 try {
-                  await updateSettingsMutation.mutateAsync({ zeroBounceApiKey: zeroBounceKeyTouched ? formData.zeroBounceApiKey || undefined : undefined });
-                  toast.success("ZeroBounce API key saved");
+                  await updateSettingsMutation.mutateAsync({ bouncerApiKey: bouncerKeyTouched ? formData.bouncerApiKey || undefined : undefined });
+                  toast.success("Bouncer API key saved");
                   settingsQuery.refetch();
-                  setZeroBounceKeyTouched(false);
-                } catch { toast.error("Failed to save ZeroBounce settings"); }
-              }} disabled={updateSettingsMutation.isPending || !zeroBounceKeyTouched} className="gap-2">
+                  setBouncerKeyTouched(false);
+                } catch { toast.error("Failed to save Bouncer settings"); }
+              }} disabled={updateSettingsMutation.isPending || !bouncerKeyTouched} className="gap-2">
                 {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save ZeroBounce Settings
+                Save Bouncer Settings
               </Button>
             </CardContent>
           </Card>
 
-          {/* ZeroBounce Inbox Placement Testing */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="w-5 h-5 text-purple-600" />
-                Inbox Placement Testing
-              </CardTitle>
-              <CardDescription>
-                Test where your emails land (Inbox, Promotions, or Spam) across Gmail, Outlook, Yahoo, and more before sending campaigns.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
-                <h4 className="font-medium text-sm">How it works</h4>
-                <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                  <li>Inbox placement testing uses your ZeroBounce account (same API key as above)</li>
-                  <li>Click "Test Inbox" on any campaign to get step-by-step instructions</li>
-                  <li>Send your email to ZeroBounce seed addresses across 20+ providers</li>
-                  <li>Results show: Inbox, Spam, Promotions, or Missing per provider</li>
-                  <li>Review results in your ZeroBounce dashboard before launching</li>
-                </ul>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => window.open("https://www.zerobounce.net/members/inbox-tester", "_blank")}
-                className="gap-2"
-              >
-                <Mail className="w-4 h-4" />
-                Open ZeroBounce Inbox Tester
-              </Button>
-            </CardContent>
-          </Card>
+
         </TabsContent>
 
         {/* Webhooks Tab */}
