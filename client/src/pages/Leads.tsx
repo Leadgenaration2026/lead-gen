@@ -376,7 +376,7 @@ export default function LeadsPage() {
         const isSeamlessFormat = (
           headersLower.some((h: string) => h === "first name" || h === "first_name") && 
           headersLower.some((h: string) => h === "last name" || h === "last_name")
-        ) || headersLower.some((h: string) => h === "full name");
+        ) || headersLower.some((h: string) => h === "full name" || h === "contact full name");
         
         if (isSeamlessFormat) {
           toast.info("Seamless.AI format detected — auto-mapping columns", { duration: 3000 });
@@ -401,7 +401,7 @@ export default function LeadsPage() {
               firstName = value;
             } else if (header === "last name" || header === "last_name" || header === "lastname") {
               lastName = value;
-            } else if (header === "full name" || header === "full_name" || header === "fullname") {
+            } else if (header === "full name" || header === "full_name" || header === "fullname" || header === "contact full name") {
               row.ownerName = value;
             }
             // === EMAIL FIELDS (Seamless uses Email 1, Email 2, Email 3, Work Email, Personal Email) ===
@@ -414,17 +414,22 @@ export default function LeadsPage() {
             } else if (
               (header === "email 2" || header === "email2" || 
                header === "email 3" || header === "email3" ||
-               header === "personal email 1" || header === "personal email 2" || header === "personal email 3" ||
-               header.includes("email")) && !row.email
+               header === "contact email" ||
+               header === "personal email 1" || header === "personal email 2" || header === "personal email 3") && !row.email
             ) {
-              row.email = value;
+              // Only set email from known email columns, NOT from "Email Validation" or "Total AI" columns
+              if (!header.includes("validation") && !header.includes("total ai")) {
+                row.email = value;
+              }
             }
-            // === PHONE FIELDS (Seamless uses Contact Phone 1-10, Company Phone 1-10) ===
+            // === PHONE FIELDS (Seamless uses Contact Phone 1-10, Company Phone 1-10, Contact Mobile Phone) ===
             else if (
               header.match(/^contact phone\s*\d*$/) ||
               header.match(/^contact_phone\s*\d*$/) ||
               header === "direct phone" || header === "direct number" ||
               header === "mobile phone" || header === "mobile" ||
+              header === "contact mobile phone" ||
+              header.match(/^contact mobile phone\s*\d*$/) ||
               header.match(/^phone\s*\d*$/) ||
               header === "phone" || header === "phone number"
             ) {
@@ -439,8 +444,11 @@ export default function LeadsPage() {
                 phones.push(value);
               }
             }
-            // === COMPANY FIELDS ===
-            else if (header === "company name" || header === "company_name" || header === "company") {
+            // === COMPANY FIELDS (Seamless uses "Company Name - Cleaned") ===
+            else if (
+              header === "company name" || header === "company_name" || header === "company" ||
+              header === "company name - cleaned" || header.startsWith("company name")
+            ) {
               row.companyName = value;
             } else if (header === "title" || header === "job title" || header === "job_title") {
               row.jobTitle = value;
@@ -452,35 +460,51 @@ export default function LeadsPage() {
               header === "employees" || header.includes("employee size")
             ) {
               row.companySize = value;
-            } else if (header === "website" || header === "company website" || header === "company url") {
+            } else if (
+              header === "website" || header === "company website" || header === "company url" ||
+              header === "company website domain"
+            ) {
               row.website = value;
+            } else if (
+              header === "company staff count" || header === "company staff count range"
+            ) {
+              row.companySize = value;
             }
-            // === SOCIAL FIELDS ===
-            else if (header === "linkedin profile url" || header === "linkedin url" || header === "linkedin" || header === "company linkedin url") {
+            // === SOCIAL FIELDS (Seamless uses "Contact LI Profile URL", "Company LI Profile Url") ===
+            else if (
+              header === "linkedin profile url" || header === "linkedin url" || header === "linkedin" ||
+              header === "company linkedin url" || header === "contact li profile url" ||
+              header === "company li profile url" || header.includes("li profile url")
+            ) {
               if (!row.linkedinUrl) row.linkedinUrl = value;
             } else if (header.includes("instagram")) {
               row.instagramUrl = value;
             } else if (header.includes("facebook")) {
               row.facebookUrl = value;
             }
-            // === LOCATION FIELDS (Seamless uses "Company Location - City", "Contact Location - State", etc.) ===
+            // === LOCATION FIELDS (Seamless uses "Contact City", "Contact State", "Company City", etc.) ===
             else if (
               header === "city" || header === "company location - city" ||
-              header === "contact location - city"
+              header === "contact location - city" || header === "contact city" ||
+              header === "company city"
             ) {
-              row.city = value;
+              if (!row.city) row.city = value;
             } else if (
               header === "state" || header === "state/region" ||
               header === "company location - state" || header === "contact location - state" ||
-              header === "company location - state abbreviation" || header === "contact location - state abbreviation"
+              header === "company location - state abbreviation" || header === "contact location - state abbreviation" ||
+              header === "contact state" || header === "contact state abbr" ||
+              header === "company state" || header === "company state abbr"
             ) {
-              row.state = value;
+              if (!row.state) row.state = value;
             } else if (
               header === "country" || 
               header === "company location - country" || header === "contact location - country" ||
-              header === "company location - country alpha-2 code" || header === "contact location - country alpha-2 code"
+              header === "company location - country alpha-2 code" || header === "contact location - country alpha-2 code" ||
+              header === "contact country" || header === "company country" ||
+              header === "contact country (alpha 2)" || header === "company country (alpha 2)"
             ) {
-              row.country = value;
+              if (!row.country) row.country = value;
             }
             // === GENERIC FALLBACKS (only if not already matched) ===
             else if (header === "owner name" || header === "owner" || header === "contact name" || header === "name") {
@@ -514,33 +538,49 @@ export default function LeadsPage() {
             if (!row.phoneNumber && values[3]) row.phoneNumber = values[3];
           }
 
-          if (!row.companyName || !row.ownerName || !row.email || !row.phoneNumber) {
-            errors.push(`Row ${idx + 2}: Missing required fields (need company, name, email, and phone)`);
+          // For Seamless.AI format: only require name + company. Email and phone can be empty.
+          if (!row.companyName || !row.ownerName) {
+            errors.push(`Row ${idx + 2}: Missing required fields (need at least company name and contact name)`);
+            return;
+          }
+          // If no email and no phone at all, skip the row
+          if (!row.email && !row.phoneNumber) {
+            errors.push(`Row ${idx + 2}: No email or phone number found — skipping`);
             return;
           }
 
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
-            errors.push(`Row ${idx + 2}: Invalid email "${row.email}"`);
-            return;
+          // Validate email if present
+          if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+            row.email = ""; // Invalid email, clear it
           }
 
-          // Validate phone number: must contain at least 10 digits
-          const phoneDigits = row.phoneNumber.replace(/[^0-9]/g, "");
-          if (phoneDigits.length < 10) {
-            errors.push(`Row ${idx + 2}: Invalid or missing phone number (need 10+ digits)`);
-            return;
+          // Validate and format phone number if present
+          if (row.phoneNumber) {
+            const phoneDigits = row.phoneNumber.replace(/[^0-9]/g, "");
+            if (phoneDigits.length >= 10) {
+              // Auto-format phone number to +1XXXXXXXXXX (for Retell.AI)
+              let normalizedDigits = phoneDigits;
+              if (normalizedDigits.length === 11 && normalizedDigits.startsWith("1")) {
+                normalizedDigits = normalizedDigits.slice(1); // Remove leading country code
+              } else if (normalizedDigits.length > 10) {
+                normalizedDigits = normalizedDigits.slice(-10); // Take last 10 digits
+              }
+              // Store as +1XXXXXXXXXX for Retell.AI calling compatibility
+              row.phoneNumber = `+1${normalizedDigits}`;
+              row.phoneDisplay = `(${normalizedDigits.slice(0, 3)}) ${normalizedDigits.slice(3, 6)}-${normalizedDigits.slice(6)}`;
+            } else {
+              row.phoneNumber = ""; // Invalid phone, clear it
+            }
           }
 
-          // Auto-format phone number to +1XXXXXXXXXX (for Retell.AI)
-          let normalizedDigits = phoneDigits;
-          if (normalizedDigits.length === 11 && normalizedDigits.startsWith("1")) {
-            normalizedDigits = normalizedDigits.slice(1); // Remove leading country code
-          } else if (normalizedDigits.length > 10) {
-            normalizedDigits = normalizedDigits.slice(-10); // Take last 10 digits
+          // After validation, ensure we still have at least email OR phone
+          if (!row.email && !row.phoneNumber) {
+            errors.push(`Row ${idx + 2}: No valid email or phone number — skipping`);
+            return;
           }
-          // Store as +1XXXXXXXXXX for Retell.AI calling compatibility
-          row.phoneNumber = `+1${normalizedDigits}`;
-          row.phoneDisplay = `(${normalizedDigits.slice(0, 3)}) ${normalizedDigits.slice(3, 6)}-${normalizedDigits.slice(6)}`;
+          // Set defaults for missing optional fields
+          if (!row.email) row.email = "";
+          if (!row.phoneNumber) row.phoneNumber = "";
 
           // Format secondary phone if present
           if (row.secondaryPhone) {
@@ -563,7 +603,7 @@ export default function LeadsPage() {
         });
 
         if (rows.length === 0) {
-          toast.error("No valid leads found. Ensure CSV has: First Name, Last Name, Email, Phone, Company Name");
+          toast.error("No valid leads found. Ensure CSV has at least: Name + Company Name + (Email or Phone)");
           if (errors.length > 0) toast.error(errors.slice(0, 3).join("\n"));
           return;
         }
@@ -573,7 +613,9 @@ export default function LeadsPage() {
         }
 
         if (isSeamlessFormat) {
-          toast.success(`${rows.length} Seamless.AI contacts with valid email + phone ready to import!`);
+          const withEmail = rows.filter((r: any) => r.email).length;
+          const withPhone = rows.filter((r: any) => r.phoneNumber).length;
+          toast.success(`${rows.length} Seamless.AI contacts ready to import! (${withEmail} with email, ${withPhone} with phone)`);
         }
 
         setCsvPreview(rows);
@@ -591,9 +633,12 @@ export default function LeadsPage() {
     if (csvPreview.length === 0) return;
     try {
       const emails = csvPreview.map((r: any) => r.email).filter(Boolean);
-      const dedupResult = await dedupCheckMutation.mutateAsync({ emails });
+      const dedupResult = emails.length > 0 
+        ? await dedupCheckMutation.mutateAsync({ emails })
+        : { duplicates: [] };
       const dupSet = new Set(dedupResult.duplicates);
-      const uniqueLeads = csvPreview.filter((r: any) => !dupSet.has(r.email));
+      // Leads without email are always considered unique
+      const uniqueLeads = csvPreview.filter((r: any) => !r.email || !dupSet.has(r.email));
       const dupCount = csvPreview.length - uniqueLeads.length;
 
       if (dupCount > 0) {

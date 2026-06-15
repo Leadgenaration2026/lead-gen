@@ -716,3 +716,12 @@
 - [x] Also auto-verify on manual lead creation and AI generation
 - [x] Run verification in background (non-blocking) so import completes immediately
 - [x] Update lead status as verification results come in
+
+## Bug Fix — CSV Upload Shows "Missing Company Name, Email, Phone Number"
+- [x] Investigate frontend CSV parser column mapping
+- [x] Fix column header matching for Seamless.AI exports (Company Name - Cleaned, Contact Full Name, Contact Mobile Phone, Contact LI Profile URL, Company Website Domain, Company Staff Count)
+- [x] Ensure parser handles case-insensitive and trimmed headers
+- [x] Test with actual Seamless.AI CSV column names
+- [x] Make email and phone optional (only require name + company + at least one of email/phone)
+- [x] Fix backend schema to accept leads without email or phone
+- [x] Fix email matching to not pick up 'Email Validation' or 'Total AI' columns
