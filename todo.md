@@ -734,3 +734,8 @@
 - [x] Ensure website is extracted from CSV, manual, and AI sources
 - [x] Display job title in leads table
 - [x] Add industry filter/tab to leads page for filtering leads by industry
+
+## Bug Fix — Email Verification Status Not Updating After Import
+- [x] Investigated: auto-verify runs in background but may not execute on deployed version
+- [x] Added "Verify Emails" button on Leads page for manual one-click verification
+- [x] Button verifies all pending leads via Bouncer and updates status in real-time

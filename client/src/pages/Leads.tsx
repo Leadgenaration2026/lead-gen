@@ -105,6 +105,7 @@ export default function LeadsPage() {
   // Sort state
   const [sortBy, setSortBy] = useState<string>("newest");
   const scoreEngagementBatchMutation = trpc.leads.scoreEngagementBatch.useMutation();
+  const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
 
   // Bulk assign dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -1516,6 +1517,32 @@ export default function LeadsPage() {
               >
                 {scoreEngagementBatchMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}
                 Score Engagement
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const pendingLeads = filteredLeads.filter((l: any) => l.emailVerificationStatus === "pending" && l.email);
+                  if (pendingLeads.length === 0) {
+                    toast.info("All visible leads are already verified!");
+                    return;
+                  }
+                  toast.info(`Verifying ${pendingLeads.length} emails via Bouncer... This may take a moment.`);
+                  try {
+                    const result = await verifyEmailsMutation.mutateAsync({
+                      leadIds: pendingLeads.map((l: any) => String(l.id)),
+                    });
+                    toast.success(`Verified ${result.results?.length || 0} emails: ${result.deliverable || 0} deliverable, ${result.undeliverable || 0} undeliverable, ${result.risky || 0} risky`);
+                    leadsQuery.refetch();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to verify emails");
+                  }
+                }}
+                disabled={verifyEmailsMutation.isPending}
+                className="gap-1.5"
+              >
+                {verifyEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Verify Emails
               </Button>
               <Button
                 variant="outline"
