@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
 
@@ -1561,6 +1562,45 @@ export default function LeadsPage() {
         </Card>
       )}
 
+      {/* Risky/Unknown Selection Action Bar */}
+      {riskyLeadsToDelete.size > 0 && (
+        <Card className="border-amber-300 bg-amber-50/50 dark:bg-amber-900/10 dark:border-amber-700">
+          <CardContent className="py-3 flex items-center justify-between">
+            <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {riskyLeadsToDelete.size} risky/unknown lead(s) marked for deletion
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const result = await bulkDeleteMutation.mutateAsync({ leadIds: Array.from(riskyLeadsToDelete) });
+                    toast.success(`Deleted ${result.deleted} risky/unknown leads`);
+                    setRiskyLeadsToDelete(new Set());
+                    leadsQuery.refetch();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to delete leads");
+                  }
+                }}
+                disabled={bulkDeleteMutation.isPending}
+                className="gap-1.5"
+              >
+                {bulkDeleteMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete {riskyLeadsToDelete.size} Lead{riskyLeadsToDelete.size !== 1 ? 's' : ''}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRiskyLeadsToDelete(new Set())}
+              >
+                Clear
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Leads List with Filters */}
       <Card>
         <CardHeader>
@@ -1836,22 +1876,81 @@ export default function LeadsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         {lead.engagementScore != null && lead.engagementScore > 0 ? (
-                          <div className="flex items-center justify-center gap-1.5" title={`Engagement Score: ${lead.engagementScore}/100\nLinkedIn profile + Website presence`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                              lead.engagementScore >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
-                              lead.engagementScore >= 30 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
-                              "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                            }`}>
-                              {lead.engagementScore}
-                            </div>
-                            <span className={`text-xs font-medium ${
-                              lead.engagementScore >= 50 ? "text-green-600 dark:text-green-400" :
-                              lead.engagementScore >= 30 ? "text-yellow-600 dark:text-yellow-400" :
-                              "text-gray-500 dark:text-gray-400"
-                            }`}>
-                              {lead.engagementScore >= 50 ? "High" : lead.engagementScore >= 30 ? "Medium" : "Low"}
-                            </span>
-                          </div>
+                          <HoverCard openDelay={200} closeDelay={100}>
+                            <HoverCardTrigger asChild>
+                              <div className="flex items-center justify-center gap-1.5 cursor-pointer">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                  lead.engagementScore >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
+                                  lead.engagementScore >= 30 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
+                                  "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                }`}>
+                                  {lead.engagementScore}
+                                </div>
+                                <span className={`text-xs font-medium ${
+                                  lead.engagementScore >= 50 ? "text-green-600 dark:text-green-400" :
+                                  lead.engagementScore >= 30 ? "text-yellow-600 dark:text-yellow-400" :
+                                  "text-gray-500 dark:text-gray-400"
+                                }`}>
+                                  {lead.engagementScore >= 50 ? "High" : lead.engagementScore >= 30 ? "Medium" : "Low"}
+                                </span>
+                              </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-72 p-3" side="left">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-semibold">Engagement Score</span>
+                                  <span className={`text-sm font-bold ${
+                                    lead.engagementScore >= 50 ? "text-green-600" :
+                                    lead.engagementScore >= 30 ? "text-yellow-600" :
+                                    "text-gray-600"
+                                  }`}>{lead.engagementScore}/100</span>
+                                </div>
+                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all ${
+                                    lead.engagementScore >= 50 ? "bg-green-500" :
+                                    lead.engagementScore >= 30 ? "bg-yellow-500" :
+                                    "bg-gray-400"
+                                  }`} style={{ width: `${lead.engagementScore}%` }} />
+                                </div>
+                                {lead.engagementData ? (() => {
+                                  const data = typeof lead.engagementData === 'string' ? JSON.parse(lead.engagementData) : lead.engagementData;
+                                  return (
+                                    <div className="space-y-1.5 pt-1 border-t">
+                                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">LinkedIn (up to 75 pts)</p>
+                                      {data.linkedin ? (
+                                        <div className="space-y-0.5">
+                                          {data.linkedin.hasProfile && <div className="flex justify-between text-xs"><span>Has LinkedIn profile</span><span className="text-green-600 font-medium">+15</span></div>}
+                                          {data.linkedin.isCreator && <div className="flex justify-between text-xs"><span>Creator badge</span><span className="text-green-600 font-medium">+12</span></div>}
+                                          {data.linkedin.isTopVoice && <div className="flex justify-between text-xs"><span>Top Voice badge</span><span className="text-green-600 font-medium">+12</span></div>}
+                                          {data.linkedin.isPremium && <div className="flex justify-between text-xs"><span>Premium account</span><span className="text-green-600 font-medium">+8</span></div>}
+                                          {data.linkedin.endorsements > 50 && <div className="flex justify-between text-xs"><span>High endorsements ({data.linkedin.endorsements})</span><span className="text-green-600 font-medium">+10</span></div>}
+                                          {data.linkedin.positions >= 3 && <div className="flex justify-between text-xs"><span>Multiple positions ({data.linkedin.positions})</span><span className="text-green-600 font-medium">+6</span></div>}
+                                          {data.linkedin.hasLeadershipRole && <div className="flex justify-between text-xs"><span>Leadership role</span><span className="text-green-600 font-medium">+7</span></div>}
+                                          {data.linkedin.hasDetailedProfile && <div className="flex justify-between text-xs"><span>Detailed profile</span><span className="text-green-600 font-medium">+5</span></div>}
+                                          {data.linkedin.headline && <div className="text-xs text-muted-foreground mt-1 italic truncate">"{data.linkedin.headline}"</div>}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-muted-foreground">No LinkedIn data available</p>
+                                      )}
+                                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-1">Website (up to 25 pts)</p>
+                                      {data.website?.exists ? (
+                                        <div className="space-y-0.5">
+                                          <div className="flex justify-between text-xs"><span>Has website</span><span className="text-green-600 font-medium">+15</span></div>
+                                          {data.website.hasSocialLinks && <div className="flex justify-between text-xs"><span>Social links on site</span><span className="text-green-600 font-medium">+5</span></div>}
+                                          {data.website.loadsSuccessfully && <div className="flex justify-between text-xs"><span>Website loads OK</span><span className="text-green-600 font-medium">+5</span></div>}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-muted-foreground">No website found</p>
+                                      )}
+                                      {data.scoredAt && <p className="text-[10px] text-muted-foreground pt-1 border-t">Scored: {new Date(data.scoredAt).toLocaleDateString()}</p>}
+                                    </div>
+                                  );
+                                })() : (
+                                  <p className="text-xs text-muted-foreground pt-1 border-t">Hover for details. Re-score this lead for a full breakdown.</p>
+                                )}
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
                         ) : lead.socialMediaScore === "high" ? (
                           <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800 text-xs gap-1">
                             <TrendingUp className="w-3 h-3" />
@@ -1869,29 +1968,44 @@ export default function LeadsPage() {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-center">
-                        {lead.emailVerificationStatus === "deliverable" ? (
-                          <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800 text-xs gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Verified
-                          </Badge>
-                        ) : lead.emailVerificationStatus === "undeliverable" ? (
-                          <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800 text-xs gap-1">
-                            <AlertTriangle className="w-3 h-3" />
-                            Blocked
-                          </Badge>
-                        ) : lead.emailVerificationStatus === "risky" ? (
-                          <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 text-xs gap-1">
-                            <AlertTriangle className="w-3 h-3" />
-                            Risky
-                          </Badge>
-                        ) : lead.emailVerificationStatus === "unknown" ? (
-                          <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs gap-1">
-                            Unknown
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
+                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {(lead.emailVerificationStatus === "risky" || lead.emailVerificationStatus === "unknown") && (
+                            <Checkbox
+                              checked={riskyLeadsToDelete.has(lead.id)}
+                              onCheckedChange={(checked) => {
+                                const next = new Set(riskyLeadsToDelete);
+                                if (checked) next.add(lead.id);
+                                else next.delete(lead.id);
+                                setRiskyLeadsToDelete(next);
+                              }}
+                              className="w-3.5 h-3.5"
+                              aria-label="Mark for deletion"
+                            />
+                          )}
+                          {lead.emailVerificationStatus === "deliverable" ? (
+                            <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800 text-xs gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Verified
+                            </Badge>
+                          ) : lead.emailVerificationStatus === "undeliverable" ? (
+                            <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800 text-xs gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Blocked
+                            </Badge>
+                          ) : lead.emailVerificationStatus === "risky" ? (
+                            <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 text-xs gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Risky
+                            </Badge>
+                          ) : lead.emailVerificationStatus === "unknown" ? (
+                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs gap-1">
+                              Unknown
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm">
                         {lead.country ? lead.country : <span className="text-muted-foreground">—</span>}

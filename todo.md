@@ -771,3 +771,12 @@
 - [x] Engagement score should be based on LinkedIn + Website only (remove Instagram from scoring)
 - [x] Fix website links not opening properly in leads table (auto-prepend https:// if missing)
 - [x] "Create New Lead Set" button should navigate to Dashboard Leads tab (manual/CSV/AI upload), not All Leads page
+
+## Feature — Inline Checkbox for Risky/Unknown Leads
+- [x] Add checkbox next to each lead with risky/unknown email status in the main leads table
+- [x] Allow selecting individual risky/unknown leads and deleting them directly from the table
+- [x] Provide a "Delete Selected" action bar when risky/unknown leads are checked
+
+## Feature — Engagement Score Breakdown Tooltip
+- [x] Show how engagement score was calculated (LinkedIn pts + Website pts) in a HoverCard popover
+- [x] Display individual scoring signals (Has LinkedIn: +15, Leadership role: +7, Website loads: +15, etc.) with progress bar
