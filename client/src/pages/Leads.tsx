@@ -114,6 +114,7 @@ export default function LeadsPage() {
   const deleteAllMutation = trpc.leads.deleteAll.useMutation();
   const [deleteRiskyDialogOpen, setDeleteRiskyDialogOpen] = useState(false);
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [riskyLeadsToDelete, setRiskyLeadsToDelete] = useState<Set<number>>(new Set());
 
   // Bulk assign dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -969,35 +970,80 @@ export default function LeadsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Risky/Unknown Leads Dialog */}
-      <AlertDialog open={deleteRiskyDialogOpen} onOpenChange={setDeleteRiskyDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+      {/* Delete Risky/Unknown Leads Dialog — with selective skip */}
+      <Dialog open={deleteRiskyDialogOpen} onOpenChange={setDeleteRiskyDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <Trash2 className="w-5 h-5" />
-              Delete Risky & Unknown Email Leads?
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  This will permanently delete all leads with <strong>risky</strong> or <strong>unknown</strong> email verification status.
-                </p>
-                <p className="text-sm font-medium">
-                  {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky").length} risky + {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "unknown").length} unknown = {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown").length} leads will be deleted
-                </p>
-                <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+              Delete Risky & Unknown Email Leads
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
+            <p className="text-sm text-muted-foreground">
+              Uncheck any leads you want to <strong>keep</strong>. Only checked leads will be deleted.
+            </p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">
+                {riskyLeadsToDelete.size} of {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown").length} selected for deletion
+              </span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => {
+                  const all = (leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown");
+                  setRiskyLeadsToDelete(new Set(all.map((l: any) => l.id)));
+                }}>Select All</Button>
+                <Button variant="ghost" size="sm" onClick={() => setRiskyLeadsToDelete(new Set())}>Deselect All</Button>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            </div>
+            <div className="border rounded-md overflow-auto flex-1 max-h-[400px]">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="p-2 w-10"></th>
+                    <th className="p-2 text-left font-medium">Contact</th>
+                    <th className="p-2 text-left font-medium">Company</th>
+                    <th className="p-2 text-left font-medium">Email</th>
+                    <th className="p-2 text-left font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown").map((lead: any) => (
+                    <tr key={lead.id} className={`border-t hover:bg-muted/30 transition-colors ${!riskyLeadsToDelete.has(lead.id) ? 'opacity-50' : ''}`}>
+                      <td className="p-2 text-center">
+                        <Checkbox
+                          checked={riskyLeadsToDelete.has(lead.id)}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(riskyLeadsToDelete);
+                            if (checked) next.add(lead.id);
+                            else next.delete(lead.id);
+                            setRiskyLeadsToDelete(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2">{lead.ownerName}</td>
+                      <td className="p-2 text-muted-foreground">{lead.companyName}</td>
+                      <td className="p-2 text-muted-foreground text-xs">{lead.email}</td>
+                      <td className="p-2">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${lead.emailVerificationStatus === 'risky' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {lead.emailVerificationStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={() => setDeleteRiskyDialogOpen(false)}>Cancel</Button>
             <Button
               variant="destructive"
-              disabled={deleteByStatusMutation.isPending}
+              disabled={bulkDeleteMutation.isPending || riskyLeadsToDelete.size === 0}
               onClick={async () => {
                 try {
-                  const result = await deleteByStatusMutation.mutateAsync({ statuses: ["risky", "unknown"] });
-                  toast.success(`Deleted ${result.deleted} leads with risky/unknown email status`);
+                  const result = await bulkDeleteMutation.mutateAsync({ leadIds: Array.from(riskyLeadsToDelete) });
+                  toast.success(`Deleted ${result.deleted} leads (kept ${(leadsQuery.data || []).filter((l: any) => (l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown") && !riskyLeadsToDelete.has(l.id)).length} leads you unchecked)`);
                   leadsQuery.refetch();
                   setDeleteRiskyDialogOpen(false);
                 } catch (err: any) {
@@ -1005,12 +1051,12 @@ export default function LeadsPage() {
                 }
               }}
             >
-              {deleteByStatusMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Delete All Risky/Unknown
+              {bulkDeleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete {riskyLeadsToDelete.size} Lead{riskyLeadsToDelete.size !== 1 ? 's' : ''}
             </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete All Leads Confirmation Dialog */}
       <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
@@ -1649,6 +1695,7 @@ export default function LeadsPage() {
                     toast.info("No leads with risky or unknown email status found");
                     return;
                   }
+                  setRiskyLeadsToDelete(new Set(riskyUnknown.map((l: any) => l.id)));
                   setDeleteRiskyDialogOpen(true);
                 }}
                 disabled={deleteByStatusMutation.isPending}

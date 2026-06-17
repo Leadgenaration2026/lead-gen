@@ -761,3 +761,8 @@
 - [x] Lead Sets page should show same details as main leads view (company, owner, job title, industry, email, phone, engagement score, email status)
 - [x] "Create New Lead Set" button should redirect to leads add page (manual/CSV/AI)
 - [x] Deleting leads from lead sets or main leads should delete from both places (single source of truth)
+
+## Feature — Selective Delete Risky/Unknown Leads
+- [x] Replace bulk delete risky/unknown dialog with a selectable list showing all risky/unknown leads
+- [x] Allow user to uncheck leads they want to keep before confirming deletion
+- [x] Only delete the checked/selected leads
