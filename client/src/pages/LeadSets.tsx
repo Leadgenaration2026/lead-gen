@@ -5,16 +5,52 @@ import { getLoginUrl } from "@/const";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, FolderPlus, Pencil, Trash2, Merge, ArrowLeft, Users, ChevronDown, ChevronRight, Save, X } from "lucide-react";
+import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Save, X, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
+
+// Format phone number for display
+function formatPhoneDisplay(phone: string | null | undefined): string {
+  if (!phone) return "—";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return phone;
+}
+
+// Email verification status badge
+function EmailStatusBadge({ status }: { status: string | null | undefined }) {
+  if (!status || status === "pending") return <Badge variant="secondary" className="text-xs">Pending</Badge>;
+  if (status === "deliverable") return <Badge className="text-xs bg-green-100 text-green-800 hover:bg-green-100"><CheckCircle2 className="w-3 h-3 mr-1" />Verified</Badge>;
+  if (status === "undeliverable") return <Badge variant="destructive" className="text-xs"><ShieldAlert className="w-3 h-3 mr-1" />Blocked</Badge>;
+  if (status === "risky") return <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100"><AlertTriangle className="w-3 h-3 mr-1" />Risky</Badge>;
+  return <Badge variant="secondary" className="text-xs"><HelpCircle className="w-3 h-3 mr-1" />Unknown</Badge>;
+}
+
+// Engagement score badge
+function EngagementBadge({ score }: { score: number | null | undefined }) {
+  if (score === null || score === undefined) return <span className="text-xs text-muted-foreground">—</span>;
+  let color = "bg-gray-100 text-gray-700";
+  let label = "Low";
+  if (score >= 70) { color = "bg-green-100 text-green-800"; label = "High"; }
+  else if (score >= 40) { color = "bg-amber-100 text-amber-800"; label = "Medium"; }
+  return (
+    <Badge className={`text-xs ${color} hover:${color}`}>
+      {score} - {label}
+    </Badge>
+  );
+}
 
 export default function LeadSetsPage() {
   const { user, isLoading: authLoading } = useAuth() as any;
@@ -26,6 +62,7 @@ export default function LeadSetsPage() {
   const renameMutation = trpc.leadSets.rename.useMutation();
   const deleteMutation = trpc.leadSets.delete.useMutation();
   const mergeMutation = trpc.leadSets.merge.useMutation();
+  const deleteLeadMutation = trpc.leads.delete.useMutation();
   const updateLeadMutation = trpc.leads.update.useMutation({
     onSuccess: () => {
       toast.success("Lead updated successfully");
@@ -37,16 +74,15 @@ export default function LeadSetsPage() {
     },
   });
 
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameSetId, setRenameSetId] = useState<number | null>(null);
   const [renameName, setRenameName] = useState("");
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteSetId, setDeleteSetId] = useState<number | null>(null);
+
+  const [deleteLeadDialogOpen, setDeleteLeadDialogOpen] = useState(false);
+  const [deleteLeadId, setDeleteLeadId] = useState<number | null>(null);
 
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeSourceId, setMergeSourceId] = useState<number | null>(null);
@@ -78,23 +114,6 @@ export default function LeadSetsPage() {
   const getLeadsForSet = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId);
   const unassignedCount = allLeads.filter((l: any) => !l.leadSetId).length;
 
-  const handleCreate = async () => {
-    if (!newName.trim()) {
-      toast.error("Please enter a name");
-      return;
-    }
-    try {
-      await createMutation.mutateAsync({ name: newName.trim(), description: newDescription.trim() || undefined });
-      toast.success("Lead set created");
-      setNewName("");
-      setNewDescription("");
-      setCreateDialogOpen(false);
-      leadSetsQuery.refetch();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to create lead set");
-    }
-  };
-
   const handleRename = async () => {
     if (!renameName.trim() || !renameSetId) return;
     try {
@@ -109,7 +128,7 @@ export default function LeadSetsPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDeleteSet = async () => {
     if (!deleteSetId) return;
     try {
       await deleteMutation.mutateAsync({ id: deleteSetId });
@@ -120,6 +139,19 @@ export default function LeadSetsPage() {
       leadsQuery.refetch();
     } catch (error: any) {
       toast.error(error?.message || "Failed to delete");
+    }
+  };
+
+  const handleDeleteLead = async () => {
+    if (!deleteLeadId) return;
+    try {
+      await deleteLeadMutation.mutateAsync(deleteLeadId);
+      toast.success("Lead deleted permanently");
+      setDeleteLeadDialogOpen(false);
+      setDeleteLeadId(null);
+      leadsQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete lead");
     }
   };
 
@@ -146,6 +178,7 @@ export default function LeadSetsPage() {
     setEditForm({
       companyName: lead.companyName || "",
       ownerName: lead.ownerName || "",
+      jobTitle: lead.jobTitle || "",
       email: lead.email || "",
       phoneNumber: lead.phoneNumber || "",
       website: lead.website || "",
@@ -179,50 +212,15 @@ export default function LeadSetsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Lead Sets</h1>
               <p className="text-muted-foreground text-sm">Organize your leads into named groups for better management</p>
             </div>
           </div>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <FolderPlus className="w-4 h-4" />
-                New Lead Set
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Create Lead Set</DialogTitle>
-                <DialogDescription>Create a new group to organize your leads</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Name *</label>
-                  <Input
-                    placeholder="e.g., SaaS Companies Q1"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Description</label>
-                  <Input
-                    placeholder="Optional description..."
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <Button onClick={handleCreate} disabled={createMutation.isPending} className="w-full">
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Create Lead Set
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button className="gap-2" onClick={() => navigate("/all-leads")}>
+            <Plus className="w-4 h-4" />
+            Create New Lead Set
+          </Button>
         </div>
 
         {/* Summary Cards */}
@@ -272,14 +270,14 @@ export default function LeadSetsPage() {
         <Card>
           <CardHeader>
             <CardTitle>All Lead Sets</CardTitle>
-            <CardDescription>Click a set to expand and view/edit its leads</CardDescription>
+            <CardDescription>Click a set to expand and view its leads with full details</CardDescription>
           </CardHeader>
           <CardContent>
             {leadSets.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <FolderPlus className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="font-medium">No lead sets yet</p>
-                <p className="text-sm mt-1">Create your first lead set to start organizing leads</p>
+                <p className="text-sm mt-1">Import leads via CSV, AI, or manual entry on the Leads page to create sets</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -348,196 +346,173 @@ export default function LeadSetsPage() {
                       </div>
                     </div>
 
-                    {/* Expanded Leads List */}
+                    {/* Expanded Leads List with full details */}
                     {expandedSetId === set.id && (
                       <div className="border-t bg-muted/20 px-4 py-3">
                         {getLeadsForSet(set.id).length === 0 ? (
                           <p className="text-sm text-muted-foreground text-center py-4">No leads in this set</p>
                         ) : (
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Company</TableHead>
-                                <TableHead>Owner</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead>Phone</TableHead>
-                                <TableHead>Industry</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {getLeadsForSet(set.id).map((lead: any) => (
-                                editingLeadId === lead.id ? (
-                                  /* Edit Mode Row */
-                                  <TableRow key={lead.id} className="bg-blue-50/50">
-                                    <TableCell colSpan={7}>
-                                      <div className="space-y-4 py-2">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                          <div>
-                                            <Label className="text-xs">Company Name</Label>
-                                            <Input
-                                              value={editForm.companyName}
-                                              onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Company</TableHead>
+                                  <TableHead>Contact</TableHead>
+                                  <TableHead>Job Title</TableHead>
+                                  <TableHead>Email</TableHead>
+                                  <TableHead>Phone</TableHead>
+                                  <TableHead>Industry</TableHead>
+                                  <TableHead>Engagement</TableHead>
+                                  <TableHead>Email Status</TableHead>
+                                  <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {getLeadsForSet(set.id).map((lead: any) => (
+                                  editingLeadId === lead.id ? (
+                                    /* Edit Mode Row */
+                                    <TableRow key={lead.id} className="bg-blue-50/50">
+                                      <TableCell colSpan={9}>
+                                        <div className="space-y-4 py-2">
+                                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div>
+                                              <Label className="text-xs">Company Name</Label>
+                                              <Input
+                                                value={editForm.companyName}
+                                                onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Contact Name</Label>
+                                              <Input
+                                                value={editForm.ownerName}
+                                                onChange={(e) => setEditForm({ ...editForm, ownerName: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Job Title</Label>
+                                              <Input
+                                                value={editForm.jobTitle}
+                                                onChange={(e) => setEditForm({ ...editForm, jobTitle: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Email</Label>
+                                              <Input
+                                                value={editForm.email}
+                                                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Phone</Label>
+                                              <Input
+                                                value={editForm.phoneNumber}
+                                                onChange={(e) => setEditForm({ ...editForm, phoneNumber: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Industry</Label>
+                                              <Input
+                                                value={editForm.industry}
+                                                onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Website</Label>
+                                              <Input
+                                                value={editForm.website}
+                                                onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">LinkedIn URL</Label>
+                                              <Input
+                                                value={editForm.linkedinUrl}
+                                                onChange={(e) => setEditForm({ ...editForm, linkedinUrl: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs">Instagram URL</Label>
+                                              <Input
+                                                value={editForm.instagramUrl}
+                                                onChange={(e) => setEditForm({ ...editForm, instagramUrl: e.target.value })}
+                                                className="mt-1 h-8 text-sm"
+                                              />
+                                            </div>
                                           </div>
-                                          <div>
-                                            <Label className="text-xs">Owner Name</Label>
-                                            <Input
-                                              value={editForm.ownerName}
-                                              onChange={(e) => setEditForm({ ...editForm, ownerName: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Email</Label>
-                                            <Input
-                                              value={editForm.email}
-                                              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Phone</Label>
-                                            <Input
-                                              value={editForm.phoneNumber}
-                                              onChange={(e) => setEditForm({ ...editForm, phoneNumber: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Website</Label>
-                                            <Input
-                                              value={editForm.website}
-                                              onChange={(e) => setEditForm({ ...editForm, website: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Industry</Label>
-                                            <Input
-                                              value={editForm.industry}
-                                              onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">LinkedIn URL</Label>
-                                            <Input
-                                              value={editForm.linkedinUrl}
-                                              onChange={(e) => setEditForm({ ...editForm, linkedinUrl: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Instagram URL</Label>
-                                            <Input
-                                              value={editForm.instagramUrl}
-                                              onChange={(e) => setEditForm({ ...editForm, instagramUrl: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Facebook URL</Label>
-                                            <Input
-                                              value={editForm.facebookUrl}
-                                              onChange={(e) => setEditForm({ ...editForm, facebookUrl: e.target.value })}
-                                              className="mt-1 h-8 text-sm"
-                                            />
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Status</Label>
-                                            <Select
-                                              value={editForm.status}
-                                              onValueChange={(v) => setEditForm({ ...editForm, status: v })}
+                                          <div className="flex items-center gap-2 justify-end">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={handleCancelEdit}
                                             >
-                                              <SelectTrigger className="mt-1 h-8 text-sm">
-                                                <SelectValue />
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                <SelectItem value="new">New</SelectItem>
-                                                <SelectItem value="contacted">Contacted</SelectItem>
-                                                <SelectItem value="qualified">Qualified</SelectItem>
-                                                <SelectItem value="converted">Converted</SelectItem>
-                                                <SelectItem value="rejected">Rejected</SelectItem>
-                                              </SelectContent>
-                                            </Select>
-                                          </div>
-                                          <div>
-                                            <Label className="text-xs">Tag</Label>
-                                            <Select
-                                              value={editForm.tag}
-                                              onValueChange={(v) => setEditForm({ ...editForm, tag: v })}
+                                              <X className="w-4 h-4 mr-1" /> Cancel
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              onClick={handleSaveEdit}
+                                              disabled={updateLeadMutation.isPending}
                                             >
-                                              <SelectTrigger className="mt-1 h-8 text-sm">
-                                                <SelectValue />
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                <SelectItem value="hot">Hot</SelectItem>
-                                                <SelectItem value="warm">Warm</SelectItem>
-                                                <SelectItem value="cold">Cold</SelectItem>
-                                                <SelectItem value="follow_up">Follow Up</SelectItem>
-                                                <SelectItem value="none">None</SelectItem>
-                                              </SelectContent>
-                                            </Select>
+                                              {updateLeadMutation.isPending ? (
+                                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                              ) : (
+                                                <Save className="w-4 h-4 mr-1" />
+                                              )}
+                                              Save
+                                            </Button>
                                           </div>
                                         </div>
-                                        <div className="flex items-center gap-2 justify-end">
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : (
+                                    /* Display Mode Row - Full details matching main leads view */
+                                    <TableRow key={lead.id}>
+                                      <TableCell className="font-medium text-sm">{lead.companyName}</TableCell>
+                                      <TableCell className="text-sm">{lead.ownerName}</TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">{lead.jobTitle || "—"}</TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">{formatPhoneDisplay(lead.phoneNumber)}</TableCell>
+                                      <TableCell className="text-sm">{lead.industry || "—"}</TableCell>
+                                      <TableCell><EngagementBadge score={lead.engagementScore} /></TableCell>
+                                      <TableCell><EmailStatusBadge status={lead.emailVerificationStatus} /></TableCell>
+                                      <TableCell className="text-right">
+                                        <div className="flex items-center justify-end gap-1">
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={handleCancelEdit}
+                                            onClick={() => handleEditLead(lead)}
+                                            title="Edit lead"
                                           >
-                                            <X className="w-4 h-4 mr-1" /> Cancel
+                                            <Pencil className="w-3.5 h-3.5" />
                                           </Button>
                                           <Button
+                                            variant="ghost"
                                             size="sm"
-                                            onClick={handleSaveEdit}
-                                            disabled={updateLeadMutation.isPending}
+                                            onClick={() => {
+                                              setDeleteLeadId(lead.id);
+                                              setDeleteLeadDialogOpen(true);
+                                            }}
+                                            title="Delete lead"
+                                            className="text-destructive hover:text-destructive"
                                           >
-                                            {updateLeadMutation.isPending ? (
-                                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                                            ) : (
-                                              <Save className="w-4 h-4 mr-1" />
-                                            )}
-                                            Save
+                                            <Trash2 className="w-3.5 h-3.5" />
                                           </Button>
                                         </div>
-                                      </div>
-                                    </TableCell>
-                                  </TableRow>
-                                ) : (
-                                  /* Display Mode Row */
-                                  <TableRow key={lead.id}>
-                                    <TableCell className="font-medium text-sm">{lead.companyName}</TableCell>
-                                    <TableCell className="text-sm">{lead.ownerName}</TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">{lead.phoneNumber || "—"}</TableCell>
-                                    <TableCell className="text-sm">{lead.industry || "—"}</TableCell>
-                                    <TableCell>
-                                      <Badge
-                                        variant={lead.status === "converted" ? "default" : lead.status === "rejected" ? "destructive" : "secondary"}
-                                        className="text-xs"
-                                      >
-                                        {lead.status}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleEditLead(lead)}
-                                        title="Edit lead"
-                                      >
-                                        <Pencil className="w-3.5 h-3.5" />
-                                      </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                )
-                              ))}
-                            </TableBody>
-                          </Table>
+                                      </TableCell>
+                                    </TableRow>
+                                  )
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
                         )}
                       </div>
                     )}
@@ -610,7 +585,7 @@ export default function LeadSetsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Delete Confirmation Dialog */}
+        {/* Delete Set Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -626,11 +601,37 @@ export default function LeadSetsPage() {
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <Button
                 variant="destructive"
-                onClick={handleDelete}
+                onClick={handleDeleteSet}
                 disabled={deleteMutation.isPending}
               >
                 {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Delete Set
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete Lead Confirmation Dialog */}
+        <AlertDialog open={deleteLeadDialogOpen} onOpenChange={setDeleteLeadDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="w-5 h-5" />
+                Delete Lead?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete this lead from your account. It will be removed from both this lead set and the main leads list. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteLead}
+                disabled={deleteLeadMutation.isPending}
+              >
+                {deleteLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Delete Lead
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

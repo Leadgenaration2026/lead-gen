@@ -755,3 +755,9 @@
 - [x] Add backend procedure to bulk delete leads by verification status
 - [x] Show confirmation dialog before deleting
 - [x] Show count of deleted leads in toast after deletion
+
+## Feature — Lead Management Improvements
+- [x] Add "Delete All Leads" option in navigation bar
+- [x] Lead Sets page should show same details as main leads view (company, owner, job title, industry, email, phone, engagement score, email status)
+- [x] "Create New Lead Set" button should redirect to leads add page (manual/CSV/AI)
+- [x] Deleting leads from lead sets or main leads should delete from both places (single source of truth)

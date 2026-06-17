@@ -253,6 +253,16 @@ export const appRouter = router({
         return { deleted: toDelete.length };
       }),
 
+    deleteAll: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const allLeads = await db.getLeadsByUserId(ctx.user.id);
+        if (allLeads.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads to delete" });
+        for (const lead of allLeads) {
+          await db.deleteLead(lead.id);
+        }
+        return { deleted: allLeads.length };
+      }),
+
     addManual: protectedProcedure
       .input(z.object({
         companyName: z.string().min(1),

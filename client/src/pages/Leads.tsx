@@ -72,6 +72,10 @@ export default function LeadsPage() {
     if (setId) {
       setFilterLeadSet(setId);
     }
+    const action = params.get("action");
+    if (action === "delete-all") {
+      setDeleteAllDialogOpen(true);
+    }
   }, [searchString]);
   const [searchQuery, setSearchQuery] = useState("");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
@@ -107,7 +111,9 @@ export default function LeadsPage() {
   const scoreEngagementBatchMutation = trpc.leads.scoreEngagementBatch.useMutation();
   const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
   const deleteByStatusMutation = trpc.leads.deleteByVerificationStatus.useMutation();
+  const deleteAllMutation = trpc.leads.deleteAll.useMutation();
   const [deleteRiskyDialogOpen, setDeleteRiskyDialogOpen] = useState(false);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
 
   // Bulk assign dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -1001,6 +1007,49 @@ export default function LeadsPage() {
             >
               {deleteByStatusMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Delete All Risky/Unknown
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete All Leads Confirmation Dialog */}
+      <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Delete All Leads?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  This will permanently delete <strong>all {(leadsQuery.data || []).length} leads</strong> from your account.
+                </p>
+                <p className="text-sm font-medium text-destructive">
+                  All lead data, engagement scores, email verification status, and lead set assignments will be lost.
+                </p>
+                <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={deleteAllMutation.isPending}
+              onClick={async () => {
+                try {
+                  const result = await deleteAllMutation.mutateAsync();
+                  toast.success(`Deleted all ${result.deleted} leads`);
+                  leadsQuery.refetch();
+                  setDeleteAllDialogOpen(false);
+                } catch (err: any) {
+                  toast.error(err.message || "Failed to delete leads");
+                }
+              }}
+            >
+              {deleteAllMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete All Leads
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
