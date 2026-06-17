@@ -749,3 +749,9 @@
 - [x] Remove old email-based scoring logic from the Score Engagement button
 - [x] Merged Social Activity and Engagement columns into one unified 'Engagement Score' column
 - [x] Score shows 0-100 number with High/Medium/Low label
+
+## Feature — Delete Risky/Unknown Email Leads Button
+- [x] Add a button to delete all leads with "risky" or "unknown" email verification status
+- [x] Add backend procedure to bulk delete leads by verification status
+- [x] Show confirmation dialog before deleting
+- [x] Show count of deleted leads in toast after deletion

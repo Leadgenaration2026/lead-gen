@@ -106,6 +106,8 @@ export default function LeadsPage() {
   const [sortBy, setSortBy] = useState<string>("newest");
   const scoreEngagementBatchMutation = trpc.leads.scoreEngagementBatch.useMutation();
   const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
+  const deleteByStatusMutation = trpc.leads.deleteByVerificationStatus.useMutation();
+  const [deleteRiskyDialogOpen, setDeleteRiskyDialogOpen] = useState(false);
 
   // Bulk assign dialog
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -961,6 +963,49 @@ export default function LeadsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete Risky/Unknown Leads Dialog */}
+      <AlertDialog open={deleteRiskyDialogOpen} onOpenChange={setDeleteRiskyDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Delete Risky & Unknown Email Leads?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  This will permanently delete all leads with <strong>risky</strong> or <strong>unknown</strong> email verification status.
+                </p>
+                <p className="text-sm font-medium">
+                  {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky").length} risky + {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "unknown").length} unknown = {(leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown").length} leads will be deleted
+                </p>
+                <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={deleteByStatusMutation.isPending}
+              onClick={async () => {
+                try {
+                  const result = await deleteByStatusMutation.mutateAsync({ statuses: ["risky", "unknown"] });
+                  toast.success(`Deleted ${result.deleted} leads with risky/unknown email status`);
+                  leadsQuery.refetch();
+                  setDeleteRiskyDialogOpen(false);
+                } catch (err: any) {
+                  toast.error(err.message || "Failed to delete leads");
+                }
+              }}
+            >
+              {deleteByStatusMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete All Risky/Unknown
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Action Buttons Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Manual Lead Entry */}
@@ -1545,6 +1590,23 @@ export default function LeadsPage() {
               >
                 {verifyEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                 Verify Emails
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const riskyUnknown = (leadsQuery.data || []).filter((l: any) => l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown");
+                  if (riskyUnknown.length === 0) {
+                    toast.info("No leads with risky or unknown email status found");
+                    return;
+                  }
+                  setDeleteRiskyDialogOpen(true);
+                }}
+                disabled={deleteByStatusMutation.isPending}
+                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+              >
+                {deleteByStatusMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete Risky/Unknown
               </Button>
               <Button
                 variant="outline"

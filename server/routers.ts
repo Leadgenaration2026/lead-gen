@@ -241,6 +241,18 @@ export const appRouter = router({
         return { deleted: validIds.length };
       }),
 
+    deleteByVerificationStatus: protectedProcedure
+      .input(z.object({ statuses: z.array(z.enum(["risky", "unknown", "undeliverable"])).min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const allLeads = await db.getLeadsByUserId(ctx.user.id);
+        const toDelete = allLeads.filter((l: any) => input.statuses.includes(l.emailVerificationStatus));
+        if (toDelete.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads found with the specified verification status" });
+        for (const lead of toDelete) {
+          await db.deleteLead(lead.id);
+        }
+        return { deleted: toDelete.length };
+      }),
+
     addManual: protectedProcedure
       .input(z.object({
         companyName: z.string().min(1),
