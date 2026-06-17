@@ -675,13 +675,13 @@ export default function LeadsPage() {
       
       // Auto-trigger engagement scoring for newly imported leads
       if (result.imported > 0 && result.leadIds && result.leadIds.length > 0) {
-        toast.info("Scoring engagement for imported leads...", { duration: 5000 });
+        toast.info("Scoring social engagement for imported leads (LinkedIn + Instagram)...", { duration: 5000 });
         try {
           await scoreEngagementBatchMutation.mutateAsync({ leadIds: result.leadIds });
-          toast.success("Engagement scores updated! Leads are now ranked by activity.");
+          toast.success("Social engagement scores updated! Leads ranked by LinkedIn/Instagram activity.");
           leadsQuery.refetch();
         } catch {
-          toast.info("Leads imported. You can score engagement manually from the leads table.");
+          toast.info("Leads imported. Click 'Score Social Engagement' to rank by activity.");
         }
       }
     } catch (error) {
@@ -778,15 +778,18 @@ export default function LeadsPage() {
     });
 
     // Apply sorting
-    if (sortBy === "social_desc") {
+    if (sortBy === "engagement_desc") {
       return [...filtered].sort((a: any, b: any) => {
-        const scoreOrder = { high: 2, pending: 1, low: 0 };
-        return (scoreOrder[b.socialMediaScore as keyof typeof scoreOrder] || 0) - (scoreOrder[a.socialMediaScore as keyof typeof scoreOrder] || 0);
+        const scoreA = a.engagementScore || (a.socialMediaScore === "high" ? 50 : a.socialMediaScore === "low" ? 10 : 0);
+        const scoreB = b.engagementScore || (b.socialMediaScore === "high" ? 50 : b.socialMediaScore === "low" ? 10 : 0);
+        return scoreB - scoreA;
       });
-    } else if (sortBy === "engagement_desc") {
-      return [...filtered].sort((a: any, b: any) => (b.engagementScore || 0) - (a.engagementScore || 0));
     } else if (sortBy === "engagement_asc") {
-      return [...filtered].sort((a: any, b: any) => (a.engagementScore || 0) - (b.engagementScore || 0));
+      return [...filtered].sort((a: any, b: any) => {
+        const scoreA = a.engagementScore || (a.socialMediaScore === "high" ? 50 : a.socialMediaScore === "low" ? 10 : 0);
+        const scoreB = b.engagementScore || (b.socialMediaScore === "high" ? 50 : b.socialMediaScore === "low" ? 10 : 0);
+        return scoreA - scoreB;
+      });
     } else if (sortBy === "name_asc") {
       return [...filtered].sort((a: any, b: any) => (a.ownerName || "").localeCompare(b.ownerName || ""));
     } else if (sortBy === "newest") {
@@ -1491,7 +1494,6 @@ export default function LeadsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="newest">Newest First</SelectItem>
-                   <SelectItem value="social_desc">Social Activity: High First</SelectItem>
                    <SelectItem value="engagement_desc">Engagement: High → Low</SelectItem>
                    <SelectItem value="engagement_asc">Engagement: Low → High</SelectItem>
                    <SelectItem value="name_asc">Name: A → Z</SelectItem>
@@ -1503,7 +1505,7 @@ export default function LeadsPage() {
                 onClick={async () => {
                   const ids = selectedLeadIds.size > 0 ? Array.from(selectedLeadIds) : filteredLeads.map((l: any) => l.id);
                   if (ids.length === 0) { toast.error("No leads to score"); return; }
-                  toast.info(`Scoring engagement for ${ids.length} leads... This may take a moment.`);
+                  toast.info(`Scoring social engagement for ${ids.length} leads (LinkedIn + Instagram)... This may take a moment.`);
                   try {
                     const result = await scoreEngagementBatchMutation.mutateAsync({ leadIds: ids });
                     toast.success(`Scored ${result.scored} leads (${result.errors} errors)`);
@@ -1516,7 +1518,7 @@ export default function LeadsPage() {
                 className="gap-1.5"
               >
                 {scoreEngagementBatchMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}
-                Score Engagement
+                Score Social Engagement
               </Button>
               <Button
                 variant="outline"
@@ -1617,8 +1619,7 @@ export default function LeadsPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
-                    <TableHead className="text-center">Engagement</TableHead>
-                    <TableHead className="text-center">Social Activity</TableHead>
+                    <TableHead className="text-center">Engagement Score</TableHead>
                      <TableHead className="text-center">Email Status</TableHead>
                      <TableHead>Country</TableHead>
                     <TableHead>Set</TableHead>
@@ -1677,34 +1678,36 @@ export default function LeadsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         {lead.engagementScore != null && lead.engagementScore > 0 ? (
-                          <div className="flex items-center justify-center gap-1" title={`Engagement Score: ${lead.engagementScore}/100`}>
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                              lead.engagementScore >= 70 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
-                              lead.engagementScore >= 40 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
+                          <div className="flex items-center justify-center gap-1.5" title={`Social Engagement Score: ${lead.engagementScore}/100\nLinkedIn + Instagram + Website activity`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                              lead.engagementScore >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
+                              lead.engagementScore >= 30 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
                               "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
                             }`}>
                               {lead.engagementScore}
                             </div>
+                            <span className={`text-xs font-medium ${
+                              lead.engagementScore >= 50 ? "text-green-600 dark:text-green-400" :
+                              lead.engagementScore >= 30 ? "text-yellow-600 dark:text-yellow-400" :
+                              "text-gray-500 dark:text-gray-400"
+                            }`}>
+                              {lead.engagementScore >= 50 ? "High" : lead.engagementScore >= 30 ? "Medium" : "Low"}
+                            </span>
                           </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {lead.socialMediaScore === "high" ? (
+                        ) : lead.socialMediaScore === "high" ? (
                           <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800 text-xs gap-1">
                             <TrendingUp className="w-3 h-3" />
-                            High Activity
+                            High
                           </Badge>
                         ) : lead.socialMediaScore === "low" ? (
                           <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 text-xs gap-1">
                             <TrendingDown className="w-3 h-3" />
-                            Low Activity
+                            Low
                           </Badge>
                         ) : (
-                          <Badge className="bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 text-xs gap-1 animate-pulse">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Scoring...
+                          <Badge className="bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800 text-xs gap-1">
+                            <Loader2 className="w-3 h-3" />
+                            Pending
                           </Badge>
                         )}
                       </TableCell>

@@ -1,55 +1,125 @@
 /**
- * Engagement Scoring System
- * Scores leads based on their social media activity (Instagram, LinkedIn, Facebook).
+ * Engagement Scoring System (Unified)
+ * 
+ * Scores leads based on their social media activity (LinkedIn + Instagram).
+ * Uses the built-in Manus LinkedIn Data API for reliable LinkedIn data.
+ * Uses Instagram public profile scraping for Instagram data.
+ * 
  * Higher score = more active/influential = should be contacted first.
  * 
  * Score breakdown (0-100):
- * - Instagram presence: up to 40 points (followers, posts, engagement)
- * - LinkedIn presence: up to 35 points (profile completeness, activity indicators)
- * - Facebook presence: up to 15 points
+ * - LinkedIn activity: up to 60 points
+ *   - Creator badge: +10
+ *   - Top Voice badge: +10
+ *   - Premium account: +5
+ *   - High endorsements (>50): +8
+ *   - Multiple positions (3+): +5
+ *   - Leadership role in headline: +7
+ *   - Detailed profile (summary >100 chars): +5
+ *   - Has LinkedIn profile at all: +10
+ * - Instagram activity: up to 30 points
+ *   - Followers-based: up to 15 points
+ *   - Post count: up to 10 points
+ *   - Engagement rate: up to 5 points
  * - Website presence: up to 10 points
+ *   - Has website: +7
+ *   - Website has social links: +3
  */
 
 import * as db from "./db";
+import { callDataApi } from "./_core/dataApi";
 
 interface EngagementMetrics {
-  instagram?: {
-    followers?: number;
-    following?: number;
-    posts?: number;
-    isPublic?: boolean;
-    bio?: string;
-    engagementRate?: number; // estimated
-  };
   linkedin?: {
     hasProfile: boolean;
-    connectionCount?: string; // "500+" etc
-    hasRecentActivity?: boolean;
+    isCreator?: boolean;
+    isTopVoice?: boolean;
+    isPremium?: boolean;
+    endorsements?: number;
+    positions?: number;
+    hasLeadershipRole?: boolean;
+    hasDetailedProfile?: boolean;
+    headline?: string;
   };
-  facebook?: {
-    hasProfile: boolean;
+  instagram?: {
+    followers?: number;
+    posts?: number;
+    isPublic?: boolean;
+    engagementRate?: number;
   };
   website?: {
     exists: boolean;
     hasSocialLinks?: boolean;
   };
-  scoredAt: string; // ISO timestamp
+  scoredAt: string;
 }
 
 /**
- * Attempt to scrape basic Instagram profile metrics from a public profile.
- * Uses the public web page (no API key needed for public profiles).
+ * Extract LinkedIn username from a LinkedIn URL
+ */
+function extractLinkedInUsername(linkedinUrl: string): string | null {
+  if (!linkedinUrl) return null;
+  const patterns = [
+    /linkedin\.com\/in\/([a-zA-Z0-9\-_%]+)/i,
+    /linkedin\.com\/pub\/([a-zA-Z0-9\-_%]+)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = linkedinUrl.match(pattern);
+    if (match && match[1]) {
+      return match[1].replace(/\/$/, "").split("?")[0];
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch LinkedIn profile data using the built-in Data API
+ */
+async function fetchLinkedInProfile(username: string): Promise<any | null> {
+  try {
+    const result = await callDataApi("LinkedIn/get_user_profile_by_username", {
+      query: { username },
+    });
+    if (!result || typeof result !== "object") return null;
+    return (result as any).data || result;
+  } catch (error) {
+    console.error(`[Engagement] LinkedIn API failed for ${username}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Search LinkedIn by name if no URL is available
+ */
+async function searchLinkedInByName(name: string, company?: string): Promise<string | null> {
+  try {
+    const keywords = `${name} ${company || ""}`.trim();
+    const result = await callDataApi("LinkedIn/search_people", {
+      query: { keywords },
+    });
+    const data = (result as any)?.data || result;
+    const items = data?.items || [];
+    if (items.length > 0 && items[0]?.username) {
+      return items[0].username;
+    }
+    return null;
+  } catch (error) {
+    console.error(`[Engagement] LinkedIn search failed for ${name}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Scrape basic Instagram profile metrics from a public profile
  */
 async function scrapeInstagramMetrics(instagramUrl: string): Promise<EngagementMetrics["instagram"] | null> {
   try {
-    // Extract username from URL
     let username = "";
     if (instagramUrl.includes("instagram.com/")) {
       username = instagramUrl.split("instagram.com/")[1]?.split("/")[0]?.split("?")[0] || "";
     }
     if (!username) return null;
 
-    // Try to fetch the profile page
     const response = await fetch(`https://www.instagram.com/${username}/`, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -60,23 +130,17 @@ async function scrapeInstagramMetrics(instagramUrl: string): Promise<EngagementM
     });
 
     if (!response.ok) {
-      console.log(`[Engagement] Instagram ${username}: HTTP ${response.status}`);
       return { isPublic: false };
     }
 
     const html = await response.text();
-
-    // Try to extract metrics from meta tags and page content
     let followers: number | undefined;
-    let following: number | undefined;
     let posts: number | undefined;
-    let bio: string | undefined;
 
     // Try meta description: "123 Followers, 45 Following, 67 Posts"
     const metaMatch = html.match(/content="([\d,.]+[KkMm]?) Followers, ([\d,.]+[KkMm]?) Following, ([\d,.]+[KkMm]?) Posts/i);
     if (metaMatch) {
       followers = parseMetricNumber(metaMatch[1]);
-      following = parseMetricNumber(metaMatch[2]);
       posts = parseMetricNumber(metaMatch[3]);
     }
 
@@ -88,47 +152,28 @@ async function scrapeInstagramMetrics(instagramUrl: string): Promise<EngagementM
       }
     }
 
-    // Try JSON-LD or shared data
+    // Try JSON-LD
     if (!followers) {
       const jsonMatch = html.match(/"edge_followed_by":\{"count":(\d+)\}/);
-      if (jsonMatch) {
-        followers = parseInt(jsonMatch[1]);
-      }
+      if (jsonMatch) followers = parseInt(jsonMatch[1]);
     }
-
     if (!posts) {
       const postsMatch = html.match(/"edge_owner_to_timeline_media":\{"count":(\d+)\}/);
-      if (postsMatch) {
-        posts = parseInt(postsMatch[1]);
-      }
-    }
-
-    // Extract bio from meta
-    const bioMatch = html.match(/property="og:description"[^>]*content="[^"]*?- ([^"]+)"/);
-    if (bioMatch) {
-      bio = bioMatch[1].substring(0, 200);
+      if (postsMatch) posts = parseInt(postsMatch[1]);
     }
 
     const isPublic = !html.includes("This Account is Private") && !html.includes("is_private\":true");
 
-    // Estimate engagement rate (rough: avg likes per post / followers)
+    // Estimate engagement rate
     let engagementRate: number | undefined;
-    if (followers && followers > 0 && posts && posts > 0) {
-      // Rough estimate: smaller accounts tend to have higher engagement
+    if (followers && followers > 0) {
       if (followers < 1000) engagementRate = 8;
       else if (followers < 10000) engagementRate = 5;
       else if (followers < 100000) engagementRate = 3;
       else engagementRate = 1.5;
     }
 
-    return {
-      followers,
-      following,
-      posts,
-      isPublic,
-      bio,
-      engagementRate,
-    };
+    return { followers, posts, isPublic, engagementRate };
   } catch (error: any) {
     console.log(`[Engagement] Instagram scrape failed: ${error.message}`);
     return null;
@@ -153,65 +198,40 @@ function parseMetricNumber(str: string): number {
 }
 
 /**
- * Check if a LinkedIn profile URL is valid/accessible
- */
-async function checkLinkedInPresence(linkedinUrl: string): Promise<EngagementMetrics["linkedin"] | null> {
-  try {
-    if (!linkedinUrl) return null;
-
-    // We can't scrape LinkedIn reliably without auth, but we can check if the URL is valid
-    // and use the URL structure to infer some info
-    const hasProfile = linkedinUrl.includes("linkedin.com/in/");
-    
-    // Try a HEAD request to check if profile exists
-    let profileExists = false;
-    try {
-      const response = await fetch(linkedinUrl, {
-        method: "HEAD",
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-        redirect: "follow",
-        signal: AbortSignal.timeout(5000),
-      });
-      profileExists = response.ok || response.status === 999; // LinkedIn returns 999 for bot detection but profile exists
-    } catch {
-      profileExists = true; // Assume exists if we can't reach (LinkedIn blocks)
-    }
-
-    return {
-      hasProfile: hasProfile && profileExists,
-      hasRecentActivity: undefined, // Can't determine without auth
-    };
-  } catch (error: any) {
-    console.log(`[Engagement] LinkedIn check failed: ${error.message}`);
-    return null;
-  }
-}
-
-/**
  * Calculate engagement score (0-100) from collected metrics
  */
 function calculateScore(metrics: EngagementMetrics): number {
   let score = 0;
 
-  // Instagram scoring (up to 40 points)
+  // LinkedIn scoring (up to 60 points)
+  if (metrics.linkedin) {
+    const li = metrics.linkedin;
+    if (li.hasProfile) score += 10;
+    if (li.isCreator) score += 10;
+    if (li.isTopVoice) score += 10;
+    if (li.isPremium) score += 5;
+    if (li.endorsements && li.endorsements > 50) score += 8;
+    if (li.positions && li.positions >= 3) score += 5;
+    if (li.hasLeadershipRole) score += 7;
+    if (li.hasDetailedProfile) score += 5;
+  }
+
+  // Instagram scoring (up to 30 points)
   if (metrics.instagram) {
     const ig = metrics.instagram;
     if (ig.isPublic !== false) {
-      // Follower-based score (up to 20 points)
+      // Follower-based score (up to 15 points)
       if (ig.followers) {
-        if (ig.followers >= 100000) score += 20;
-        else if (ig.followers >= 50000) score += 18;
-        else if (ig.followers >= 10000) score += 15;
-        else if (ig.followers >= 5000) score += 12;
-        else if (ig.followers >= 1000) score += 9;
-        else if (ig.followers >= 500) score += 6;
+        if (ig.followers >= 100000) score += 15;
+        else if (ig.followers >= 50000) score += 13;
+        else if (ig.followers >= 10000) score += 11;
+        else if (ig.followers >= 5000) score += 9;
+        else if (ig.followers >= 1000) score += 7;
+        else if (ig.followers >= 500) score += 5;
         else if (ig.followers >= 100) score += 3;
         else score += 1;
       }
-
-      // Post frequency score (up to 10 points)
+      // Post count (up to 10 points)
       if (ig.posts) {
         if (ig.posts >= 500) score += 10;
         else if (ig.posts >= 200) score += 8;
@@ -220,31 +240,17 @@ function calculateScore(metrics: EngagementMetrics): number {
         else if (ig.posts >= 10) score += 2;
         else score += 1;
       }
-
-      // Engagement rate bonus (up to 10 points)
+      // Engagement rate bonus (up to 5 points)
       if (ig.engagementRate) {
-        if (ig.engagementRate >= 6) score += 10;
-        else if (ig.engagementRate >= 4) score += 8;
-        else if (ig.engagementRate >= 2) score += 5;
-        else score += 3;
+        if (ig.engagementRate >= 6) score += 5;
+        else if (ig.engagementRate >= 4) score += 4;
+        else if (ig.engagementRate >= 2) score += 3;
+        else score += 1;
       }
     } else {
-      // Private account — still has presence (5 points)
-      score += 5;
+      // Private account — still has presence
+      score += 3;
     }
-  }
-
-  // LinkedIn scoring (up to 35 points)
-  if (metrics.linkedin) {
-    if (metrics.linkedin.hasProfile) {
-      score += 25; // Having a LinkedIn profile is strong signal for B2B
-      if (metrics.linkedin.hasRecentActivity) score += 10;
-    }
-  }
-
-  // Facebook scoring (up to 15 points)
-  if (metrics.facebook?.hasProfile) {
-    score += 15;
   }
 
   // Website scoring (up to 10 points)
@@ -258,6 +264,7 @@ function calculateScore(metrics: EngagementMetrics): number {
 
 /**
  * Score a single lead's engagement based on their social profiles.
+ * Uses LinkedIn Data API + Instagram scraping + website check.
  * Updates the lead's engagementScore and engagementData in the database.
  */
 export async function scoreLeadEngagement(leadId: number): Promise<{ score: number; metrics: EngagementMetrics }> {
@@ -268,33 +275,56 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
     scoredAt: new Date().toISOString(),
   };
 
-  // Score Instagram
-  if (lead.instagramUrl) {
-    const igMetrics = await scrapeInstagramMetrics(lead.instagramUrl);
+  // 1. Score LinkedIn (primary signal — uses reliable built-in API)
+  let username = lead.linkedinUrl ? extractLinkedInUsername(lead.linkedinUrl) : null;
+  
+  // If no LinkedIn URL, try searching by name
+  if (!username && lead.ownerName) {
+    username = await searchLinkedInByName(lead.ownerName, lead.companyName);
+  }
+
+  if (username) {
+    const profile = await fetchLinkedInProfile(username);
+    if (profile) {
+      const headline = (profile.headline || "").toLowerCase();
+      const leadershipKeywords = [
+        "founder", "ceo", "speaker", "author", "coach", "consultant",
+        "advisor", "influencer", "thought leader", "mentor", "evangelist",
+        "director", "vp", "head of", "chief", "president", "owner"
+      ];
+      const totalEndorsements = (profile.skills || []).reduce(
+        (sum: number, skill: any) => sum + (skill.endorsementsCount || 0), 0
+      );
+
+      metrics.linkedin = {
+        hasProfile: true,
+        isCreator: !!profile.isCreator,
+        isTopVoice: !!profile.isTopVoice,
+        isPremium: !!profile.isPremium,
+        endorsements: totalEndorsements,
+        positions: (profile.position || []).length,
+        hasLeadershipRole: leadershipKeywords.some(kw => headline.includes(kw)),
+        hasDetailedProfile: !!(profile.summary && profile.summary.length > 100),
+        headline: profile.headline,
+      };
+    } else {
+      metrics.linkedin = { hasProfile: true }; // URL exists but couldn't fetch details
+    }
+  }
+
+  // 2. Score Instagram (secondary signal — may fail due to blocking)
+  if ((lead as any).instagramUrl) {
+    const igMetrics = await scrapeInstagramMetrics((lead as any).instagramUrl);
     if (igMetrics) {
       metrics.instagram = igMetrics;
     }
   }
 
-  // Score LinkedIn
-  if (lead.linkedinUrl) {
-    const liMetrics = await checkLinkedInPresence(lead.linkedinUrl);
-    if (liMetrics) {
-      metrics.linkedin = liMetrics;
-    }
-  }
-
-  // Score Facebook
-  if ((lead as any).facebookUrl) {
-    metrics.facebook = { hasProfile: true };
-  }
-
-  // Score Website
+  // 3. Score Website (tertiary signal)
   if (lead.website) {
     metrics.website = { exists: true };
-    // Quick check if website has social links
     try {
-      const response = await fetch(lead.website, {
+      const response = await fetch(lead.website.startsWith("http") ? lead.website : `https://${lead.website}`, {
         signal: AbortSignal.timeout(5000),
         headers: { "User-Agent": "Mozilla/5.0" },
       });
@@ -312,12 +342,15 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
   // Update lead in database
   await db.updateLeadEngagement(leadId, score, metrics);
 
+  // Also update the socialMediaScore field for the High/Low badge
+  const socialScore = score >= 30 ? "high" : "low";
+  await db.updateLead(leadId, { socialMediaScore: socialScore });
+
   return { score, metrics };
 }
 
 /**
  * Score multiple leads in batch (with rate limiting to avoid being blocked).
- * Returns the number of leads scored.
  */
 export async function scoreLeadsBatch(leadIds: number[]): Promise<{ scored: number; errors: number }> {
   let scored = 0;
@@ -327,9 +360,9 @@ export async function scoreLeadsBatch(leadIds: number[]): Promise<{ scored: numb
     try {
       await scoreLeadEngagement(leadId);
       scored++;
-      // Rate limit: wait 2 seconds between requests to avoid being blocked
+      // Rate limit: wait 1.5 seconds between requests
       if (scored < leadIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
     } catch (error: any) {
       console.error(`[Engagement] Failed to score lead ${leadId}:`, error.message);

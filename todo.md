@@ -739,3 +739,13 @@
 - [x] Investigated: auto-verify runs in background but may not execute on deployed version
 - [x] Added "Verify Emails" button on Leads page for manual one-click verification
 - [x] Button verifies all pending leads via Bouncer and updates status in real-time
+
+## Feature — Rework Engagement Score to Social Media Activity
+- [x] Replace email-interaction-based engagement score with social media activity score
+- [x] Check LinkedIn URL and pull activity indicators (Creator, Top Voice, endorsements, connections)
+- [x] Check Instagram URL (public profiles) for follower count and recent post engagement
+- [x] Calculate numeric engagement score from combined social signals
+- [x] Sort leads by engagement score (highest first by default)
+- [x] Remove old email-based scoring logic from the Score Engagement button
+- [x] Merged Social Activity and Engagement columns into one unified 'Engagement Score' column
+- [x] Score shows 0-100 number with High/Medium/Low label
