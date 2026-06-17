@@ -780,3 +780,8 @@
 ## Feature — Engagement Score Breakdown Tooltip
 - [x] Show how engagement score was calculated (LinkedIn pts + Website pts) in a HoverCard popover
 - [x] Display individual scoring signals (Has LinkedIn: +15, Leadership role: +7, Website loads: +15, etc.) with progress bar
+
+## Bug Fix — Website Scoring Inaccurate
+- [x] Fix website scoring: reports "Website loads OK" and "has social links" even when the website doesn't actually open for users
+- [x] Improve website validation: check for proper HTTP status, follow redirects, detect parked/dead domains
+- [x] If website doesn't truly load (timeout, DNS fail, 4xx/5xx, parked domain), mark as not loading and don't award points

@@ -1933,11 +1933,15 @@ export default function LeadsPage() {
                                         <p className="text-xs text-muted-foreground">No LinkedIn data available</p>
                                       )}
                                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-1">Website (up to 25 pts)</p>
-                                      {data.website?.exists ? (
+                                      {data.website?.loadsSuccessfully ? (
                                         <div className="space-y-0.5">
-                                          <div className="flex justify-between text-xs"><span>Has website</span><span className="text-green-600 font-medium">+15</span></div>
+                                          <div className="flex justify-between text-xs"><span>Real website confirmed</span><span className="text-green-600 font-medium">+15</span></div>
                                           {data.website.hasSocialLinks && <div className="flex justify-between text-xs"><span>Social links on site</span><span className="text-green-600 font-medium">+5</span></div>}
-                                          {data.website.loadsSuccessfully && <div className="flex justify-between text-xs"><span>Website loads OK</span><span className="text-green-600 font-medium">+5</span></div>}
+                                          <div className="flex justify-between text-xs"><span>Loads successfully</span><span className="text-green-600 font-medium">+5</span></div>
+                                        </div>
+                                      ) : data.website?.exists ? (
+                                        <div className="space-y-0.5">
+                                          <div className="flex justify-between text-xs"><span className="text-red-500">Website doesn't load / parked domain</span><span className="text-red-500 font-medium">+0</span></div>
                                         </div>
                                       ) : (
                                         <p className="text-xs text-muted-foreground">No website found</p>

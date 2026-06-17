@@ -16,10 +16,11 @@
  *   - Multiple positions (3+): +6
  *   - Leadership role in headline: +7
  *   - Detailed profile (summary >100 chars): +5
- * - Website presence: up to 25 points
- *   - Has website: +15
- *   - Website has social links: +5
- *   - Website is responsive/loads fast: +5
+ * - Website presence: up to 25 points (ONLY if website actually loads)
+ *   - Has a real, functioning website (not parked/expired/placeholder): +15
+ *   - Website has real social media links (in href attributes): +5
+ *   - Website confirmed loading successfully: +5
+ *   - NOTE: Parked domains, expired sites, placeholder pages = 0 points
  */
 
 import * as db from "./db";
@@ -121,10 +122,11 @@ function calculateScore(metrics: EngagementMetrics): number {
   }
 
   // Website scoring (up to 25 points)
-  if (metrics.website?.exists) {
-    score += 15;
-    if (metrics.website.hasSocialLinks) score += 5;
-    if (metrics.website.loadsSuccessfully) score += 5;
+  // Only award points if the website actually loads and is a real site
+  if (metrics.website?.exists && metrics.website.loadsSuccessfully) {
+    score += 15; // Has a real, functioning website
+    if (metrics.website.hasSocialLinks) score += 5; // Has real social links in href attributes
+    score += 5; // Confirmed loads successfully
   }
 
   return Math.min(100, score);
@@ -179,21 +181,69 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
     }
   }
 
-  // 2. Score Website (secondary signal)
+  // 2. Score Website (secondary signal) — strict validation
   if (lead.website) {
-    metrics.website = { exists: true, loadsSuccessfully: false };
+    metrics.website = { exists: false, loadsSuccessfully: false, hasSocialLinks: false };
     try {
-      const response = await fetch(lead.website.startsWith("http") ? lead.website : `https://${lead.website}`, {
-        signal: AbortSignal.timeout(5000),
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+      const websiteUrl = lead.website.startsWith("http") ? lead.website : `https://${lead.website}`;
+      const response = await fetch(websiteUrl, {
+        signal: AbortSignal.timeout(8000),
+        redirect: "follow",
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
       });
+
+      // Only count as loading if we get a real 2xx response
       if (response.ok) {
-        metrics.website.loadsSuccessfully = true;
         const html = await response.text();
-        metrics.website.hasSocialLinks = html.includes("instagram.com") || html.includes("linkedin.com") || html.includes("facebook.com") || html.includes("twitter.com") || html.includes("x.com");
+        const htmlLower = html.toLowerCase();
+        const contentLength = html.length;
+
+        // Detect parked/dead/placeholder domains
+        const parkedIndicators = [
+          "domain is for sale", "buy this domain", "this domain is parked",
+          "domain parking", "godaddy", "sedoparking", "hugedomains",
+          "this page is under construction", "coming soon", "website expired",
+          "account suspended", "account has been suspended",
+          "default web page", "apache2 default page", "welcome to nginx",
+          "domain has expired", "renewal grace period",
+          "this site can't be reached", "page not found",
+          "namecheap", "register.com", "afternic"
+        ];
+
+        const isParked = parkedIndicators.some(indicator => htmlLower.includes(indicator));
+        const isTooShort = contentLength < 500; // Real websites have more than 500 chars of HTML
+        const hasNoBody = !htmlLower.includes("<body") || (htmlLower.includes("<body") && html.replace(/<[^>]*>/g, "").trim().length < 50);
+
+        if (!isParked && !isTooShort && !hasNoBody) {
+          // This looks like a real, functioning website
+          metrics.website.exists = true;
+          metrics.website.loadsSuccessfully = true;
+
+          // Check for real social media links (not just mentions in scripts/ads)
+          const socialPatterns = [
+            /href=["'][^"']*instagram\.com\/[a-zA-Z0-9_.]+/i,
+            /href=["'][^"']*linkedin\.com\/(in|company)\/[a-zA-Z0-9_-]+/i,
+            /href=["'][^"']*facebook\.com\/[a-zA-Z0-9_.]+/i,
+            /href=["'][^"']*twitter\.com\/[a-zA-Z0-9_]+/i,
+            /href=["'][^"']*x\.com\/[a-zA-Z0-9_]+/i,
+          ];
+          metrics.website.hasSocialLinks = socialPatterns.some(pattern => pattern.test(html));
+        } else {
+          // Parked or placeholder domain — website field has a URL but it's not a real site
+          metrics.website.exists = true; // URL exists in lead data
+          metrics.website.loadsSuccessfully = false;
+          metrics.website.hasSocialLinks = false;
+        }
+      } else {
+        // Got a non-OK status (4xx, 5xx) — website doesn't load
+        metrics.website.exists = true; // URL exists in lead data
+        metrics.website.loadsSuccessfully = false;
       }
-    } catch {
-      // Website check failed, still count as exists
+    } catch (err: any) {
+      // DNS failure, timeout, connection refused — website is truly unreachable
+      metrics.website.exists = true; // URL exists in lead data but doesn't work
+      metrics.website.loadsSuccessfully = false;
+      metrics.website.hasSocialLinks = false;
     }
   }
 
