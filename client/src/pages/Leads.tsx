@@ -1701,6 +1701,22 @@ export default function LeadsPage() {
                 Score Social Engagement
               </Button>
               <Button
+                variant={sortBy === "engagement_desc" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  if (sortBy === "engagement_desc") {
+                    setSortBy("newest");
+                  } else {
+                    setSortBy("engagement_desc");
+                    toast.success("Sorted by engagement score: highest first");
+                  }
+                }}
+                className="gap-1.5"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5" />
+                {sortBy === "engagement_desc" ? "Sorted by Score" : "Sort by Score"}
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={async () => {

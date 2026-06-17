@@ -785,3 +785,6 @@
 - [x] Fix website scoring: reports "Website loads OK" and "has social links" even when the website doesn't actually open for users
 - [x] Improve website validation: check for proper HTTP status, follow redirects, detect parked/dead domains
 - [x] If website doesn't truly load (timeout, DNS fail, 4xx/5xx, parked domain), mark as not loading and don't award points
+
+## Feature — Sort Leads by Engagement Score
+- [x] Add a button to sort/re-arrange leads list by engagement score (highest on top, lowest at bottom)
