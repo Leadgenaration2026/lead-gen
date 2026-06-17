@@ -766,3 +766,8 @@
 - [x] Replace bulk delete risky/unknown dialog with a selectable list showing all risky/unknown leads
 - [x] Allow user to uncheck leads they want to keep before confirming deletion
 - [x] Only delete the checked/selected leads
+
+## Bug Fixes & Changes — Engagement Score, Website Links, Create New Lead Set
+- [x] Engagement score should be based on LinkedIn + Website only (remove Instagram from scoring)
+- [x] Fix website links not opening properly in leads table (auto-prepend https:// if missing)
+- [x] "Create New Lead Set" button should navigate to Dashboard Leads tab (manual/CSV/AI upload), not All Leads page

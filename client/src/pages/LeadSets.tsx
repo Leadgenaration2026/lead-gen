@@ -217,7 +217,7 @@ export default function LeadSetsPage() {
               <p className="text-muted-foreground text-sm">Organize your leads into named groups for better management</p>
             </div>
           </div>
-          <Button className="gap-2" onClick={() => navigate("/all-leads")}>
+          <Button className="gap-2" onClick={() => navigate("/dashboard?tab=leads")}>
             <Plus className="w-4 h-4" />
             Create New Lead Set
           </Button>

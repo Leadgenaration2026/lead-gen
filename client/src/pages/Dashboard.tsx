@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { useLocation } from "wouter";
-import { useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,15 @@ import CampaignsPage from "./Campaigns";
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
   const [, navigate] = useLocation();
+  const searchString = useSearch();
+  const urlTab = new URLSearchParams(searchString).get("tab");
+  const [activeTab, setActiveTab] = useState(urlTab || "overview");
+
+  useEffect(() => {
+    if (urlTab && ["overview", "leads", "compose", "campaigns", "social", "analytics", "settings"].includes(urlTab)) {
+      setActiveTab(urlTab);
+    }
+  }, [urlTab]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -54,7 +63,7 @@ export default function Dashboard() {
         </div>
 
         {/* Main Navigation Tabs */}
-        <Tabs defaultValue="overview" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="leads">Leads</TabsTrigger>

@@ -684,10 +684,10 @@ export default function LeadsPage() {
       
       // Auto-trigger engagement scoring for newly imported leads
       if (result.imported > 0 && result.leadIds && result.leadIds.length > 0) {
-        toast.info("Scoring social engagement for imported leads (LinkedIn + Instagram)...", { duration: 5000 });
+        toast.info("Scoring engagement for imported leads (LinkedIn + Website)...", { duration: 5000 });
         try {
           await scoreEngagementBatchMutation.mutateAsync({ leadIds: result.leadIds });
-          toast.success("Social engagement scores updated! Leads ranked by LinkedIn/Instagram activity.");
+          toast.success("Engagement scores updated! Leads ranked by LinkedIn + Website presence.");
           leadsQuery.refetch();
         } catch {
           toast.info("Leads imported. Click 'Score Social Engagement' to rank by activity.");
@@ -1645,7 +1645,7 @@ export default function LeadsPage() {
                 onClick={async () => {
                   const ids = selectedLeadIds.size > 0 ? Array.from(selectedLeadIds) : filteredLeads.map((l: any) => l.id);
                   if (ids.length === 0) { toast.error("No leads to score"); return; }
-                  toast.info(`Scoring social engagement for ${ids.length} leads (LinkedIn + Instagram)... This may take a moment.`);
+                  toast.info(`Scoring engagement for ${ids.length} leads (LinkedIn + Website)... This may take a moment.`);
                   try {
                     const result = await scoreEngagementBatchMutation.mutateAsync({ leadIds: ids });
                     toast.success(`Scored ${result.scored} leads (${result.errors} errors)`);
@@ -1810,7 +1810,7 @@ export default function LeadsPage() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           {lead.website && (
-                            <a href={lead.website} target="_blank" rel="noopener noreferrer" title="Website" className="text-muted-foreground hover:text-blue-600 transition-colors">
+                            <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer" title="Website" className="text-muted-foreground hover:text-blue-600 transition-colors">
                               <Globe className="w-3.5 h-3.5" />
                             </a>
                           )}
@@ -1836,7 +1836,7 @@ export default function LeadsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         {lead.engagementScore != null && lead.engagementScore > 0 ? (
-                          <div className="flex items-center justify-center gap-1.5" title={`Social Engagement Score: ${lead.engagementScore}/100\nLinkedIn + Instagram + Website activity`}>
+                          <div className="flex items-center justify-center gap-1.5" title={`Engagement Score: ${lead.engagementScore}/100\nLinkedIn profile + Website presence`}>
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
                               lead.engagementScore >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
                               lead.engagementScore >= 30 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
