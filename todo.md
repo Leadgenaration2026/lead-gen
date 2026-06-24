@@ -788,3 +788,12 @@
 
 ## Feature — Sort Leads by Engagement Score
 - [x] Add a button to sort/re-arrange leads list by engagement score (highest on top, lowest at bottom)
+
+## Feature — Bounce Email Tracking
+- [x] Add bounce status tracking to campaign emails (bounced/not bounced)
+- [x] Add webhook endpoint to receive bounce notifications from SMTP/email provider
+- [x] Track bounce count per campaign
+- [x] Display bounce rate (bounced / total sent) in campaign detail page
+- [x] Display bounce rate in analytics dashboard
+- [x] Show which specific leads bounced in campaign detail timeline
+- [x] Add bounce count to campaign list/history view

@@ -73,6 +73,7 @@ export const campaigns = mysqlTable("campaigns", {
   openCount: int("openCount").default(0).notNull(),
   clickCount: int("clickCount").default(0).notNull(),
   callCount: int("callCount").default(0).notNull(),
+  bounceCount: int("bounceCount").default(0).notNull(),
   dailySendLimit: int("dailySendLimit"), // Max emails to send per day (null = send all at once)
   scheduledAt: timestamp("scheduledAt"),
   scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
@@ -96,6 +97,9 @@ export const campaignLeads = mysqlTable("campaignLeads", {
   emailOpenedAt: timestamp("emailOpenedAt"),
   emailClicked: boolean("emailClicked").default(false).notNull(),
   emailClickedAt: timestamp("emailClickedAt"),
+  emailBounced: boolean("emailBounced").default(false).notNull(),
+  emailBouncedAt: timestamp("emailBouncedAt"),
+  bounceReason: varchar("bounceReason", { length: 500 }),
   callTriggered: boolean("callTriggered").default(false).notNull(),
   callTriggeredAt: timestamp("callTriggeredAt"),
   retellCallId: varchar("retellCallId", { length: 255 }),

@@ -1525,6 +1525,16 @@ export default function EmailComposer() {
                             <p className="text-xs text-muted-foreground">Calls</p>
                             <p className="text-lg font-semibold text-orange-600">{campaign.callCount}</p>
                           </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Bounced</p>
+                            <p className="text-lg font-semibold text-red-600">{(campaign as any).bounceCount || 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Bounce Rate</p>
+                            <p className="text-lg font-semibold text-red-500">
+                              {campaign.sentCount > 0 ? Math.round((((campaign as any).bounceCount || 0) / campaign.sentCount) * 100) : 0}%
+                            </p>
+                          </div>
                         </div>
 
                         <div className="flex gap-2">

@@ -459,6 +459,20 @@ export default function CampaignDetail() {
                   <p className="text-xs text-muted-foreground mt-1">Calls Made</p>
                 </CardContent>
               </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-red-600">{report.summary.totalBounced || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Bounced</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-red-500">
+                    {report.summary.totalEmailsSent > 0 ? Math.round(((report.summary.totalBounced || 0) / report.summary.totalEmailsSent) * 100) : 0}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Bounce Rate</p>
+                </CardContent>
+              </Card>
             </div>
           )}
 
@@ -475,6 +489,7 @@ export default function CampaignDetail() {
                     { label: "Opened", value: report.summary.totalEmailsOpened, total: report.summary.totalEmailsSent || 1, color: "bg-green-500" },
                     { label: "Clicked", value: report.summary.totalEmailsClicked, total: report.summary.totalEmailsSent || 1, color: "bg-purple-500" },
                     { label: "Calls Made", value: report.summary.totalCallsMade, total: report.summary.totalEmailsClicked || report.summary.totalEmailsOpened || 1, color: "bg-orange-500" },
+                    { label: "Bounced", value: report.summary.totalBounced || 0, total: report.summary.totalEmailsSent || 1, color: "bg-red-500" },
                   ].map((step) => (
                     <div key={step.label} className="flex items-center gap-3">
                       <span className="text-sm w-24 text-muted-foreground">{step.label}</span>

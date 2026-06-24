@@ -420,6 +420,89 @@ export function registerEmailTrackingRoutes(app: Express) {
   });
 
   /**
+   * Email bounce webhook
+   * POST /api/webhooks/bounce
+   * Called by SMTP provider (SendGrid, Mailgun, AWS SES, etc.) when an email bounces
+   * Also supports manual bounce reporting
+   * Body: { email: string, reason?: string, campaignLeadId?: number }
+   */
+  app.post("/api/webhooks/bounce", async (req: Request, res: Response) => {
+    try {
+      const { email, reason, campaignLeadId, type } = req.body;
+      console.log(`[EmailTracking] Bounce webhook received - email: ${email}, campaignLeadId: ${campaignLeadId}, type: ${type}`);
+
+      const bounceReason = reason || type || "hard_bounce";
+      let processedCount = 0;
+
+      if (campaignLeadId) {
+        // Direct campaign lead ID provided
+        const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+        if (campaignLead && !campaignLead.emailBounced) {
+          await db.updateCampaignLead(campaignLeadId, {
+            emailBounced: true,
+            emailBouncedAt: new Date(),
+            bounceReason: bounceReason,
+          });
+          // Update campaign bounce count
+          const campaign = await db.getCampaignById(campaignLead.campaignId);
+          if (campaign) {
+            await db.updateCampaign(campaignLead.campaignId, {
+              bounceCount: (campaign.bounceCount || 0) + 1,
+            });
+          }
+          // Cancel follow-ups for bounced email
+          await db.cancelPendingFollowUps(campaignLeadId);
+          processedCount++;
+          console.log(`[EmailTracking] Marked campaignLead ${campaignLeadId} as bounced: ${bounceReason}`);
+        }
+      } else if (email) {
+        // Find all campaign leads with this email
+        const activeCampaignLeads = await db.findCampaignLeadsByEmail(email);
+        for (const cl of activeCampaignLeads) {
+          // Check if already bounced
+          const clFull = await db.getCampaignLeadById(cl.id);
+          if (clFull && !clFull.emailBounced) {
+            await db.updateCampaignLead(cl.id, {
+              emailBounced: true,
+              emailBouncedAt: new Date(),
+              bounceReason: bounceReason,
+            });
+            // Update campaign bounce count
+            const campaign = await db.getCampaignById(cl.campaignId);
+            if (campaign) {
+              await db.updateCampaign(cl.campaignId, {
+                bounceCount: (campaign.bounceCount || 0) + 1,
+              });
+            }
+            // Cancel follow-ups for bounced email
+            await db.cancelPendingFollowUps(cl.id);
+            processedCount++;
+            console.log(`[EmailTracking] Marked campaignLead ${cl.id} as bounced via email lookup: ${bounceReason}`);
+          }
+        }
+
+        // Also update lead verification status to undeliverable for all leads with this email
+        if (activeCampaignLeads.length > 0) {
+          for (const cl of activeCampaignLeads) {
+            const lead = await db.getLeadById(cl.leadId);
+            if (lead && lead.emailVerificationStatus !== "undeliverable") {
+              await db.updateLead(lead.id, {
+                emailVerificationStatus: "undeliverable",
+              });
+              console.log(`[EmailTracking] Updated lead ${lead.id} email verification to undeliverable due to bounce`);
+            }
+          }
+        }
+      }
+
+      res.json({ success: true, processed: processedCount });
+    } catch (error) {
+      console.error("[EmailTracking] Error processing bounce webhook:", error);
+      res.status(500).json({ error: "Failed to process bounce" });
+    }
+  });
+
+  /**
    * Retell.AI webhook for call status updates
    * POST /api/webhooks/retell
    * Receives call status updates from Retell.AI

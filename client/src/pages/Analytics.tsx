@@ -237,7 +237,7 @@ export default function AnalyticsPage() {
                       {campaign.status}
                     </Badge>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="grid grid-cols-5 gap-2 text-center">
                     <div>
                       <p className="text-sm font-semibold">{campaign.sent}</p>
                       <p className="text-[10px] text-muted-foreground">Sent</p>
@@ -253,6 +253,10 @@ export default function AnalyticsPage() {
                     <div>
                       <p className="text-sm font-semibold text-orange-600">{campaign.calls}</p>
                       <p className="text-[10px] text-muted-foreground">Calls</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-red-600">{campaign.bounceRate || 0}%</p>
+                      <p className="text-[10px] text-muted-foreground">Bounce</p>
                     </div>
                   </div>
                   {/* Progress bar showing funnel */}

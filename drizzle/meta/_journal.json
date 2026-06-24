@@ -134,6 +134,13 @@
       "when": 1781553144604,
       "tag": "0018_dashing_domino",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1782313934625,
+      "tag": "0019_wonderful_sersi",
+      "breakpoints": true
     }
   ]
 }

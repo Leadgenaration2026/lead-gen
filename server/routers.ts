@@ -2126,6 +2126,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const totalCallsMade = report.reduce((sum, r) => sum + (r.initialCall.triggered ? 1 : 0) + r.summary.callsMade, 0);
         const totalCallsPending = report.reduce((sum, r) => sum + r.summary.callsPending, 0);
         const totalEmailsPending = report.reduce((sum, r) => sum + r.summary.emailsPending, 0);
+        const totalBounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
 
         // Social outreach stats for this campaign
         let socialOutreachStats = { totalSent: 0, totalAccepted: 0, totalPending: 0, byPlatform: { linkedin: { sent: 0, accepted: 0, pending: 0 }, instagram: { sent: 0, accepted: 0, pending: 0 }, facebook: { sent: 0, accepted: 0, pending: 0 } } };
@@ -2177,6 +2178,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             totalCallsMade,
             totalCallsPending,
             totalEmailsPending,
+            totalBounced,
             socialOutreach: socialOutreachStats,
           },
           leads: report,
@@ -3072,8 +3074,10 @@ Respond in this exact JSON format:
         opened: number;
         clicked: number;
         calls: number;
+        bounced: number;
         openRate: number;
         clickRate: number;
+        bounceRate: number;
         createdAt: Date;
       }> = [];
 
@@ -3083,6 +3087,7 @@ Respond in this exact JSON format:
         const opened = campaignLeadsList.filter((cl: any) => cl.emailOpened).length;
         const clicked = campaignLeadsList.filter((cl: any) => cl.emailClicked).length;
         const calls = campaignLeadsList.filter((cl: any) => cl.callTriggered).length;
+        const bounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
 
         totalSent += sent;
         totalOpened += opened;
@@ -3098,8 +3103,10 @@ Respond in this exact JSON format:
           opened,
           clicked,
           calls,
+          bounced,
           openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
           clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
+          bounceRate: sent > 0 ? Math.round((bounced / sent) * 100) : 0,
           createdAt: campaign.createdAt,
         });
       }

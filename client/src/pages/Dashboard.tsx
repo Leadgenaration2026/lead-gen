@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle, MailWarning } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import LeadsPage from "./Leads";
 import SettingsPage from "./Settings";
@@ -292,6 +292,9 @@ function OverviewTab() {
                       <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {campaign.openCount} opens</span>
                       <span className="flex items-center gap-1"><MousePointerClick className="w-3 h-3" /> {(campaign as any).clickCount || 0} clicks</span>
                       <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {(campaign as any).callCount || 0} calls</span>
+                      {((campaign as any).bounceCount || 0) > 0 && (
+                        <span className="flex items-center gap-1 text-red-600"><MailWarning className="w-3 h-3" /> {(campaign as any).bounceCount} bounced</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
