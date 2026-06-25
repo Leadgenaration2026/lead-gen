@@ -69,6 +69,11 @@ export default function SettingsPage() {
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationEmailTouched, setNotificationEmailTouched] = useState(false);
 
+  // Claude API Key state
+  const [claudeApiKey, setClaudeApiKey] = useState("");
+  const [claudeKeyTouched, setClaudeKeyTouched] = useState(false);
+  const [showClaudeKey, setShowClaudeKey] = useState(false);
+
   // Social profiles state
   const [socialProfiles, setSocialProfiles] = useState({
     linkedinUrl: "",
@@ -127,6 +132,8 @@ export default function SettingsPage() {
       setReplyToEmailTouched(false);
       setNotificationEmail((settingsQuery.data as any).notificationEmail || "");
       setNotificationEmailTouched(false);
+      setClaudeApiKey("");
+      setClaudeKeyTouched(false);
 
       setSocialProfiles({
         linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
@@ -262,6 +269,23 @@ export default function SettingsPage() {
     }
   };
 
+  // Save Claude API Key
+  const handleSaveClaude = async () => {
+    try {
+      if (claudeKeyTouched && claudeApiKey) {
+        await updateSettingsMutation.mutateAsync({ claudeApiKey });
+        toast.success("Claude API key saved!");
+        setClaudeKeyTouched(false);
+        setClaudeApiKey("");
+        settingsQuery.refetch();
+      } else {
+        toast.error("Please enter a Claude API key");
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to save Claude API key");
+    }
+  };
+
   // Run email deliverability checks
   const runDeliverabilityChecks = () => {
     setChecksRunning(true);
@@ -364,6 +388,10 @@ export default function SettingsPage() {
           <TabsTrigger value="seamless" className="flex items-center gap-1 text-xs">
             <Zap className="w-3.5 h-3.5" />
             Seamless.ai
+          </TabsTrigger>
+          <TabsTrigger value="claude" className="flex items-center gap-1 text-xs">
+            <KeyRound className="w-3.5 h-3.5" />
+            Claude AI
           </TabsTrigger>
           <TabsTrigger value="deliverability" className="flex items-center gap-1 text-xs">
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -947,6 +975,60 @@ export default function SettingsPage() {
               <Button onClick={handleSaveSeamless} disabled={updateSettingsMutation.isPending} className="gap-2">
                 {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save Seamless.ai Settings
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Claude AI Tab */}
+        <TabsContent value="claude" className="mt-6 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-purple-600" />
+                Claude AI Integration
+              </CardTitle>
+              <CardDescription>
+                Connect your Anthropic Claude API key for AI-powered email generation. Claude writes professional, personalized emails for your campaigns.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  Claude API Key
+                  {(settingsQuery.data as any)?.hasClaudeApiKey && (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showClaudeKey ? "text" : "password"}
+                    placeholder={(settingsQuery.data as any)?.hasClaudeApiKey ? "••••••••  (leave blank to keep current)" : "sk-ant-api03-..."}
+                    value={claudeApiKey}
+                    onChange={(e) => { setClaudeApiKey(e.target.value); setClaudeKeyTouched(true); }}
+                  />
+                  <Button variant="outline" size="icon" onClick={() => setShowClaudeKey(!showClaudeKey)}>
+                    {showClaudeKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" className="text-purple-600 underline">Anthropic Console → API Keys</a>
+                </p>
+              </div>
+              <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
+                <h4 className="font-medium text-sm">What Claude is used for</h4>
+                <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                  <li>AI-powered email generation for campaigns (personalized, professional emails)</li>
+                  <li>Follow-up email generation (7 unique follow-ups per lead)</li>
+                  <li>Email template creation with dynamic variables</li>
+                  <li>Weak point analysis and competitor research for email content</li>
+                </ul>
+              </div>
+              <Button onClick={handleSaveClaude} disabled={updateSettingsMutation.isPending} className="gap-2">
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Claude API Key
               </Button>
             </CardContent>
           </Card>

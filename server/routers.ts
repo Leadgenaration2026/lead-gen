@@ -75,6 +75,7 @@ const updateUserSettingsSchema = z.object({
   socialNotificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
   replyToEmail: z.union([z.string().email(), z.literal("")]).optional(),
   notificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  claudeApiKey: z.string().optional(),
 });
 
 export const appRouter = router({
@@ -2000,6 +2001,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           socialNotificationEmail: "",
           replyToEmail: "",
           notificationEmail: "",
+          hasClaudeApiKey: false,
         };
       }
       // Don't return sensitive data to frontend
@@ -2028,6 +2030,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         socialNotificationEmail: settings.socialNotificationEmail || "",
         replyToEmail: settings.replyToEmail || "",
         notificationEmail: settings.notificationEmail || "",
+        hasClaudeApiKey: !!settings.claudeApiKey,
       };
     }),
 
@@ -2045,6 +2048,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           if (key === 'calcomWebhookSecret' && !value) continue;
           if (key === 'retellWebhookSecret' && !value) continue;
           if (key === 'seamlessApiKey' && !value) continue;
+          if (key === 'claudeApiKey' && !value) continue;
           cleanedInput[key] = value;
         }
         

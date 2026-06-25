@@ -843,3 +843,9 @@
 - [x] Add "Notification Email Address" field in Settings (where positive reply alerts are sent)
 - [x] Clarify webhook section purpose in Settings (needed for reply detection)
 - [x] Use dynamic Reply-To and Notification email from settings instead of hardcoded values
+
+## Feature — Claude API Key in Settings UI
+- [x] Add claudeApiKey column to userSettings table
+- [x] Add Claude API Key input field in Settings page (masked/password style)
+- [x] Update claude.ts to read API key from user settings (DB) instead of environment variable
+- [x] Remove dependency on ANTHROPIC_API_KEY environment variable (now falls back to DB key first)

@@ -1,0 +1,1 @@
+ALTER TABLE `userSettings` ADD `claudeApiKey` varchar(500);

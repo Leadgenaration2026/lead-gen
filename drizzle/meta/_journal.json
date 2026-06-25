@@ -169,6 +169,13 @@
       "when": 1782422671633,
       "tag": "0023_greedy_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1782424331258,
+      "tag": "0024_early_boom_boom",
+      "breakpoints": true
     }
   ]
 }

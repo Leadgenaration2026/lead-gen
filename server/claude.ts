@@ -1,11 +1,28 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ENV } from "./_core/env";
+import * as db from "./db";
 
-const getClient = () => {
-  if (!ENV.anthropicApiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not configured");
+/**
+ * Get Claude API client.
+ * Priority: 1) Explicit apiKey param, 2) User's saved key in DB, 3) ENV fallback
+ */
+const getClient = async (apiKey?: string) => {
+  if (apiKey) {
+    return new Anthropic({ apiKey });
   }
-  return new Anthropic({ apiKey: ENV.anthropicApiKey });
+  
+  // Try to get the key from user settings (userId 1 = owner)
+  const settings = await db.getUserSettings(1);
+  if (settings?.claudeApiKey) {
+    return new Anthropic({ apiKey: settings.claudeApiKey });
+  }
+  
+  // Fallback to environment variable
+  if (ENV.anthropicApiKey) {
+    return new Anthropic({ apiKey: ENV.anthropicApiKey });
+  }
+  
+  throw new Error("Claude API key is not configured. Please add your API key in Settings → Claude AI.");
 };
 
 interface GenerateEmailParams {
@@ -36,8 +53,8 @@ interface GeneratedEmail {
   model: string;
 }
 
-export async function generateEmailWithClaude(params: GenerateEmailParams): Promise<GeneratedEmail> {
-  const client = getClient();
+export async function generateEmailWithClaude(params: GenerateEmailParams & { apiKey?: string }): Promise<GeneratedEmail> {
+  const client = await getClient(params.apiKey);
   const modelUsed = "claude-sonnet-4-6";
 
   // Build problem context from analysis
