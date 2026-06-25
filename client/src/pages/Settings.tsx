@@ -1376,7 +1376,7 @@ function WebhookStatusPanel() {
   });
 
   const deployedDomain = "leadgenoutreach-gkqazghm.manus.space";
-  const calendlyUrl = `https://${deployedDomain}/api/webhooks/calendly`;
+  const calcomUrl = `https://${deployedDomain}/api/webhooks/calendly`;
   const replyUrl = `https://${deployedDomain}/api/webhooks/reply`;
   const retellUrl = `https://${deployedDomain}/api/webhooks/retell`;
 
@@ -1431,17 +1431,17 @@ function WebhookStatusPanel() {
             Webhook Integration Status
           </CardTitle>
           <CardDescription>
-            Monitor incoming webhook events from Calendly, email replies, and Retell.AI call updates.
+            Monitor incoming webhook events from Cal.com, email replies, and Retell.AI call updates.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Calendly Status */}
+            {/* Cal.com Status */}
             <div className={`p-4 rounded-lg border-2 ${getStatusColor(statsQuery.data?.calendlyLast ?? null)}`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className={`w-2.5 h-2.5 rounded-full ${getStatusDot(statsQuery.data?.calendlyLast ?? null)}`} />
-                  <span className="font-medium text-sm">Calendly Bookings</span>
+                  <span className="font-medium text-sm">Cal.com Bookings</span>
                 </div>
                 <Zap className="w-4 h-4 opacity-50" />
               </div>
@@ -1496,20 +1496,20 @@ function WebhookStatusPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Calendly URL */}
+          {/* Cal.com URL */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <Zap className="w-3.5 h-3.5 text-blue-600" />
-              Calendly Booking Webhook
+              Cal.com Booking Webhook
             </Label>
             <div className="flex items-center gap-2">
-              <Input value={calendlyUrl} readOnly className="font-mono text-xs bg-muted" />
-              <Button variant="outline" size="sm" onClick={() => copyToClipboard(calendlyUrl, "Calendly")}>
+              <Input value={calcomUrl} readOnly className="font-mono text-xs bg-muted" />
+              <Button variant="outline" size="sm" onClick={() => copyToClipboard(calcomUrl, "Cal.com")}>
                 <Copy className="w-4 h-4" />
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Add this URL in Calendly → Integrations → Webhooks → Subscribe to event: <code className="bg-muted px-1 rounded">invitee.created</code>
+              Add this URL in Cal.com → Settings → Developer → Webhooks → Subscribe to event: <code className="bg-muted px-1 rounded">BOOKING_CREATED</code>
             </p>
           </div>
 
@@ -1559,7 +1559,7 @@ function WebhookStatusPanel() {
                 className="gap-1"
               >
                 {sendTestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                Test Calendly
+                Test Cal.com
               </Button>
               <Button
                 variant="outline"
@@ -1620,7 +1620,7 @@ function WebhookStatusPanel() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">
-                        {event.webhookType === "calendly_booking" ? "Calendly Booking" :
+                        {event.webhookType === "calendly_booking" ? "Cal.com Booking" :
                          event.webhookType === "email_reply" ? "Email Reply" :
                          "Retell Call Update"}
                       </span>
