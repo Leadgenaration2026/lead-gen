@@ -80,9 +80,9 @@ describe("plainTextToHtml", () => {
   });
 
   it("should render 🗓️ booking link as a styled button", () => {
-    const text = "🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min";
+    const text = "🗓️ 30 Min Free Consultation: https://cal.com/nitin-virtualassistant-group.com/30min";
     const result = plainTextToHtml(text);
-    expect(result).toContain('<a href="https://calendly.com/nitin-virtualassistant/30min"');
+    expect(result).toContain('<a href="https://cal.com/nitin-virtualassistant-group.com/30min"');
     expect(result).toContain("background-color");
     expect(result).toContain("30 Min Free Consultation");
   });
@@ -99,7 +99,7 @@ I noticed TechFlow is making waves in the SaaS space. Most companies at your sta
 We've helped dozens of SaaS businesses scale their outreach without hiring extra staff.
 
 👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:
-🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min
+🗓️ 30 Min Free Consultation: https://cal.com/nitin-virtualassistant-group.com/30min
 
 Best,
 Nitin`;
@@ -111,7 +111,7 @@ Nitin`;
     expect(result).toContain("<strong");
     expect(result).toContain("50+ qualified leads per week</strong>");
     expect(result).toContain("background-color");
-    expect(result).toContain("calendly.com");
+    expect(result).toContain("cal.com");
     // No orphan <li> tags
     const liCount = (result.match(/<li/g) || []).length;
     const ulCount = (result.match(/<ul/g) || []).length;

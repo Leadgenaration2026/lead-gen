@@ -27,7 +27,7 @@ describe("email.generateAITemplate", () => {
         message: {
           content: JSON.stringify({
             subject: "quick question about your growth",
-            body: '<p>Hi there,</p><p>I noticed your company is expanding rapidly.</p><ul><li>We help companies reduce churn by 40%</li><li>Our clients see ROI within 30 days</li><li>No long-term contracts required</li></ul><p>Would you be open to a quick chat? <a href="https://calendly.com/nitin-virtualassistant/30min">Schedule here</a></p>',
+            body: '<p>Hi there,</p><p>I noticed your company is expanding rapidly.</p><ul><li>We help companies reduce churn by 40%</li><li>Our clients see ROI within 30 days</li><li>No long-term contracts required</li></ul><p>Would you be open to a quick chat? <a href="https://cal.com/nitin-virtualassistant-group.com/30min">Schedule here</a></p>',
           }),
         },
       }],
@@ -97,7 +97,7 @@ describe("email.generateAITemplate", () => {
         message: {
           content: JSON.stringify({
             subject: "quick thought about acme corp",
-            body: '<p>Hi John,</p><p>I noticed Acme Corp is expanding its tech stack.</p><ul><li>We helped similar tech companies save 200+ hours/month</li><li>Our solution integrates in under 24 hours</li><li>Free pilot program available this month</li></ul><p><a href="https://calendly.com/nitin-virtualassistant/30min">Let\'s chat for 15 min</a></p>',
+            body: '<p>Hi John,</p><p>I noticed Acme Corp is expanding its tech stack.</p><ul><li>We helped similar tech companies save 200+ hours/month</li><li>Our solution integrates in under 24 hours</li><li>Free pilot program available this month</li></ul><p><a href="https://cal.com/nitin-virtualassistant-group.com/30min">Let\'s chat for 15 min</a></p>',
           }),
         },
       }],

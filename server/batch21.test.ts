@@ -157,7 +157,7 @@ describe("Email Generation with Problem Analysis", () => {
 
     (generateEmailWithClaude as any).mockResolvedValue({
       subject: "scaling your dental practice",
-      body: "Hi John,\n\nRunning a dental practice in 2024 means juggling patient care with business growth...\n\n• 🚀 **50+ qualified leads per week** on autopilot\n• 📈 **3x more booked appointments** within 30 days\n• 💰 **No long-term contracts** — cancel anytime\n\nWe helped a similar dental practice in Austin go from 15 to 45 new patients per month in just 6 weeks.\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min",
+      body: "Hi John,\n\nRunning a dental practice in 2024 means juggling patient care with business growth...\n\n• 🚀 **50+ qualified leads per week** on autopilot\n• 📈 **3x more booked appointments** within 30 days\n• 💰 **No long-term contracts** — cancel anytime\n\nWe helped a similar dental practice in Austin go from 15 to 45 new patients per month in just 6 weeks.\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: https://cal.com/nitin-virtualassistant-group.com/30min",
       generatedBy: "claude",
       model: "claude-sonnet-4-6",
     });
@@ -181,7 +181,7 @@ describe("Email Generation with Problem Analysis", () => {
   it("should generate email without problem analysis", async () => {
     (generateEmailWithClaude as any).mockResolvedValue({
       subject: "quick thought about growth",
-      body: "Hi there,\n\nMost business owners spend 20+ hours a week on tasks that don't grow revenue...\n\n• 🚀 **Automated lead generation** — 50+ qualified leads weekly\n• ⏱️ **Save 20+ hours per week** on manual outreach\n• 📈 **Proven results** — 3x more booked calls\n\nWe recently helped a similar company cut their lead gen costs by 60% while tripling their pipeline.\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min",
+      body: "Hi there,\n\nMost business owners spend 20+ hours a week on tasks that don't grow revenue...\n\n• 🚀 **Automated lead generation** — 50+ qualified leads weekly\n• ⏱️ **Save 20+ hours per week** on manual outreach\n• 📈 **Proven results** — 3x more booked calls\n\nWe recently helped a similar company cut their lead gen costs by 60% while tripling their pipeline.\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: https://cal.com/nitin-virtualassistant-group.com/30min",
       generatedBy: "claude",
       model: "claude-sonnet-4-6",
     });
@@ -217,7 +217,7 @@ describe("Email Generation with Problem Analysis", () => {
   it("should produce emails with the correct structure: greeting, problems, solutions, case study, CTA", async () => {
     (generateEmailWithClaude as any).mockResolvedValue({
       subject: "noticed something about your clinic",
-      body: "Hi Dr. Smith,\n\nRunning a dental practice in Phoenix means you're likely dealing with rising patient acquisition costs and staff burnout from manual follow-ups.\n\n• 🚀 **Automated patient outreach** — fill your schedule without lifting a finger\n• 📈 **40% more new patients** within the first month\n• 💰 **Zero upfront costs** — we only charge for results\n• ⏱️ **Save 15+ hours weekly** on admin and follow-ups\n\nWe helped Desert Smile Dental in Scottsdale go from 12 to 38 new patients per month in just 5 weeks — without hiring additional staff.\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: https://calendly.com/nitin-virtualassistant/30min",
+      body: "Hi Dr. Smith,\n\nRunning a dental practice in Phoenix means you're likely dealing with rising patient acquisition costs and staff burnout from manual follow-ups.\n\n• 🚀 **Automated patient outreach** — fill your schedule without lifting a finger\n• 📈 **40% more new patients** within the first month\n• 💰 **Zero upfront costs** — we only charge for results\n• ⏱️ **Save 15+ hours weekly** on admin and follow-ups\n\nWe helped Desert Smile Dental in Scottsdale go from 12 to 38 new patients per month in just 5 weeks — without hiring additional staff.\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: https://cal.com/nitin-virtualassistant-group.com/30min",
       generatedBy: "claude",
       model: "claude-sonnet-4-6",
     });

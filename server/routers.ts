@@ -1599,12 +1599,12 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
             
             // Replace CTA links with tracked versions
-            const ctaUrl = 'https://calendly.com/nitin-virtualassistant/30min';
+            const ctaUrl = 'https://cal.com/nitin-virtualassistant-group.com/30min';
             const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
             let emailBody = personalizedTemplate
               .replace(/{{bookingUrl}}/g, trackedCtaUrl)
               .replace(/{{ctaLink}}/g, trackedCtaUrl)
-              .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+              .replace(/https:\/\/cal\.com\/nitin-virtualassistant-group\.com\/30min/g, trackedCtaUrl);
 
             // Also wrap any other raw URLs that weren't caught by the specific patterns above
             emailBody = emailBody.replace(
@@ -1744,7 +1744,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         // Schedule 7 follow-up emails for each lead that was sent today (async, don't block)
         const { scheduleFollowUpEmails } = await import("./_core/followUpScheduler");
-        const ctaLink = "https://calendly.com/nitin-virtualassistant/30min";
+        const ctaLink = "https://cal.com/nitin-virtualassistant-group.com/30min";
         for (const campaignLead of toSendToday) {
           if (!campaignLead.emailSent) continue; // Only schedule follow-ups for actually sent emails
           const leadForFollowUp = await db.getLeadById(campaignLead.leadId);
@@ -2430,7 +2430,7 @@ Return JSON with: { "subject": "...", "body": "..." }`,
 
         // Signature is hardcoded (Nitin's)
         const settings = await db.getUserSettings(ctx.user.id);
-        const ctaLink = input.ctaLink || "https://calendly.com/nitin-virtualassistant/30min";
+        const ctaLink = input.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
 
         // Fetch stored problem analysis for this lead (if available)
         let problemContext = "";
@@ -2643,7 +2643,7 @@ Respond in this exact JSON format:
         const clickTrackingToken = nanoid();
         
         // Wrap all links in the email body with click tracking
-        // Step 1: Replace raw URLs in plain text (e.g. https://calendly.com/...)
+        // Step 1: Replace raw URLs in plain text (e.g. https://cal.com/...)
         let trackedBody = input.body.replace(
           /(https?:\/\/[^\s<>"']+)/g,
           (rawUrl) => {

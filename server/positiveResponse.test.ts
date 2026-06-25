@@ -71,7 +71,7 @@ describe("Positive Response Logic", () => {
       (db.getUserSettings as any).mockResolvedValue({});
 
       // Simulate clicking a Calendly link
-      const calendlyUrl = "https://calendly.com/nitin-virtualassistant/30min";
+      const calendlyUrl = "https://cal.com/nitin-virtualassistant-group.com/30min";
       const res = await request(app)
         .get(`/api/track/click/test-token-123?url=${encodeURIComponent(calendlyUrl)}`);
 
@@ -109,7 +109,7 @@ describe("Positive Response Logic", () => {
       (db.getLeadById as any).mockResolvedValue({ id: 5, phoneNumber: null });
       (db.getUserSettings as any).mockResolvedValue({});
 
-      const calendlyUrl = "https://calendly.com/nitin-virtualassistant/30min";
+      const calendlyUrl = "https://cal.com/nitin-virtualassistant-group.com/30min";
       await request(app)
         .get(`/api/track/click/test-token-456?url=${encodeURIComponent(calendlyUrl)}`);
 

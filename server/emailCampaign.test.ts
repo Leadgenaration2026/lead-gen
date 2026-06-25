@@ -34,7 +34,7 @@ vi.mock('./db', async (importOriginal) => {
 
 vi.mock('./_core/llm', () => ({
   invokeLLM: vi.fn().mockResolvedValue({
-    choices: [{ message: { content: JSON.stringify({ subject: "quick question about acme", body: "<p>Hi John,</p><p>I noticed Acme Corp is growing fast in the SaaS space.</p><ul><li>Save time with automation</li><li>Get measurable results within 30 days</li></ul><p><a href=\"https://calendly.com/nitin-virtualassistant/30min\">Schedule a quick chat</a></p>" }) } }],
+    choices: [{ message: { content: JSON.stringify({ subject: "quick question about acme", body: "<p>Hi John,</p><p>I noticed Acme Corp is growing fast in the SaaS space.</p><ul><li>Save time with automation</li><li>Get measurable results within 30 days</li></ul><p><a href=\"https://cal.com/nitin-virtualassistant-group.com/30min\">Schedule a quick chat</a></p>" }) } }],
   }),
 }));
 

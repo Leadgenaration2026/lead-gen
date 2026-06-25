@@ -20,7 +20,7 @@ describe("Claude Email Generation (Live)", () => {
     // Body is plain text
     expect(result.body).toBeDefined();
     expect(result.body).toContain("•"); // Has bullet points
-    expect(result.body).toContain("calendly.com"); // Has CTA link
+    expect(result.body).toContain("cal.com"); // Has CTA link
 
     // Should NOT contain HTML tags
     expect(result.body).not.toContain("<p>");
