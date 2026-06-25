@@ -1223,18 +1223,21 @@ function WebhookSigningSecretsCard() {
     onError: () => toast.error("Failed to save webhook signing secret"),
   });
 
-  const [calendlySecret, setCalendlySecret] = useState("");
+  const [calcomSecret, setCalcomSecret] = useState("");
   const [retellSecret, setRetellSecret] = useState("");
-  const [showCalendly, setShowCalendly] = useState(false);
+  const [showCalcom, setShowCalcom] = useState(false);
   const [showRetell, setShowRetell] = useState(false);
-  const [calendlyTouched, setCalendlyTouched] = useState(false);
+  const [calcomTouched, setCalcomTouched] = useState(false);
   const [retellTouched, setRetellTouched] = useState(false);
+  const [calcomEditing, setCalcomEditing] = useState(false);
+  const [retellEditing, setRetellEditing] = useState(false);
 
-  const handleSaveCalendly = () => {
-    if (!calendlySecret.trim()) return;
-    updateMutation.mutate({ calcomWebhookSecret: calendlySecret });
-    setCalendlyTouched(false);
-    setCalendlySecret("");
+  const handleSaveCalcom = () => {
+    if (!calcomSecret.trim()) return;
+    updateMutation.mutate({ calcomWebhookSecret: calcomSecret });
+    setCalcomTouched(false);
+    setCalcomSecret("");
+    setCalcomEditing(false);
   };
 
   const handleSaveRetell = () => {
@@ -1242,6 +1245,7 @@ function WebhookSigningSecretsCard() {
     updateMutation.mutate({ retellWebhookSecret: retellSecret });
     setRetellTouched(false);
     setRetellSecret("");
+    setRetellEditing(false);
   };
 
   return (
@@ -1258,41 +1262,58 @@ function WebhookSigningSecretsCard() {
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Cal.com Signing Key */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Label className="flex items-center gap-2">
             <KeyRound className="w-3.5 h-3.5 text-blue-600" />
             Cal.com Webhook Signing Secret
-            {settingsQuery.data?.hasCalcomWebhookSecret && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
-                <ShieldCheck className="w-3 h-3" /> Configured
-              </span>
-            )}
           </Label>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={showCalendly ? "text" : "password"}
-                value={calendlySecret}
-                onChange={(e) => { setCalendlySecret(e.target.value); setCalendlyTouched(true); }}
-                placeholder={settingsQuery.data?.hasCalcomWebhookSecret ? "••••••••••• (already set)" : "Paste your Cal.com webhook secret"}
-                className="pr-10 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCalendly(!showCalendly)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showCalendly ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          {settingsQuery.data?.hasCalcomWebhookSecret && !calcomEditing ? (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+              <ShieldCheck className="w-5 h-5 text-green-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-800">Secret Saved & Active</p>
+                <p className="text-xs text-green-600">Cal.com webhook signatures are being verified. Incoming requests without valid signatures will be rejected.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setCalcomEditing(true)} className="gap-1">
+                <KeyRound className="w-3 h-3" /> Update
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={handleSaveCalendly}
-              disabled={!calendlyTouched || !calendlySecret.trim() || updateMutation.isPending}
-            >
-              {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-            </Button>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    type={showCalcom ? "text" : "password"}
+                    value={calcomSecret}
+                    onChange={(e) => { setCalcomSecret(e.target.value); setCalcomTouched(true); }}
+                    placeholder="Paste your Cal.com webhook secret here"
+                    className="pr-10 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCalcom(!showCalcom)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showCalcom ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleSaveCalcom}
+                  disabled={!calcomTouched || !calcomSecret.trim() || updateMutation.isPending}
+                  className="gap-1"
+                >
+                  {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  Save
+                </Button>
+                {calcomEditing && (
+                  <Button variant="ghost" size="sm" onClick={() => { setCalcomEditing(false); setCalcomSecret(""); setCalcomTouched(false); }}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             Find this in Cal.com → Settings → Developer → Webhooks → Copy the secret shown when creating the webhook.
             Header: <code className="bg-muted px-1 rounded">x-cal-signature-256</code> (HMAC-SHA256 hex digest)
@@ -1300,41 +1321,58 @@ function WebhookSigningSecretsCard() {
         </div>
 
         {/* Retell Signing Key */}
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Label className="flex items-center gap-2">
             <KeyRound className="w-3.5 h-3.5 text-purple-600" />
             Retell.AI Webhook Signing Key
-            {settingsQuery.data?.hasRetellWebhookSecret && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
-                <ShieldCheck className="w-3 h-3" /> Configured
-              </span>
-            )}
           </Label>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={showRetell ? "text" : "password"}
-                value={retellSecret}
-                onChange={(e) => { setRetellSecret(e.target.value); setRetellTouched(true); }}
-                placeholder={settingsQuery.data?.hasRetellWebhookSecret ? "••••••••••• (already set)" : "Paste your Retell API key (webhook badge)"}
-                className="pr-10 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => setShowRetell(!showRetell)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showRetell ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+          {settingsQuery.data?.hasRetellWebhookSecret && !retellEditing ? (
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+              <ShieldCheck className="w-5 h-5 text-green-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-800">Secret Saved & Active</p>
+                <p className="text-xs text-green-600">Retell.AI webhook signatures are being verified. Incoming requests without valid signatures will be rejected.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setRetellEditing(true)} className="gap-1">
+                <KeyRound className="w-3 h-3" /> Update
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={handleSaveRetell}
-              disabled={!retellTouched || !retellSecret.trim() || updateMutation.isPending}
-            >
-              {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-            </Button>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    type={showRetell ? "text" : "password"}
+                    value={retellSecret}
+                    onChange={(e) => { setRetellSecret(e.target.value); setRetellTouched(true); }}
+                    placeholder="Paste your Retell API key (webhook badge)"
+                    className="pr-10 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRetell(!showRetell)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showRetell ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleSaveRetell}
+                  disabled={!retellTouched || !retellSecret.trim() || updateMutation.isPending}
+                  className="gap-1"
+                >
+                  {updateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  Save
+                </Button>
+                {retellEditing && (
+                  <Button variant="ghost" size="sm" onClick={() => { setRetellEditing(false); setRetellSecret(""); setRetellTouched(false); }}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             In Retell Dashboard → API Keys, use the key with the <strong>webhook badge</strong> next to it.
             Header: <code className="bg-muted px-1 rounded">x-retell-signature</code> (HMAC-SHA256 hex digest)

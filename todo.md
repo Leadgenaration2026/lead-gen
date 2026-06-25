@@ -804,3 +804,8 @@
 - [x] Add CTA link field in Settings so booking URL can be changed from UI without code changes
 - [x] Update email generation (claude.ts, routers.ts) to use dynamic CTA link from user settings instead of hardcoded URL
 - [x] Ensure follow-up emails also use the dynamic CTA link from settings
+
+## Feature — Persistent Save for Webhook Settings
+- [x] Add a clear "Save" button for webhook signing secrets that persists values
+- [x] Show "Configured" status with green banner and checkmark when secrets are already saved
+- [x] Prevent needing to re-enter values — show "Secret Saved & Active" with "Update" button to change
