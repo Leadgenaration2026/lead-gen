@@ -14,6 +14,7 @@ interface GenerateEmailParams {
   companyContext?: string;
   leadContext?: string; // e.g., "Name: John, Company: Acme, Industry: Tech"
   includeVariables?: boolean;
+  ctaLink?: string; // Dynamic CTA link from settings
   problemAnalysis?: {
     painPoints: string[];
     industryTrends?: string[];
@@ -54,7 +55,7 @@ ${params.problemAnalysis.competitiveThreats ? `Competitive Threats: ${params.pro
 - {{industry}} for their industry
 - {{ctaLink}} for the call-to-action booking link
 - {{email}} for their email address`
-    : `CRITICAL: Do NOT use any template variables like {{ownerName}}, {{companyName}}, {{industry}}, {{ctaLink}}, or {{email}}. Write the email as a direct, ready-to-send message using the lead's actual name and company. Use "https://cal.com/nitin-virtualassistant-group.com/30min" as the actual booking link URL.`;
+    : `CRITICAL: Do NOT use any template variables like {{ownerName}}, {{companyName}}, {{industry}}, {{ctaLink}}, or {{email}}. Write the email as a direct, ready-to-send message using the lead's actual name and company. Use "${params.ctaLink || 'https://cal.com/nitin-virtualassistant-group.com/30min'}" as the actual booking link URL.`;
 
   const leadInfo = params.leadContext
     ? `\n\nLead Information:\n${params.leadContext}`
@@ -242,7 +243,7 @@ Return ONLY a JSON object with exactly two fields:
   emailBody = emailBody.replace(/\n\n(?:Best|Regards|Cheers|Thanks|Warm regards|Kind regards|Sincerely)[,]?\n[\s\S]*$/, "");
 
   // Ensure CTA link is present with the required format
-  const ctaTarget = params.includeVariables ? "{{ctaLink}}" : "https://cal.com/nitin-virtualassistant-group.com/30min";
+  const ctaTarget = params.includeVariables ? "{{ctaLink}}" : (params.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min");
   if (!emailBody.includes("30 Min Free Consultation") && !emailBody.includes("free 30-minute consultation")) {
     emailBody += `\n\n👉 Click below to schedule your free 30-minute consultation and begin your 2-week free trial:\n🗓️ 30 Min Free Consultation: ${ctaTarget}`;
   }

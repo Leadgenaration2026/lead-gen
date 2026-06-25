@@ -43,7 +43,7 @@ export default function EmailComposer() {
   const [instructions, setInstructions] = useState("");
   const [subject, setSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
-  const [ctaLink, setCtaLink] = useState("https://calendly.com/nitin-virtualassistant/30min");
+  const [ctaLink, setCtaLink] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [lastAIPrompt, setLastAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
@@ -98,6 +98,14 @@ export default function EmailComposer() {
   const leadSetsQuery = trpc.leadSets.list.useQuery();
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
+  const settingsQuery = trpc.settings.get.useQuery();
+
+  // Load CTA link from settings
+  useEffect(() => {
+    if (settingsQuery.data?.ctaLink && !ctaLink) {
+      setCtaLink(settingsQuery.data.ctaLink);
+    }
+  }, [settingsQuery.data]);
 
   // Mutations - Single
   const generateEmailMutation = trpc.email.generateAI.useMutation();
@@ -362,7 +370,7 @@ export default function EmailComposer() {
                       id="cta-link"
                       value={ctaLink}
                       onChange={(e) => setCtaLink(e.target.value)}
-                      placeholder="https://calendly.com/..."
+                      placeholder="https://cal.com/your-name/30min"
                       className="text-sm"
                     />
                   </div>

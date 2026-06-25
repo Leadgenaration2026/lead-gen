@@ -59,6 +59,10 @@ export default function SettingsPage() {
     dayOfWeek: 1,
   });
 
+  // CTA Link state
+  const [ctaLink, setCtaLink] = useState("");
+  const [ctaLinkTouched, setCtaLinkTouched] = useState(false);
+
   // Social profiles state
   const [socialProfiles, setSocialProfiles] = useState({
     linkedinUrl: "",
@@ -109,6 +113,9 @@ export default function SettingsPage() {
 
       });
       setBouncerKeyTouched(false);
+
+      setCtaLink((settingsQuery.data as any).ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min");
+      setCtaLinkTouched(false);
 
       setSocialProfiles({
         linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
@@ -490,6 +497,44 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* CTA / Booking Link */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ExternalLink className="w-5 h-5" />
+                Call-to-Action (Booking) Link
+              </CardTitle>
+              <CardDescription>
+                This link is used as the CTA in all outreach emails and follow-ups. Change it here to update it everywhere.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Booking / CTA URL</Label>
+                <Input
+                  placeholder="https://cal.com/your-name/30min"
+                  value={ctaLink}
+                  onChange={(e) => { setCtaLink(e.target.value); setCtaLinkTouched(true); }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  This URL will be inserted into every email as the booking link. Supports Cal.com, Calendly, or any scheduling tool.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  updateSettingsMutation.mutate({ ctaLink });
+                  setCtaLinkTouched(false);
+                  toast.success("CTA link updated!");
+                }}
+                disabled={!ctaLinkTouched || !ctaLink.trim() || updateSettingsMutation.isPending}
+                className="gap-2"
+              >
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save CTA Link
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Rotational Email Accounts Section */}
           <Card>
             <CardHeader>
@@ -626,6 +671,8 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* CTA / Booking Link Card - inside email tab */}
 
         {/* Deliverability Checks Tab */}
         <TabsContent value="deliverability" className="mt-6 space-y-4">
@@ -1185,7 +1232,7 @@ function WebhookSigningSecretsCard() {
 
   const handleSaveCalendly = () => {
     if (!calendlySecret.trim()) return;
-    updateMutation.mutate({ calendlyWebhookSecret: calendlySecret });
+    updateMutation.mutate({ calcomWebhookSecret: calendlySecret });
     setCalendlyTouched(false);
     setCalendlySecret("");
   };
@@ -1210,12 +1257,12 @@ function WebhookSigningSecretsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Calendly Signing Key */}
+        {/* Cal.com Signing Key */}
         <div className="space-y-2">
           <Label className="flex items-center gap-2">
             <KeyRound className="w-3.5 h-3.5 text-blue-600" />
-            Calendly Webhook Signing Key
-            {settingsQuery.data?.hasCalendlyWebhookSecret && (
+            Cal.com Webhook Signing Secret
+            {settingsQuery.data?.hasCalcomWebhookSecret && (
               <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
                 <ShieldCheck className="w-3 h-3" /> Configured
               </span>
@@ -1227,7 +1274,7 @@ function WebhookSigningSecretsCard() {
                 type={showCalendly ? "text" : "password"}
                 value={calendlySecret}
                 onChange={(e) => { setCalendlySecret(e.target.value); setCalendlyTouched(true); }}
-                placeholder={settingsQuery.data?.hasCalendlyWebhookSecret ? "••••••••••• (already set)" : "Paste your Calendly signing key"}
+                placeholder={settingsQuery.data?.hasCalcomWebhookSecret ? "••••••••••• (already set)" : "Paste your Cal.com webhook secret"}
                 className="pr-10 font-mono text-xs"
               />
               <button
@@ -1247,8 +1294,8 @@ function WebhookSigningSecretsCard() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Find this in Calendly → Integrations → API & Webhooks → Copy the signing key shown when creating the webhook subscription.
-            Header: <code className="bg-muted px-1 rounded">Calendly-Webhook-Signature</code> (format: <code className="bg-muted px-1 rounded">t=timestamp,v1=hmac</code>)
+            Find this in Cal.com → Settings → Developer → Webhooks → Copy the secret shown when creating the webhook.
+            Header: <code className="bg-muted px-1 rounded">x-cal-signature-256</code> (HMAC-SHA256 hex digest)
           </p>
         </div>
 

@@ -29,20 +29,49 @@ vi.mock("./_core/followUpScheduler", () => ({
 }));
 
 // Import the verification functions directly for unit testing
-import { verifyCalendlySignature, verifyRetellSignature } from "./_core/webhookVerification";
+import { verifyCalcomSignature, verifyRetellSignature } from "./_core/webhookVerification";
 
 describe("HMAC Webhook Signature Verification", () => {
-  describe("verifyCalendlySignature", () => {
+  describe("verifyCalcomSignature - Cal.com format (x-cal-signature-256)", () => {
+    const signingKey = "test-calcom-signing-key-12345";
+
+    it("should verify a valid Cal.com signature", () => {
+      const body = JSON.stringify({ triggerEvent: "BOOKING_CREATED", payload: { attendees: [{ email: "test@example.com" }] } });
+      const signature = crypto.createHmac("sha256", signingKey).update(body).digest("hex");
+
+      const result = verifyCalcomSignature(body, { calcomSignature: signature }, signingKey);
+      expect(result.verified).toBe(true);
+      expect(result.error).toBeUndefined();
+    });
+
+    it("should reject an invalid Cal.com signature", () => {
+      const body = JSON.stringify({ triggerEvent: "BOOKING_CREATED" });
+      const result = verifyCalcomSignature(body, { calcomSignature: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }, signingKey);
+      expect(result.verified).toBe(false);
+      expect(result.error).toContain("HMAC mismatch");
+    });
+
+    it("should reject when body has been tampered with", () => {
+      const originalBody = JSON.stringify({ triggerEvent: "BOOKING_CREATED", payload: { attendees: [{ email: "real@example.com" }] } });
+      const tamperedBody = JSON.stringify({ triggerEvent: "BOOKING_CREATED", payload: { attendees: [{ email: "attacker@evil.com" }] } });
+      const signature = crypto.createHmac("sha256", signingKey).update(originalBody).digest("hex");
+
+      const result = verifyCalcomSignature(tamperedBody, { calcomSignature: signature }, signingKey);
+      expect(result.verified).toBe(false);
+      expect(result.error).toContain("HMAC mismatch");
+    });
+  });
+
+  describe("verifyCalcomSignature - Legacy Calendly format fallback", () => {
     const signingKey = "test-calendly-signing-key-12345";
 
-    it("should verify a valid Calendly signature", () => {
+    it("should verify a valid Calendly signature (legacy fallback)", () => {
       const body = JSON.stringify({ event: "invitee.created", payload: { invitee: { email: "test@example.com" } } });
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const signedPayload = `${timestamp}.${body}`;
       const signature = crypto.createHmac("sha256", signingKey).update(signedPayload).digest("hex");
-      const header = `t=${timestamp},v1=${signature}`;
 
-      const result = verifyCalendlySignature(body, header, signingKey);
+      const result = verifyCalcomSignature(body, { calendlySignature: `t=${timestamp},v1=${signature}` }, signingKey);
       expect(result.verified).toBe(true);
       expect(result.error).toBeUndefined();
     });
@@ -50,51 +79,35 @@ describe("HMAC Webhook Signature Verification", () => {
     it("should reject an invalid Calendly signature", () => {
       const body = JSON.stringify({ event: "invitee.created" });
       const timestamp = Math.floor(Date.now() / 1000).toString();
-      const header = `t=${timestamp},v1=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef`;
 
-      const result = verifyCalendlySignature(body, header, signingKey);
+      const result = verifyCalcomSignature(body, { calendlySignature: `t=${timestamp},v1=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef` }, signingKey);
       expect(result.verified).toBe(false);
       expect(result.error).toContain("HMAC mismatch");
     });
 
-    it("should reject when signature header is missing", () => {
+    it("should reject when signature header is missing entirely", () => {
       const body = JSON.stringify({ event: "invitee.created" });
-      const result = verifyCalendlySignature(body, undefined, signingKey);
+      const result = verifyCalcomSignature(body, {}, signingKey);
       expect(result.verified).toBe(false);
-      expect(result.error).toContain("Missing Calendly-Webhook-Signature header");
+      expect(result.error).toContain("Missing webhook signature header");
     });
 
-    it("should reject when header format is invalid", () => {
+    it("should reject when Calendly header format is invalid", () => {
       const body = JSON.stringify({ event: "invitee.created" });
-      const result = verifyCalendlySignature(body, "invalid-header-format", signingKey);
+      const result = verifyCalcomSignature(body, { calendlySignature: "invalid-header-format" }, signingKey);
       expect(result.verified).toBe(false);
       expect(result.error).toContain("Invalid signature header format");
     });
 
     it("should reject when timestamp is too old (replay attack)", () => {
       const body = JSON.stringify({ event: "invitee.created" });
-      // Timestamp from 10 minutes ago
       const timestamp = (Math.floor(Date.now() / 1000) - 600).toString();
       const signedPayload = `${timestamp}.${body}`;
       const signature = crypto.createHmac("sha256", signingKey).update(signedPayload).digest("hex");
-      const header = `t=${timestamp},v1=${signature}`;
 
-      const result = verifyCalendlySignature(body, header, signingKey);
+      const result = verifyCalcomSignature(body, { calendlySignature: `t=${timestamp},v1=${signature}` }, signingKey);
       expect(result.verified).toBe(false);
       expect(result.error).toContain("timestamp too old");
-    });
-
-    it("should reject when body has been tampered with", () => {
-      const originalBody = JSON.stringify({ event: "invitee.created", payload: { invitee: { email: "real@example.com" } } });
-      const tamperedBody = JSON.stringify({ event: "invitee.created", payload: { invitee: { email: "attacker@evil.com" } } });
-      const timestamp = Math.floor(Date.now() / 1000).toString();
-      const signedPayload = `${timestamp}.${originalBody}`;
-      const signature = crypto.createHmac("sha256", signingKey).update(signedPayload).digest("hex");
-      const header = `t=${timestamp},v1=${signature}`;
-
-      const result = verifyCalendlySignature(tamperedBody, header, signingKey);
-      expect(result.verified).toBe(false);
-      expect(result.error).toContain("HMAC mismatch");
     });
   });
 
@@ -159,9 +172,8 @@ describe("HMAC Webhook Signature Verification", () => {
       registerEmailTrackingRoutes(app);
     });
 
-    it("should accept Calendly webhook when no signing secret is configured (bypass mode)", async () => {
-      // No secret configured — getUserSettings returns null for calendlyWebhookSecret
-      db.getUserSettings.mockResolvedValue({ calendlyWebhookSecret: null, retellWebhookSecret: null });
+    it("should accept Cal.com booking webhook when no signing secret is configured (bypass mode)", async () => {
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: null, retellWebhookSecret: null });
       db.findCampaignLeadsByEmail.mockResolvedValue([{ id: 1 }]);
 
       const res = await request(app)
@@ -172,22 +184,40 @@ describe("HMAC Webhook Signature Verification", () => {
       expect(res.body.success).toBe(true);
     });
 
-    it("should reject Calendly webhook with invalid signature when secret is configured", async () => {
-      const signingKey = "my-calendly-secret";
-      db.getUserSettings.mockResolvedValue({ calendlyWebhookSecret: signingKey, retellWebhookSecret: null });
+    it("should reject booking webhook with invalid signature when secret is configured", async () => {
+      const signingKey = "my-calcom-secret";
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: signingKey, retellWebhookSecret: null });
 
       const res = await request(app)
         .post("/api/webhooks/calendly")
-        .set("Calendly-Webhook-Signature", "t=12345,v1=invalidsignature")
+        .set("x-cal-signature-256", "invalidsignature")
         .send({ email: "lead@example.com" });
 
       expect(res.status).toBe(401);
       expect(res.body.error).toBe("Invalid webhook signature");
     });
 
-    it("should accept Calendly webhook with valid signature when secret is configured", async () => {
-      const signingKey = "my-calendly-secret";
-      db.getUserSettings.mockResolvedValue({ calendlyWebhookSecret: signingKey, retellWebhookSecret: null });
+    it("should accept booking webhook with valid Cal.com signature when secret is configured", async () => {
+      const signingKey = "my-calcom-secret";
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: signingKey, retellWebhookSecret: null });
+      db.findCampaignLeadsByEmail.mockResolvedValue([{ id: 5 }]);
+
+      const body = JSON.stringify({ email: "lead@example.com" });
+      const signature = crypto.createHmac("sha256", signingKey).update(body).digest("hex");
+
+      const res = await request(app)
+        .post("/api/webhooks/calendly")
+        .set("Content-Type", "application/json")
+        .set("x-cal-signature-256", signature)
+        .send(body);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it("should accept booking webhook with valid legacy Calendly signature when secret is configured", async () => {
+      const signingKey = "my-calcom-secret";
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: signingKey, retellWebhookSecret: null });
       db.findCampaignLeadsByEmail.mockResolvedValue([{ id: 5 }]);
 
       const body = JSON.stringify({ email: "lead@example.com" });
@@ -207,7 +237,7 @@ describe("HMAC Webhook Signature Verification", () => {
 
     it("should reject Retell webhook with invalid signature when secret is configured", async () => {
       const apiKey = "my-retell-api-key";
-      db.getUserSettings.mockResolvedValue({ calendlyWebhookSecret: null, retellWebhookSecret: apiKey });
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: null, retellWebhookSecret: apiKey });
 
       const res = await request(app)
         .post("/api/webhooks/retell")
@@ -220,7 +250,7 @@ describe("HMAC Webhook Signature Verification", () => {
 
     it("should accept Retell webhook with valid signature when secret is configured", async () => {
       const apiKey = "my-retell-api-key";
-      db.getUserSettings.mockResolvedValue({ calendlyWebhookSecret: null, retellWebhookSecret: apiKey });
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: null, retellWebhookSecret: apiKey });
 
       // Mock retellAI module
       vi.doMock("./_core/retellAI", () => ({
@@ -240,12 +270,12 @@ describe("HMAC Webhook Signature Verification", () => {
     });
 
     it("should log failed verification events to webhookEvents table", async () => {
-      const signingKey = "my-calendly-secret";
-      db.getUserSettings.mockResolvedValue({ calendlyWebhookSecret: signingKey, retellWebhookSecret: null });
+      const signingKey = "my-calcom-secret";
+      db.getUserSettings.mockResolvedValue({ calcomWebhookSecret: signingKey, retellWebhookSecret: null });
 
       await request(app)
         .post("/api/webhooks/calendly")
-        .set("Calendly-Webhook-Signature", "t=12345,v1=badsig")
+        .set("x-cal-signature-256", "badsig")
         .send({ email: "attacker@evil.com" });
 
       expect(db.createWebhookEvent).toHaveBeenCalledWith(

@@ -797,3 +797,10 @@
 - [x] Display bounce rate in analytics dashboard
 - [x] Show which specific leads bounced in campaign detail timeline
 - [x] Add bounce count to campaign list/history view
+
+## Feature — Cal.com Webhook & Dynamic CTA Link
+- [x] Replace Calendly webhook with Cal.com webhook endpoint for booking confirmations
+- [x] Update webhook secret field label from "Calendly" to "Cal.com" in Settings
+- [x] Add CTA link field in Settings so booking URL can be changed from UI without code changes
+- [x] Update email generation (claude.ts, routers.ts) to use dynamic CTA link from user settings instead of hardcoded URL
+- [x] Ensure follow-up emails also use the dynamic CTA link from settings

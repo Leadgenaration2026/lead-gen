@@ -6,8 +6,8 @@ import * as db from "../db";
  * Webhook Signature Verification Utility
  * 
  * Supports:
- * - Calendly: Uses `Calendly-Webhook-Signature` header with format `t=<timestamp>,v1=<signature>`
- *   Signature = HMAC-SHA256(signing_key, "t.payload")
+ * - Cal.com: Uses `x-cal-signature-256` header with HMAC-SHA256(secret, raw_body)
+ *   Also supports legacy Calendly format: `Calendly-Webhook-Signature: t=<timestamp>,v1=<signature>`
  * - Retell.AI: Uses `x-retell-signature` header
  *   Signature = HMAC-SHA256(api_key, raw_body)
  */
@@ -19,66 +19,88 @@ export interface VerificationResult {
 }
 
 /**
- * Verify Calendly webhook signature
- * Calendly sends: Calendly-Webhook-Signature: t=<unix_timestamp>,v1=<hmac_sha256_hex>
- * The signed content is: "<timestamp>.<raw_body>"
+ * Verify Cal.com webhook signature
+ * Cal.com sends: x-cal-signature-256 header with HMAC-SHA256(secret, raw_body) as hex
+ * Also supports legacy Calendly format: Calendly-Webhook-Signature: t=<timestamp>,v1=<signature>
  */
-export function verifyCalendlySignature(
+export function verifyCalcomSignature(
   rawBody: string | Buffer,
-  signatureHeader: string | undefined,
+  headers: { calcomSignature?: string; calendlySignature?: string },
   signingKey: string
 ): VerificationResult {
-  if (!signatureHeader) {
-    return { verified: false, error: "Missing Calendly-Webhook-Signature header" };
+  const body = typeof rawBody === "string" ? rawBody : rawBody.toString("utf8");
+
+  // Try Cal.com format first (x-cal-signature-256)
+  if (headers.calcomSignature) {
+    try {
+      const expectedSignature = crypto
+        .createHmac("sha256", signingKey)
+        .update(body)
+        .digest("hex");
+
+      const providedBuffer = Buffer.from(headers.calcomSignature, "hex");
+      const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+      if (providedBuffer.length !== expectedBuffer.length) {
+        return { verified: false, error: "Signature length mismatch" };
+      }
+
+      const isValid = crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+      if (!isValid) {
+        return { verified: false, error: "Cal.com signature verification failed — HMAC mismatch" };
+      }
+
+      return { verified: true };
+    } catch (err) {
+      return { verified: false, error: `Verification error: ${err instanceof Error ? err.message : "Unknown"}` };
+    }
   }
 
-  try {
-    // Parse the header: t=<timestamp>,v1=<signature>
-    const parts = signatureHeader.split(",");
-    const timestampPart = parts.find(p => p.startsWith("t="));
-    const signaturePart = parts.find(p => p.startsWith("v1="));
+  // Fallback: Legacy Calendly format (Calendly-Webhook-Signature: t=<timestamp>,v1=<signature>)
+  if (headers.calendlySignature) {
+    try {
+      const parts = headers.calendlySignature.split(",");
+      const timestampPart = parts.find(p => p.startsWith("t="));
+      const signaturePart = parts.find(p => p.startsWith("v1="));
 
-    if (!timestampPart || !signaturePart) {
-      return { verified: false, error: "Invalid signature header format (expected t=...,v1=...)" };
+      if (!timestampPart || !signaturePart) {
+        return { verified: false, error: "Invalid signature header format (expected t=...,v1=...)" };
+      }
+
+      const timestamp = timestampPart.slice(2);
+      const providedSignature = signaturePart.slice(3);
+      const signedPayload = `${timestamp}.${body}`;
+
+      const expectedSignature = crypto
+        .createHmac("sha256", signingKey)
+        .update(signedPayload)
+        .digest("hex");
+
+      const sigBuffer = Buffer.from(providedSignature, "hex");
+      const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+      if (sigBuffer.length !== expectedBuffer.length) {
+        return { verified: false, error: "Signature length mismatch" };
+      }
+
+      const isValid = crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+      if (!isValid) {
+        return { verified: false, error: "Signature verification failed — HMAC mismatch" };
+      }
+
+      const eventTime = parseInt(timestamp, 10) * 1000;
+      const tolerance = 5 * 60 * 1000;
+      if (Math.abs(Date.now() - eventTime) > tolerance) {
+        return { verified: false, error: "Webhook timestamp too old (possible replay attack)" };
+      }
+
+      return { verified: true };
+    } catch (err) {
+      return { verified: false, error: `Verification error: ${err instanceof Error ? err.message : "Unknown"}` };
     }
-
-    const timestamp = timestampPart.slice(2); // Remove "t="
-    const providedSignature = signaturePart.slice(3); // Remove "v1="
-
-    // Compute expected signature: HMAC-SHA256(key, "timestamp.body")
-    const body = typeof rawBody === "string" ? rawBody : rawBody.toString("utf8");
-    const signedPayload = `${timestamp}.${body}`;
-    
-    const expectedSignature = crypto
-      .createHmac("sha256", signingKey)
-      .update(signedPayload)
-      .digest("hex");
-
-    // Timing-safe comparison
-    const sigBuffer = Buffer.from(providedSignature, "hex");
-    const expectedBuffer = Buffer.from(expectedSignature, "hex");
-
-    if (sigBuffer.length !== expectedBuffer.length) {
-      return { verified: false, error: "Signature length mismatch" };
-    }
-
-    const isValid = crypto.timingSafeEqual(sigBuffer, expectedBuffer);
-
-    if (!isValid) {
-      return { verified: false, error: "Signature verification failed — HMAC mismatch" };
-    }
-
-    // Optional: Check timestamp freshness (reject if older than 5 minutes)
-    const eventTime = parseInt(timestamp, 10) * 1000; // Convert to ms
-    const tolerance = 5 * 60 * 1000; // 5 minutes
-    if (Math.abs(Date.now() - eventTime) > tolerance) {
-      return { verified: false, error: "Webhook timestamp too old (possible replay attack)" };
-    }
-
-    return { verified: true };
-  } catch (err) {
-    return { verified: false, error: `Verification error: ${err instanceof Error ? err.message : "Unknown"}` };
   }
+
+  return { verified: false, error: "Missing webhook signature header (x-cal-signature-256 or Calendly-Webhook-Signature)" };
 }
 
 /**
@@ -133,7 +155,7 @@ export async function getWebhookSecrets(): Promise<{
 }> {
   const settings = await db.getUserSettings(1); // Default owner
   return {
-    calendlySecret: (settings as any)?.calendlyWebhookSecret || null,
+    calendlySecret: (settings as any)?.calcomWebhookSecret || null,
     retellSecret: (settings as any)?.retellWebhookSecret || null,
   };
 }

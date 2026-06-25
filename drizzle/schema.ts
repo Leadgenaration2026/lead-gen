@@ -162,7 +162,8 @@ export const userSettings = mysqlTable("userSettings", {
   smtpPassword: varchar("smtpPassword", { length: 255 }),
   senderEmail: varchar("senderEmail", { length: 320 }),
   senderName: varchar("senderName", { length: 255 }),
-  calendlyWebhookSecret: varchar("calendlyWebhookSecret", { length: 255 }), // Calendly signing key for HMAC verification
+  calcomWebhookSecret: varchar("calcomWebhookSecret", { length: 255 }), // Cal.com signing key for webhook verification
+  ctaLink: varchar("ctaLink", { length: 500 }), // CTA booking link (e.g. https://cal.com/nitin-virtualassistant-group.com/30min)
   retellWebhookSecret: varchar("retellWebhookSecret", { length: 255 }), // Retell API key used for webhook signature verification
   seamlessApiKey: varchar("seamlessApiKey", { length: 500 }), // Seamless.ai API key for lead generation
   // Social profiles for the business

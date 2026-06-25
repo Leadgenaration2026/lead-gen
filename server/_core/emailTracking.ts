@@ -1,7 +1,7 @@
 import { Express, Request, Response } from "express";
 import * as db from "../db";
 import { triggerCallOnFollowUpOpen, normalizePhoneNumber } from "./followUpScheduler";
-import { verifyCalendlySignature, verifyRetellSignature, getWebhookSecrets } from "./webhookVerification";
+import { verifyCalcomSignature, verifyRetellSignature, getWebhookSecrets } from "./webhookVerification";
 
 // 1x1 transparent GIF pixel
 const PIXEL_GIF = Buffer.from([
@@ -311,25 +311,28 @@ export function registerEmailTrackingRoutes(app: Express) {
   });
 
   /**
-   * Calendly booking webhook
+   * Cal.com booking webhook (also accepts legacy Calendly format)
    * POST /api/webhooks/calendly
-   * Called when a lead actually books a meeting on Calendly
+   * Called when a lead actually books a meeting on Cal.com
    * This is a POSITIVE response — lead scheduled a consultation
-   * Body: { email: string } or Calendly webhook payload
+   * Body: Cal.com payload with { payload.attendees[0].email } or { email: string }
    */
   app.post("/api/webhooks/calendly", async (req: Request, res: Response) => {
     try {
       const payload = req.body;
-      console.log(`[EmailTracking] Calendly booking webhook received`);
+      console.log(`[EmailTracking] Cal.com booking webhook received`);
 
-      // HMAC Signature Verification
+      // HMAC Signature Verification (supports both Cal.com and legacy Calendly headers)
       const { calendlySecret } = await getWebhookSecrets();
       if (calendlySecret) {
         const rawBody = (req as any).rawBody || JSON.stringify(payload);
-        const sigHeader = req.headers["calendly-webhook-signature"] as string | undefined;
-        const verification = verifyCalendlySignature(rawBody, sigHeader, calendlySecret);
+        const headers = {
+          calcomSignature: req.headers["x-cal-signature-256"] as string | undefined,
+          calendlySignature: req.headers["calendly-webhook-signature"] as string | undefined,
+        };
+        const verification = verifyCalcomSignature(rawBody, headers, calendlySecret);
         if (!verification.verified) {
-          console.warn(`[EmailTracking] Calendly webhook signature verification FAILED: ${verification.error}`);
+          console.warn(`[EmailTracking] Cal.com webhook signature verification FAILED: ${verification.error}`);
           await db.createWebhookEvent({
             userId: 1,
             webhookType: "calendly_booking",
@@ -341,18 +344,21 @@ export function registerEmailTrackingRoutes(app: Express) {
           });
           return res.status(401).json({ error: "Invalid webhook signature" });
         }
-        console.log(`[EmailTracking] Calendly webhook signature verified successfully`);
+        console.log(`[EmailTracking] Cal.com webhook signature verified successfully`);
       }
 
       // Determine signature verification status for event logging
       const calendlyVerificationStatus = calendlySecret ? "verified" : "bypassed";
 
-      // Calendly sends payload.payload.invitee.email for bookings
+      // Extract invitee email from various webhook formats
       let inviteeEmail: string | undefined;
       let loggedCampaignLeadId: number | undefined;
 
-      // Handle Calendly v2 webhook format
-      if (payload?.payload?.invitee?.email) {
+      // Handle Cal.com webhook format (payload.payload.attendees[0].email)
+      if (payload?.payload?.attendees?.[0]?.email) {
+        inviteeEmail = payload.payload.attendees[0].email;
+      } else if (payload?.payload?.invitee?.email) {
+        // Legacy Calendly v2 format
         inviteeEmail = payload.payload.invitee.email;
       } else if (payload?.email) {
         // Simple format: { email: "lead@example.com" }
@@ -362,7 +368,7 @@ export function registerEmailTrackingRoutes(app: Express) {
         await db.markLeadReplied(payload.campaignLeadId, "positive");
         await db.cancelPendingFollowUps(payload.campaignLeadId);
         loggedCampaignLeadId = payload.campaignLeadId;
-        console.log(`[EmailTracking] Calendly booking: marked campaignLead ${payload.campaignLeadId} as positive`);
+        console.log(`[EmailTracking] Cal.com booking: marked campaignLead ${payload.campaignLeadId} as positive`);
 
         // Log webhook event
         await db.createWebhookEvent({
@@ -383,10 +389,10 @@ export function registerEmailTrackingRoutes(app: Express) {
           await db.markLeadReplied(cl.id, "positive");
           await db.cancelPendingFollowUps(cl.id);
           loggedCampaignLeadId = cl.id;
-          console.log(`[EmailTracking] Calendly booking: marked campaignLead ${cl.id} as positive (email: ${inviteeEmail})`);
+          console.log(`[EmailTracking] Cal.com booking: marked campaignLead ${cl.id} as positive (email: ${inviteeEmail})`);
         }
       } else {
-        console.log(`[EmailTracking] Calendly webhook: could not extract invitee email from payload`);
+        console.log(`[EmailTracking] Cal.com webhook: could not extract invitee email from payload`);
       }
 
       // Log webhook event for monitoring
@@ -403,7 +409,7 @@ export function registerEmailTrackingRoutes(app: Express) {
 
       res.json({ success: true });
     } catch (error) {
-      console.error("[EmailTracking] Error processing Calendly webhook:", error);
+      console.error("[EmailTracking] Error processing Cal.com webhook:", error);
       // Log failed event
       try {
         await db.createWebhookEvent({
@@ -415,7 +421,7 @@ export function registerEmailTrackingRoutes(app: Express) {
           ipAddress: req.ip || req.socket.remoteAddress || undefined,
         });
       } catch (_) {}
-      res.status(500).json({ error: "Failed to process Calendly booking" });
+      res.status(500).json({ error: "Failed to process Cal.com booking" });
     }
   });
 

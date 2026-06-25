@@ -57,7 +57,8 @@ const updateUserSettingsSchema = z.object({
   smtpPassword: z.string().optional(),
   senderEmail: z.union([z.string().email(), z.literal("")]).optional(),
   senderName: z.string().optional(),
-  calendlyWebhookSecret: z.string().optional(),
+  calcomWebhookSecret: z.string().optional(),
+  ctaLink: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
   seamlessApiKey: z.string().optional(),
   bouncerApiKey: z.string().optional(),
@@ -1598,8 +1599,9 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               : `${ctx.req.protocol || 'https'}://${ctx.req.get?.('host') || 'localhost:3000'}`;
             const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
             
-            // Replace CTA links with tracked versions
-            const ctaUrl = 'https://cal.com/nitin-virtualassistant-group.com/30min';
+            // Replace CTA links with tracked versions (use dynamic CTA from settings)
+            const userSettings = await db.getUserSettings(ctx.user.id);
+            const ctaUrl = userSettings?.ctaLink || 'https://cal.com/nitin-virtualassistant-group.com/30min';
             const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
             let emailBody = personalizedTemplate
               .replace(/{{bookingUrl}}/g, trackedCtaUrl)
@@ -1744,7 +1746,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         // Schedule 7 follow-up emails for each lead that was sent today (async, don't block)
         const { scheduleFollowUpEmails } = await import("./_core/followUpScheduler");
-        const ctaLink = "https://cal.com/nitin-virtualassistant-group.com/30min";
+        const followUpSettings = await db.getUserSettings(ctx.user.id);
+        const ctaLink = followUpSettings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
         for (const campaignLead of toSendToday) {
           if (!campaignLead.emailSent) continue; // Only schedule follow-ups for actually sent emails
           const leadForFollowUp = await db.getLeadById(campaignLead.leadId);
@@ -1955,7 +1958,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           senderName: "",
           hasSmtpPassword: false,
           hasRetellApiKey: false,
-          hasCalendlyWebhookSecret: false,
+          hasCalcomWebhookSecret: false,
+          ctaLink: "https://cal.com/nitin-virtualassistant-group.com/30min",
           hasRetellWebhookSecret: false,
           linkedinUrl: "",
           linkedinType: "personal" as const,
@@ -1980,7 +1984,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         senderName: settings.senderName,
         hasSmtpPassword: !!settings.smtpPassword,
         hasRetellApiKey: !!settings.retellApiKey,
-        hasCalendlyWebhookSecret: !!settings.calendlyWebhookSecret,
+        hasCalcomWebhookSecret: !!settings.calcomWebhookSecret,
+        ctaLink: settings.ctaLink || 'https://cal.com/nitin-virtualassistant-group.com/30min',
         hasRetellWebhookSecret: !!settings.retellWebhookSecret,
         linkedinUrl: settings.linkedinUrl || "",
         linkedinType: settings.linkedinType || "personal",
@@ -2005,7 +2010,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           // Don't overwrite sensitive fields with empty strings
           if (key === 'smtpPassword' && !value) continue;
           if (key === 'retellApiKey' && !value) continue;
-          if (key === 'calendlyWebhookSecret' && !value) continue;
+          if (key === 'calcomWebhookSecret' && !value) continue;
           if (key === 'retellWebhookSecret' && !value) continue;
           if (key === 'seamlessApiKey' && !value) continue;
           cleanedInput[key] = value;
@@ -2430,7 +2435,7 @@ Return JSON with: { "subject": "...", "body": "..." }`,
 
         // Signature is hardcoded (Nitin's)
         const settings = await db.getUserSettings(ctx.user.id);
-        const ctaLink = input.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
+        const ctaLink = input.ctaLink || settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
 
         // Fetch stored problem analysis for this lead (if available)
         let problemContext = "";
@@ -2912,6 +2917,7 @@ Respond in this exact JSON format:
         }
 
         const { generateEmailWithClaude } = await import("./claude");
+        const templateSettings = await db.getUserSettings(ctx.user.id);
 
         const result = await generateEmailWithClaude({
           prompt: input.prompt,
@@ -2919,6 +2925,7 @@ Respond in this exact JSON format:
           companyContext: input.companyContext || undefined,
           leadContext: leadContext || undefined,
           includeVariables: input.includeVariables || false,
+          ctaLink: templateSettings?.ctaLink || undefined,
           problemAnalysis,
           websiteAnalysis,
         });
@@ -3784,6 +3791,7 @@ Website: ${lead.website || "N/A"}` },
         const leadContext = `Name: ${lead.ownerName}, Company: ${lead.companyName}, Industry: ${lead.industry || "Not specified"}, Email: ${lead.email}, Website: ${lead.website || "Not provided"}`;
 
         const { generateEmailWithClaude } = await import("./claude");
+        const insightSettings = await db.getUserSettings(ctx.user.id);
 
         const prompt = `Write a highly personalized cold email to ${lead.ownerName} at ${lead.companyName} based on their ACTUAL website data analysis below. Reference specific metrics and issues from their website to show we've done our homework.
 
@@ -3819,6 +3827,7 @@ Use the website data to:
           emailType: input.emailType || "value_prop",
           leadContext,
           includeVariables: input.includeVariables || false,
+          ctaLink: insightSettings?.ctaLink || undefined,
           websiteAnalysis: websiteAnalysisData,
         });
 
