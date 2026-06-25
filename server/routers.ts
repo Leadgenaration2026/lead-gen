@@ -2058,6 +2058,37 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         });
         return { success: true };
       }),
+
+    testClaudeConnection: protectedProcedure
+      .input(z.object({ apiKey: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        try {
+          const Anthropic = (await import("@anthropic-ai/sdk")).default;
+          const client = new Anthropic({ apiKey: input.apiKey });
+          const response = await client.messages.create({
+            model: "claude-sonnet-4-6",
+            max_tokens: 10,
+            messages: [{ role: "user", content: "Say 'connected' in one word." }],
+          });
+          const textBlock = response.content.find((b: any) => b.type === "text");
+          return { success: true, message: "Connection successful! Claude is responding." };
+        } catch (error: any) {
+          if (error?.status === 401) {
+            return { success: false, message: "Invalid API key. Please check your key and try again." };
+          }
+          if (error?.status === 403) {
+            return { success: false, message: "API key does not have permission. Check your Anthropic account." };
+          }
+          if (error?.status === 429) {
+            return { success: false, message: "Rate limited. The key is valid but you've hit usage limits." };
+          }
+          return { success: false, message: error?.message || "Failed to connect to Claude API." };
+        }
+      }),
+
+    getClaudeUsage: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getClaudeApiUsageThisMonth(ctx.user.id);
+    }),
   }),
 
   // Comprehensive reports router

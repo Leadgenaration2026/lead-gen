@@ -176,6 +176,13 @@
       "when": 1782424331258,
       "tag": "0024_early_boom_boom",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1782425079821,
+      "tag": "0025_tiresome_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

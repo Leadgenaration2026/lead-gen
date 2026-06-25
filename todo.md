@@ -849,3 +849,9 @@
 - [x] Add Claude API Key input field in Settings page (masked/password style)
 - [x] Update claude.ts to read API key from user settings (DB) instead of environment variable
 - [x] Remove dependency on ANTHROPIC_API_KEY environment variable (now falls back to DB key first)
+
+## Feature — Claude API Key Validation & Usage Tracking
+- [x] Add "Test Connection" button that validates the Claude API key with a quick API call
+- [x] Add claudeApiUsage table to track API calls (userId, timestamp, purpose)
+- [x] Increment usage counter on every Claude API call
+- [x] Show monthly usage count in the Claude AI settings tab

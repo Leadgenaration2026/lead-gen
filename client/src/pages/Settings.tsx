@@ -982,56 +982,17 @@ export default function SettingsPage() {
 
         {/* Claude AI Tab */}
         <TabsContent value="claude" className="mt-6 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-purple-600" />
-                Claude AI Integration
-              </CardTitle>
-              <CardDescription>
-                Connect your Anthropic Claude API key for AI-powered email generation. Claude writes professional, personalized emails for your campaigns.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  Claude API Key
-                  {(settingsQuery.data as any)?.hasClaudeApiKey && (
-                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
-                      <CheckCircle2 className="w-3 h-3" /> Saved
-                    </span>
-                  )}
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type={showClaudeKey ? "text" : "password"}
-                    placeholder={(settingsQuery.data as any)?.hasClaudeApiKey ? "••••••••  (leave blank to keep current)" : "sk-ant-api03-..."}
-                    value={claudeApiKey}
-                    onChange={(e) => { setClaudeApiKey(e.target.value); setClaudeKeyTouched(true); }}
-                  />
-                  <Button variant="outline" size="icon" onClick={() => setShowClaudeKey(!showClaudeKey)}>
-                    {showClaudeKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" className="text-purple-600 underline">Anthropic Console → API Keys</a>
-                </p>
-              </div>
-              <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
-                <h4 className="font-medium text-sm">What Claude is used for</h4>
-                <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                  <li>AI-powered email generation for campaigns (personalized, professional emails)</li>
-                  <li>Follow-up email generation (7 unique follow-ups per lead)</li>
-                  <li>Email template creation with dynamic variables</li>
-                  <li>Weak point analysis and competitor research for email content</li>
-                </ul>
-              </div>
-              <Button onClick={handleSaveClaude} disabled={updateSettingsMutation.isPending} className="gap-2">
-                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save Claude API Key
-              </Button>
-            </CardContent>
-          </Card>
+          <ClaudeAISection
+            settingsQuery={settingsQuery}
+            claudeApiKey={claudeApiKey}
+            setClaudeApiKey={setClaudeApiKey}
+            claudeKeyTouched={claudeKeyTouched}
+            setClaudeKeyTouched={setClaudeKeyTouched}
+            showClaudeKey={showClaudeKey}
+            setShowClaudeKey={setShowClaudeKey}
+            handleSaveClaude={handleSaveClaude}
+            updateSettingsMutation={updateSettingsMutation}
+          />
         </TabsContent>
 
         {/* Social Profiles Tab */}
@@ -1553,6 +1514,166 @@ function WebhookSigningSecretsCard() {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ============ Claude AI Section Component ============
+
+function ClaudeAISection({
+  settingsQuery,
+  claudeApiKey,
+  setClaudeApiKey,
+  claudeKeyTouched,
+  setClaudeKeyTouched,
+  showClaudeKey,
+  setShowClaudeKey,
+  handleSaveClaude,
+  updateSettingsMutation,
+}: {
+  settingsQuery: any;
+  claudeApiKey: string;
+  setClaudeApiKey: (v: string) => void;
+  claudeKeyTouched: boolean;
+  setClaudeKeyTouched: (v: boolean) => void;
+  showClaudeKey: boolean;
+  setShowClaudeKey: (v: boolean) => void;
+  handleSaveClaude: () => void;
+  updateSettingsMutation: any;
+}) {
+  const testConnectionMutation = trpc.settings.testClaudeConnection.useMutation();
+  const usageQuery = trpc.settings.getClaudeUsage.useQuery();
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestConnection = async () => {
+    const keyToTest = claudeApiKey || "";
+    if (!keyToTest && !(settingsQuery.data as any)?.hasClaudeApiKey) {
+      setTestResult({ success: false, message: "Please enter a Claude API key first." });
+      return;
+    }
+    setTestResult(null);
+    try {
+      // If user typed a new key, test that; otherwise test the saved one
+      const result = await testConnectionMutation.mutateAsync({ apiKey: keyToTest || "test-saved-key" });
+      setTestResult(result);
+    } catch (error: any) {
+      setTestResult({ success: false, message: error?.message || "Connection test failed." });
+    }
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="w-5 h-5 text-purple-600" />
+            Claude AI Integration
+          </CardTitle>
+          <CardDescription>
+            Connect your Anthropic Claude API key for AI-powered email generation. Claude writes professional, personalized emails for your campaigns.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              Claude API Key
+              {(settingsQuery.data as any)?.hasClaudeApiKey && (
+                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
+                  <CheckCircle2 className="w-3 h-3" /> Saved
+                </span>
+              )}
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                type={showClaudeKey ? "text" : "password"}
+                placeholder={(settingsQuery.data as any)?.hasClaudeApiKey ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022  (leave blank to keep current)" : "sk-ant-api03-..."}
+                value={claudeApiKey}
+                onChange={(e) => { setClaudeApiKey(e.target.value); setClaudeKeyTouched(true); }}
+              />
+              <Button variant="outline" size="icon" onClick={() => setShowClaudeKey(!showClaudeKey)}>
+                {showClaudeKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" className="text-purple-600 underline">Anthropic Console \u2192 API Keys</a>
+            </p>
+          </div>
+
+          {/* Test Connection */}
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={testConnectionMutation.isPending}
+              className="gap-2"
+            >
+              {testConnectionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+              Test Connection
+            </Button>
+            {testResult && (
+              <span className={`text-sm flex items-center gap-1 ${testResult.success ? "text-green-600" : "text-red-600"}`}>
+                {testResult.success ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                {testResult.message}
+              </span>
+            )}
+          </div>
+
+          <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
+            <h4 className="font-medium text-sm">What Claude is used for</h4>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+              <li>AI-powered email generation for campaigns (personalized, professional emails)</li>
+              <li>Follow-up email generation (7 unique follow-ups per lead)</li>
+              <li>Email template creation with dynamic variables</li>
+              <li>Weak point analysis and competitor research for email content</li>
+            </ul>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSaveClaude} disabled={updateSettingsMutation.isPending} className="gap-2">
+              {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Claude API Key
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Usage Tracking Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="w-4 h-4 text-purple-600" />
+            Monthly Usage
+          </CardTitle>
+          <CardDescription>
+            Claude API usage for the current month
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {usageQuery.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading usage data...
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="rounded-lg border p-4 text-center">
+                <p className="text-2xl font-bold text-purple-600">{usageQuery.data?.totalCalls || 0}</p>
+                <p className="text-xs text-muted-foreground mt-1">API Calls</p>
+              </div>
+              <div className="rounded-lg border p-4 text-center">
+                <p className="text-2xl font-bold text-blue-600">{((usageQuery.data?.totalInputTokens || 0) / 1000).toFixed(1)}k</p>
+                <p className="text-xs text-muted-foreground mt-1">Input Tokens</p>
+              </div>
+              <div className="rounded-lg border p-4 text-center">
+                <p className="text-2xl font-bold text-green-600">{((usageQuery.data?.totalOutputTokens || 0) / 1000).toFixed(1)}k</p>
+                <p className="text-xs text-muted-foreground mt-1">Output Tokens</p>
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-3">
+            Usage resets on the 1st of each month. Tokens are counted per Claude API call for email generation.
+          </p>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

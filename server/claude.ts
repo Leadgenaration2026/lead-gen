@@ -209,6 +209,15 @@ Return ONLY a JSON object with exactly two fields:
     system: systemPrompt,
   });
 
+  // Track usage (fire-and-forget, don't block email generation)
+  db.trackClaudeApiUsage({
+    userId: 1, // Owner
+    purpose: params.emailType || "email_generation",
+    model: modelUsed,
+    inputTokens: response.usage?.input_tokens || 0,
+    outputTokens: response.usage?.output_tokens || 0,
+  }).catch(() => {}); // Silently ignore tracking errors
+
   const textBlock = response.content.find((block) => block.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("Claude did not return a text response");

@@ -461,3 +461,18 @@ export const emailReplies = mysqlTable("emailReplies", {
 
 export type EmailReply = typeof emailReplies.$inferSelect;
 export type InsertEmailReply = typeof emailReplies.$inferInsert;
+
+
+// Claude API usage tracking
+export const claudeApiUsage = mysqlTable("claudeApiUsage", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  purpose: varchar("purpose", { length: 100 }).notNull(), // e.g. "email_generation", "follow_up", "template"
+  model: varchar("model", { length: 100 }),
+  inputTokens: int("inputTokens"),
+  outputTokens: int("outputTokens"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ClaudeApiUsage = typeof claudeApiUsage.$inferSelect;
+export type InsertClaudeApiUsage = typeof claudeApiUsage.$inferInsert;

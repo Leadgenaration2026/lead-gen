@@ -1,6 +1,6 @@
 import { eq, and, desc, inArray, lte, count, sql, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent } from "../drizzle/schema";
+import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -876,4 +876,56 @@ export async function getRepliesByCampaignId(campaignId: number, userId: number)
   return database.select().from(emailReplies)
     .where(and(eq(emailReplies.campaignId, campaignId), eq(emailReplies.userId, userId)))
     .orderBy(desc(emailReplies.receivedAt));
+}
+
+
+// ============================================================
+// CLAUDE API USAGE TRACKING
+// ============================================================
+
+export async function trackClaudeApiUsage(data: {
+  userId: number;
+  purpose: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}) {
+  const database = await getDb();
+  if (!database) return null;
+  const [result] = await database.insert(claudeApiUsage).values({
+    userId: data.userId,
+    purpose: data.purpose,
+    model: data.model || null,
+    inputTokens: data.inputTokens || null,
+    outputTokens: data.outputTokens || null,
+  });
+  return (result as any).insertId;
+}
+
+export async function getClaudeApiUsageThisMonth(userId: number) {
+  const database = await getDb();
+  if (!database) return { totalCalls: 0, totalInputTokens: 0, totalOutputTokens: 0 };
+  
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  
+  const results = await database
+    .select({
+      totalCalls: count(),
+      totalInputTokens: sql<number>`COALESCE(SUM(${claudeApiUsage.inputTokens}), 0)`,
+      totalOutputTokens: sql<number>`COALESCE(SUM(${claudeApiUsage.outputTokens}), 0)`,
+    })
+    .from(claudeApiUsage)
+    .where(
+      and(
+        eq(claudeApiUsage.userId, userId),
+        gte(claudeApiUsage.createdAt, startOfMonth)
+      )
+    );
+  
+  return {
+    totalCalls: results[0]?.totalCalls || 0,
+    totalInputTokens: Number(results[0]?.totalInputTokens) || 0,
+    totalOutputTokens: Number(results[0]?.totalOutputTokens) || 0,
+  };
 }
