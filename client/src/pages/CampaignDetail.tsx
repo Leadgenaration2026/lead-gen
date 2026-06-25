@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArrowLeft,
   Mail,
@@ -25,6 +26,8 @@ import {
   Reply,
   Ban,
   RefreshCw,
+  MessageSquare,
+  StopCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -362,6 +365,10 @@ export default function CampaignDetail() {
     enabled: !!campaignId,
     refetchInterval: isLive ? 10000 : false,
   });
+  const repliesQuery = trpc.campaigns.replies.useQuery(campaignId, {
+    enabled: !!campaignId,
+    refetchInterval: isLive ? 15000 : false,
+  });
 
   // Update last refreshed timestamp when data changes
   useEffect(() => {
@@ -554,35 +561,150 @@ export default function CampaignDetail() {
             </Card>
           )}
 
-          {/* Lead timeline cards */}
-          <div className="space-y-1 mb-4">
-            <h2 className="text-lg font-semibold">Lead Engagement Timeline</h2>
-            <p className="text-sm text-muted-foreground">Click on a lead to view their full engagement journey</p>
-          </div>
+          {/* Tabs: Timeline + Replies */}
+          <Tabs defaultValue="timeline" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="timeline" className="gap-2">
+                <Clock className="w-4 h-4" /> Timeline
+              </TabsTrigger>
+              <TabsTrigger value="replies" className="gap-2">
+                <MessageSquare className="w-4 h-4" /> Replies
+                {repliesQuery.data && repliesQuery.data.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">{repliesQuery.data.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-          {reportQuery.isLoading ? (
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24" />)}
-            </div>
-          ) : report && report.leads.length > 0 ? (
-            <div className="space-y-3">
-              {report.leads.map((lead: any) => (
-                <LeadEngagementCard
-                  key={lead.leadId}
-                  lead={lead}
-                  isExpanded={expandedLeadId === lead.leadId}
-                  onToggle={() => setExpandedLeadId(expandedLeadId === lead.leadId ? null : lead.leadId)}
-                />
-              ))}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <User className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No leads in this campaign yet</p>
-              </CardContent>
-            </Card>
-          )}
+            <TabsContent value="timeline">
+              <div className="space-y-1 mb-4">
+                <h2 className="text-lg font-semibold">Lead Engagement Timeline</h2>
+                <p className="text-sm text-muted-foreground">Click on a lead to view their full engagement journey</p>
+              </div>
+
+              {reportQuery.isLoading ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24" />)}
+                </div>
+              ) : report && report.leads.length > 0 ? (
+                <div className="space-y-3">
+                  {report.leads.map((lead: any) => (
+                    <LeadEngagementCard
+                      key={lead.leadId}
+                      lead={lead}
+                      isExpanded={expandedLeadId === lead.leadId}
+                      onToggle={() => setExpandedLeadId(expandedLeadId === lead.leadId ? null : lead.leadId)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <User className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">No leads in this campaign yet</p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="replies">
+              <div className="space-y-1 mb-4">
+                <h2 className="text-lg font-semibold">Campaign Replies</h2>
+                <p className="text-sm text-muted-foreground">All replies received from leads in this campaign</p>
+              </div>
+
+              {repliesQuery.isLoading ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24" />)}
+                </div>
+              ) : repliesQuery.data && repliesQuery.data.length > 0 ? (
+                <div className="space-y-3">
+                  {repliesQuery.data.map((reply: any) => (
+                    <Card key={reply.id} className="hover:shadow-md transition-shadow">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                              <MessageSquare className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-base">{reply.leadName}</CardTitle>
+                              <CardDescription className="flex items-center gap-2 mt-0.5">
+                                {reply.companyName && (
+                                  <>
+                                    <Building2 className="w-3 h-3" />
+                                    <span>{reply.companyName}</span>
+                                    <span className="text-muted-foreground">·</span>
+                                  </>
+                                )}
+                                <span className="text-xs">{reply.fromEmail}</span>
+                              </CardDescription>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${
+                                reply.classification === "genuine"
+                                  ? "border-green-200 text-green-700 bg-green-50"
+                                  : reply.classification === "spam" || reply.classification === "bounce"
+                                  ? "border-red-200 text-red-700 bg-red-50"
+                                  : reply.classification === "auto_reply"
+                                  ? "border-amber-200 text-amber-700 bg-amber-50"
+                                  : reply.classification === "newsletter"
+                                  ? "border-blue-200 text-blue-700 bg-blue-50"
+                                  : reply.classification === "unsubscribe"
+                                  ? "border-orange-200 text-orange-700 bg-orange-50"
+                                  : "border-gray-200 text-gray-700 bg-gray-50"
+                              }`}
+                            >
+                              {reply.classification}
+                            </Badge>
+                            {reply.followUpsStopped && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <Badge variant="outline" className="text-xs border-red-200 text-red-600 bg-red-50 gap-1">
+                                      <StopCircle className="w-3 h-3" /> Stopped
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Follow-ups cancelled after this reply</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        {reply.subject && (
+                          <p className="text-sm font-medium mb-2">Re: {reply.subject}</p>
+                        )}
+                        <div className="bg-muted/50 rounded-lg p-3 text-sm whitespace-pre-wrap">
+                          {reply.bodySnippet || "(No message body)"}
+                        </div>
+                        <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <CalendarClock className="w-3 h-3" />
+                            {reply.receivedAt ? new Date(reply.receivedAt).toLocaleString() : "Unknown"}
+                          </span>
+                          {reply.confidence && (
+                            <span>Confidence: {Math.round(reply.confidence * 100)}%</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <MessageSquare className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">No replies received yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Replies will appear here when leads respond to your campaign emails</p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>

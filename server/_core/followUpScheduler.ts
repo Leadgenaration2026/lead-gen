@@ -492,10 +492,11 @@ export async function processScheduledFollowUpEmails() {
 
         // Send the email
         const followUpSenderEmail = settings.senderEmail || settings.smtpUsername || '';
+        const followUpReplyTo = settings.replyToEmail || "nitin@virtualassistant-group.com";
         const sendResult = await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${followUpSenderEmail}>`,
           to: lead.email,
-          replyTo: "nitin@virtualassistant-group.com",
+          replyTo: followUpReplyTo,
           subject: followUpEmail.subject,
           html: htmlBody,
           headers: {
@@ -605,10 +606,11 @@ export async function processScheduledEmails() {
 
         // Send the email
         const scheduledSenderEmail = settings.senderEmail || settings.smtpUsername || '';
+        const scheduledReplyTo = settings.replyToEmail || "nitin@virtualassistant-group.com";
         const scheduledSendResult = await transporter.sendMail({
           from: `"${settings.senderName || "Lead Gen Pro"}" <${scheduledSenderEmail}>`,
           to: lead.email,
-          replyTo: "nitin@virtualassistant-group.com",
+          replyTo: scheduledReplyTo,
           subject: scheduledEmail.subject,
           html: finalHtml,
           headers: {

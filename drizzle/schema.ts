@@ -182,6 +182,8 @@ export const userSettings = mysqlTable("userSettings", {
   socialDailyLimit: int("socialDailyLimit").default(20), // Max connection requests per day across all platforms
   socialMessageCharLimit: int("socialMessageCharLimit").default(300), // Max characters for social messages
   socialNotificationEmail: varchar("socialNotificationEmail", { length: 320 }), // Email to receive notifications when social messages are due
+  replyToEmail: varchar("replyToEmail", { length: 320 }), // Reply-To email address used in outgoing emails
+  notificationEmail: varchar("notificationEmail", { length: 320 }), // Email address to receive positive reply notifications
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

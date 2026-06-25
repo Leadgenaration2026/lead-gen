@@ -836,3 +836,10 @@
 - [x] Notification includes lead name, company, email, subject, and reply snippet
 - [x] Notification confirms follow-ups were stopped (X emails and Y calls cancelled)
 - [x] Notification failure does not break reply processing (graceful error handling)
+
+## Feature — Replies Tab & Email Settings
+- [x] Add "Replies" tab in Campaign Detail showing all genuine reply messages in full
+- [x] Add "Reply-To Email Address" field in Settings (used as Reply-To header in outgoing emails)
+- [x] Add "Notification Email Address" field in Settings (where positive reply alerts are sent)
+- [x] Clarify webhook section purpose in Settings (needed for reply detection)
+- [x] Use dynamic Reply-To and Notification email from settings instead of hardcoded values

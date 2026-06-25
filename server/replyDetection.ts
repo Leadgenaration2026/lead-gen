@@ -1,9 +1,10 @@
 /**
  * Reply Detection & Classification Module
  * 
- * Monitors incoming replies to nitin@virtualassistant-group.com,
+ * Monitors incoming replies to the configured reply-to email (from user settings),
  * classifies them (genuine vs spam/newsletter/auto-reply),
  * and stops follow-ups when a genuine reply is detected.
+ * Sends notifications to the configured notification email address.
  */
 
 import { eq, and, or, inArray } from "drizzle-orm";
@@ -485,7 +486,7 @@ export async function processIncomingReply(params: {
         .where(eq(leads.id, leadId));
     }
 
-    // Send instant notification to owner
+    // Send instant notification to owner (uses notificationEmail from settings if configured)
     try {
       // Try to get lead's actual name from DB
       let leadDisplayName = params.fromEmail;
@@ -496,9 +497,14 @@ export async function processIncomingReply(params: {
         }
       }
       const snippet = params.body.substring(0, 200).replace(/\n/g, " ");
+      
+      // Fetch user settings for notification email
+      const userSettings = await db.getUserSettings(params.userId);
+      const notificationTarget = userSettings?.notificationEmail || "project owner";
+      
       await notifyOwner({
         title: `\u2709\uFE0F Positive Reply from ${leadDisplayName}`,
-        content: `Lead: ${leadDisplayName}\nEmail: ${params.fromEmail}\nSubject: ${params.subject || "(no subject)"}\n\nReply snippet:\n${snippet}${params.body.length > 200 ? "..." : ""}\n\nAll follow-ups have been automatically stopped. ${emailsCancelled} emails and ${callsCancelled} calls cancelled.`,
+        content: `Lead: ${leadDisplayName}\nEmail: ${params.fromEmail}\nSubject: ${params.subject || "(no subject)"}\nNotification target: ${notificationTarget}\n\nReply snippet:\n${snippet}${params.body.length > 200 ? "..." : ""}\n\nAll follow-ups have been automatically stopped. ${emailsCancelled} emails and ${callsCancelled} calls cancelled.`,
       });
     } catch (notifErr) {
       // Notification failure should not break reply processing

@@ -576,11 +576,11 @@ export function registerEmailTrackingRoutes(app: Express) {
    * Email Reply Webhook
    * POST /api/webhooks/reply
    * Called by email forwarding service (Zapier, Make, custom IMAP monitor)
-   * when a reply is received at nitin@virtualassistant-group.com
+   * when a reply is received at the configured reply-to email address
    * 
    * Body: {
    *   fromEmail: string,        // The sender's email (the lead who replied)
-   *   toEmail?: string,         // The recipient (nitin@virtualassistant-group.com)
+   *   toEmail?: string,         // The recipient (defaults to settings.replyToEmail)
    *   subject?: string,         // Reply subject line
    *   body?: string,            // Reply body text
    *   inReplyToMessageId?: string,  // In-Reply-To header value
@@ -592,7 +592,7 @@ export function registerEmailTrackingRoutes(app: Express) {
     try {
       const {
         fromEmail,
-        toEmail = "nitin@virtualassistant-group.com",
+        toEmail,
         subject = "",
         body = "",
         inReplyToMessageId,
@@ -606,7 +606,11 @@ export function registerEmailTrackingRoutes(app: Express) {
         return res.status(400).json({ error: "fromEmail or email is required" });
       }
 
-      console.log(`[ReplyDetection] Reply webhook received from: ${senderEmail}, subject: ${subject}`);
+      // Get user settings for dynamic reply-to email
+      const ownerSettings = await db.getUserSettings(1);
+      const resolvedToEmail = toEmail || ownerSettings?.replyToEmail || "nitin@virtualassistant-group.com";
+
+      console.log(`[ReplyDetection] Reply webhook received from: ${senderEmail}, to: ${resolvedToEmail}, subject: ${subject}`);
 
       // Import the reply detection module
       const { processIncomingReply } = await import("../replyDetection");
@@ -614,7 +618,7 @@ export function registerEmailTrackingRoutes(app: Express) {
       // Process the reply (classify + stop follow-ups if genuine)
       const result = await processIncomingReply({
         fromEmail: senderEmail,
-        toEmail,
+        toEmail: resolvedToEmail,
         subject,
         body,
         headers,

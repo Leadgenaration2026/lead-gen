@@ -63,6 +63,12 @@ export default function SettingsPage() {
   const [ctaLink, setCtaLink] = useState("");
   const [ctaLinkTouched, setCtaLinkTouched] = useState(false);
 
+  // Reply-To and Notification Email state
+  const [replyToEmail, setReplyToEmail] = useState("");
+  const [replyToEmailTouched, setReplyToEmailTouched] = useState(false);
+  const [notificationEmail, setNotificationEmail] = useState("");
+  const [notificationEmailTouched, setNotificationEmailTouched] = useState(false);
+
   // Social profiles state
   const [socialProfiles, setSocialProfiles] = useState({
     linkedinUrl: "",
@@ -116,6 +122,11 @@ export default function SettingsPage() {
 
       setCtaLink((settingsQuery.data as any).ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min");
       setCtaLinkTouched(false);
+
+      setReplyToEmail((settingsQuery.data as any).replyToEmail || "");
+      setReplyToEmailTouched(false);
+      setNotificationEmail((settingsQuery.data as any).notificationEmail || "");
+      setNotificationEmailTouched(false);
 
       setSocialProfiles({
         linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
@@ -275,7 +286,7 @@ export default function SettingsPage() {
     }, 600);
 
     setTimeout(() => {
-      // Reply-To is always set to nitin@virtualassistant-group.com
+      // Reply-To is set from Settings (replyToEmail field)
       checks.replyTo = "pass";
       setDeliverabilityChecks({ ...checks });
     }, 900);
@@ -531,6 +542,70 @@ export default function SettingsPage() {
               >
                 {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Save CTA Link
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Reply-To Email Address */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Mail className="w-5 h-5" /> Reply-To Email Address</CardTitle>
+              <CardDescription>
+                When leads reply to your emails, their reply will go to this address. This is the email your system monitors for incoming replies.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="nitin@virtualassistant-group.com"
+                value={replyToEmail}
+                onChange={(e) => { setReplyToEmail(e.target.value); setReplyToEmailTouched(true); }}
+              />
+              <p className="text-xs text-muted-foreground">
+                This address is set as the Reply-To header in all outgoing emails. Make sure your email forwarding service forwards replies from this address to your webhook.
+              </p>
+              <Button
+                onClick={() => {
+                  updateSettingsMutation.mutate({ replyToEmail });
+                  setReplyToEmailTouched(false);
+                  toast.success("Reply-To email updated!");
+                }}
+                disabled={!replyToEmailTouched || !replyToEmail.trim() || updateSettingsMutation.isPending}
+                className="gap-2"
+              >
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Reply-To Email
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Notification Email Address */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Zap className="w-5 h-5" /> Notification Email Address</CardTitle>
+              <CardDescription>
+                When a lead replies positively, you'll receive an instant notification at this email address with the lead's name, company, and reply snippet.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="nitin@virtualassistant-group.com"
+                value={notificationEmail}
+                onChange={(e) => { setNotificationEmail(e.target.value); setNotificationEmailTouched(true); }}
+              />
+              <p className="text-xs text-muted-foreground">
+                You'll get an alert here whenever the system detects a genuine positive reply (not spam, auto-replies, or newsletters).
+              </p>
+              <Button
+                onClick={() => {
+                  updateSettingsMutation.mutate({ notificationEmail });
+                  setNotificationEmailTouched(false);
+                  toast.success("Notification email updated!");
+                }}
+                disabled={!notificationEmailTouched || !notificationEmail.trim() || updateSettingsMutation.isPending}
+                className="gap-2"
+              >
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Notification Email
               </Button>
             </CardContent>
           </Card>

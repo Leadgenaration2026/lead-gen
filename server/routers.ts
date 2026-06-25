@@ -73,6 +73,8 @@ const updateUserSettingsSchema = z.object({
   socialDailyLimit: z.number().optional(),
   socialMessageCharLimit: z.number().optional(),
   socialNotificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  replyToEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  notificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
 
 export const appRouter = router({
@@ -1365,6 +1367,28 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
       return campaign;
     }),
 
+    replies: protectedProcedure.input(z.number()).query(async ({ input: campaignId, ctx }) => {
+      const campaign = await db.getCampaignById(campaignId);
+      if (!campaign || campaign.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      const replies = await db.getRepliesByCampaignId(campaignId, ctx.user.id);
+      // Enrich with lead info
+      const enriched = await Promise.all(replies.map(async (reply) => {
+        let leadName = reply.fromEmail;
+        let companyName = "";
+        if (reply.leadId) {
+          const lead = await db.getLeadById(reply.leadId);
+          if (lead) {
+            leadName = lead.ownerName || reply.fromEmail;
+            companyName = lead.companyName || "";
+          }
+        }
+        return { ...reply, leadName, companyName };
+      }));
+      return enriched;
+    }),
+
     create: protectedProcedure
       .input(createCampaignSchema)
       .mutation(async ({ input, ctx }) => {
@@ -1675,11 +1699,12 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
             // Send email via SMTP
             const transporter = nodemailer.createTransport(smtpConfig as any);
+            const campaignReplyTo = settings.replyToEmail || "nitin@virtualassistant-group.com";
 
             const sendResult = await transporter.sendMail({
               from: `"${senderDisplayName}" <${senderEmail}>`,
               to: lead.email,
-              replyTo: "nitin@virtualassistant-group.com",
+              replyTo: campaignReplyTo,
               subject: campaign.subject,
               html: emailBody,
               headers: {
@@ -1973,6 +1998,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           socialDailyLimit: 20,
           socialMessageCharLimit: 300,
           socialNotificationEmail: "",
+          replyToEmail: "",
+          notificationEmail: "",
         };
       }
       // Don't return sensitive data to frontend
@@ -1999,6 +2026,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         socialDailyLimit: settings.socialDailyLimit || 20,
         socialMessageCharLimit: settings.socialMessageCharLimit || 300,
         socialNotificationEmail: settings.socialNotificationEmail || "",
+        replyToEmail: settings.replyToEmail || "",
+        notificationEmail: settings.notificationEmail || "",
       };
     }),
 
@@ -2779,10 +2808,11 @@ Respond in this exact JSON format:
         const htmlBody = testBanner + plainTextToHtml(input.body) + NITIN_SIGNATURE_HTML;
 
         try {
+          const testReplyTo = settings.replyToEmail || "nitin@virtualassistant-group.com";
           await transporter.sendMail({
             from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
             to: recipientEmail,
-            replyTo: "nitin@virtualassistant-group.com",
+            replyTo: testReplyTo,
             subject: testSubject,
             html: htmlBody,
           });

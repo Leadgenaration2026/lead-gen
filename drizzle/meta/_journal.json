@@ -162,6 +162,13 @@
       "when": 1782421488515,
       "tag": "0022_nosy_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1782422671633,
+      "tag": "0023_greedy_warbound",
+      "breakpoints": true
     }
   ]
 }

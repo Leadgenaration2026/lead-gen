@@ -867,3 +867,13 @@ export async function upsertWebsiteInsights(leadId: number, data: {
   }
   return db.insert(websiteInsights).values(values);
 }
+
+// ============ Email Replies ============
+export async function getRepliesByCampaignId(campaignId: number, userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  const { emailReplies } = await import("../drizzle/schema");
+  return database.select().from(emailReplies)
+    .where(and(eq(emailReplies.campaignId, campaignId), eq(emailReplies.userId, userId)))
+    .orderBy(desc(emailReplies.receivedAt));
+}

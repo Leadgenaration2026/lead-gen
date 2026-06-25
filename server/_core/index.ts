@@ -230,10 +230,11 @@ async function startServer() {
           const senderDisplayName = rotationalEmail ? (rotationalEmail.senderName || settings.senderName || "Lead Gen") : (settings.senderName || "Lead Gen");
 
           const transporter = nodemailer.createTransport(smtpConfig as any);
+          const replyToAddress = settings.replyToEmail || "nitin@virtualassistant-group.com";
           const sendResult = await transporter.sendMail({
             from: `"${senderDisplayName}" <${senderEmail}>`,
             to: lead.email,
-            replyTo: "nitin@virtualassistant-group.com",
+            replyTo: replyToAddress,
             subject: campaign.subject,
             html: emailBody,
             headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
@@ -412,10 +413,11 @@ async function startServer() {
           const senderDisplayName = rotationalEmail ? (rotationalEmail.senderName || settings.senderName || "Lead Gen") : (settings.senderName || "Lead Gen");
 
           const transporter = nodemailer.createTransport(smtpConfig as any);
+          const replyToAddress = settings.replyToEmail || "nitin@virtualassistant-group.com";
           const sendResult = await transporter.sendMail({
             from: `"${senderDisplayName}" <${senderEmail}>`,
             to: lead.email,
-            replyTo: "nitin@virtualassistant-group.com",
+            replyTo: replyToAddress,
             subject: campaign.subject,
             html: emailBody,
             headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
