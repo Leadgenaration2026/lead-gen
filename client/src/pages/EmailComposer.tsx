@@ -17,7 +17,7 @@ import { LeadPicker } from "@/components/LeadPicker";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { WebsiteInsightsPanel } from "@/components/WebsiteInsightsPanel";
-import DashboardLayout from "@/components/DashboardLayout";
+// DashboardLayout removed - layout is provided by parent route or Dashboard tab
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
@@ -274,7 +274,7 @@ export default function EmailComposer() {
   };
 
   return (
-    <DashboardLayout>
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Email Composer</h1>
@@ -1714,6 +1714,6 @@ export default function EmailComposer() {
         </TabsContent>
       </Tabs>
     </div>
-    </DashboardLayout>
+    </>
   );
 }

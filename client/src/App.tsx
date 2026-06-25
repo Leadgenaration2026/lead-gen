@@ -16,7 +16,7 @@ import ScheduledEmails from "./pages/ScheduledEmails";
 import Analytics from "./pages/Analytics";
 import LeadSets from "./pages/LeadSets";
 import CampaignDetail from "./pages/CampaignDetail";
-import AllLeads from "./pages/AllLeads";
+import AllLeads from "./pages/Leads";
 import Campaigns from "./pages/Campaigns";
 import SettingsPage from "./pages/Settings";
 import SocialOutreach from "./pages/SocialOutreach";
@@ -37,7 +37,7 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"} component={Dashboard} />
-      <Route path={"/email-composer"} component={EmailComposer} />
+      <Route path={"/email-composer"}>{() => <WithLayout component={EmailComposer} />}</Route>
       <Route path={"/signature"}>{() => <WithLayout component={SignatureEditor} />}</Route>
       <Route path={"/follow-up-reports"}>{() => <WithLayout component={FollowUpReports} />}</Route>
       <Route path={"/templates"}>{() => <WithLayout component={CampaignTemplates} />}</Route>

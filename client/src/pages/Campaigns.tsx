@@ -1,24 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Mail, Play, Pause, Trash2, RefreshCw, ShieldCheck, Inbox } from "lucide-react";
+import { Loader2, Mail, Play, Pause, Trash2, ShieldCheck, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
-import { LeadPicker } from "@/components/LeadPicker";
-import { AIWriteButton } from "@/components/AIWriteButton";
 
 export default function CampaignsPage() {
   const [, navigate] = useLocation();
   const campaignsQuery = trpc.campaigns.list.useQuery();
-  const leadsQuery = trpc.leads.list.useQuery();
-  const leadSetsQuery = trpc.leadSets.list.useQuery();
-  const createCampaignMutation = trpc.campaigns.create.useMutation();
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
   const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
   const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
@@ -26,58 +18,7 @@ export default function CampaignsPage() {
   const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
   const createInboxTestMutation = trpc.verification.createInboxTest.useMutation();
 
-  const [isOpen, setIsOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
-  const [selectedLeadSetId, setSelectedLeadSetId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    subject: "",
-    emailTemplate: "",
-    leadIds: [] as number[],
-    dailySendLimit: undefined as number | undefined,
-  });
-  const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
-  const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
-
-  // Filter leads by selected lead set
-  const filteredLeads = useMemo(() => {
-    const allLeads = leadsQuery.data || [];
-    if (!selectedLeadSetId) return allLeads;
-    return allLeads.filter((l: any) => l.leadSetId === selectedLeadSetId);
-  }, [leadsQuery.data, selectedLeadSetId]);
-
-  const handleCreateCampaign = async () => {
-    if (!formData.name || !formData.subject || !formData.emailTemplate) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
-    if (formData.leadIds.length === 0) {
-      toast.error("Please select at least one lead for this campaign");
-      return;
-    }
-
-    try {
-      await createCampaignMutation.mutateAsync({
-        ...formData,
-        leadIds: formData.leadIds,
-        dailySendLimit: formData.dailySendLimit || undefined,
-      });
-      toast.success(`Campaign created with ${formData.leadIds.length} leads!`);
-      setFormData({
-        name: "",
-        description: "",
-        subject: "",
-        emailTemplate: "",
-        leadIds: [],
-        dailySendLimit: undefined,
-      });
-      setIsOpen(false);
-      campaignsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to create campaign");
-    }
-  };
 
   const handleLaunchCampaign = async (campaignId: number) => {
     try {
@@ -118,200 +59,6 @@ export default function CampaignsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Create Campaign Dialog */}
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogTrigger asChild>
-          <Button className="gap-2">
-            <Plus className="w-4 h-4" />
-            Create Campaign
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create New Campaign</DialogTitle>
-            <DialogDescription>
-              Set up a new email campaign with personalized templates and select target leads
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Campaign Name *</label>
-                <Input
-                  placeholder="e.g., Q2 SaaS Outreach"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Description</label>
-                <Input
-                  placeholder="Brief campaign description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Email Subject *</label>
-              <Input
-                placeholder="e.g., Quick question about {{companyName}}"
-                value={formData.subject}
-                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                className="mt-1.5"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"} for personalization</p>
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Email Template *</label>
-                <div className="flex items-center gap-2">
-                  {formData.emailTemplate && lastCampaignAIPrompt && (
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const result = await regenerateTemplateMutation.mutateAsync({
-                            prompt: lastCampaignAIPrompt.prompt,
-                            emailType: lastCampaignAIPrompt.emailType as any,
-                            companyContext: lastCampaignAIPrompt.companyContext || undefined,
-                            includeVariables: true,
-                            useProblemAnalysis: false,
-                          });
-                          setFormData({ ...formData, subject: result.subject, emailTemplate: result.body });
-                          toast.success("New template variation generated!");
-                        } catch (error: any) {
-                          toast.error(error.message || "Failed to regenerate");
-                        }
-                      }}
-                      disabled={regenerateTemplateMutation.isPending}
-                      className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
-                    >
-                      {regenerateTemplateMutation.isPending ? (
-                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Regenerating...</>
-                      ) : (
-                        <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
-                      )}
-                    </Button>
-                  )}
-                  <AIWriteButton
-                    onGenerated={(s, b) => setFormData({ ...formData, subject: s, emailTemplate: b })}
-                    onPromptUsed={(prompt, emailType, companyContext) => setLastCampaignAIPrompt({ prompt, emailType, companyContext })}
-                    includeVariables={true}
-                    buttonLabel="AI Write"
-                    buttonVariant="outline"
-                    buttonSize="sm"
-                    className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                  />
-                </div>
-              </div>
-              <Textarea
-                placeholder="HTML email template with personalization variables"
-                value={formData.emailTemplate}
-                onChange={(e) => setFormData({ ...formData, emailTemplate: e.target.value })}
-                className="mt-1.5 min-h-28 font-mono text-xs"
-              />
-              {formData.emailTemplate && lastCampaignAIPrompt && (
-                <div className="mt-2 border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold text-purple-900">Not happy with this template?</p>
-                      <p className="text-xs text-purple-600">Click Regenerate above to get a different variation</p>
-                    </div>
-                    <RefreshCw className="w-4 h-4 text-purple-500" />
-                  </div>
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">Select Leads *</label>
-              <div className="mb-2">
-                <select
-                  value={selectedLeadSetId || ""}
-                  onChange={(e) => {
-                    const val = e.target.value ? Number(e.target.value) : null;
-                    setSelectedLeadSetId(val);
-                    // Auto-select all leads from the chosen set
-                    if (val) {
-                      const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === val);
-                      setFormData({ ...formData, leadIds: setLeads.map((l: any) => l.id) });
-                    } else {
-                      setFormData({ ...formData, leadIds: [] });
-                    }
-                  }}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="">All Leads (no set filter)</option>
-                  {(leadSetsQuery.data || []).map((set: any) => (
-                    <option key={set.id} value={set.id}>
-                      {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <LeadPicker
-                leads={filteredLeads}
-                selectedIds={formData.leadIds}
-                onChange={(ids) => setFormData({ ...formData, leadIds: ids })}
-                isLoading={leadsQuery.isLoading}
-              />
-            </div>
-            {/* Daily Send Limit */}
-            <div className="border rounded-lg p-3 bg-blue-50/50 border-blue-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-blue-900">Daily Send Limit</span>
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.dailySendLimit !== undefined}
-                    onChange={(e) => setFormData({ ...formData, dailySendLimit: e.target.checked ? 30 : undefined })}
-                    className="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-xs text-blue-700">Enable</span>
-                </label>
-              </div>
-              {formData.dailySendLimit !== undefined && (
-                <div className="mt-2 space-y-1">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={formData.dailySendLimit || 30}
-                    onChange={(e) => setFormData({ ...formData, dailySendLimit: parseInt(e.target.value) || 30 })}
-                    className="text-sm h-8 bg-white w-28"
-                  />
-                  <p className="text-xs text-blue-700">Emails per day. Remaining leads will be sent on subsequent days.</p>
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2 justify-end pt-2 border-t">
-              <Button variant="outline" onClick={() => setIsOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateCampaign}
-                disabled={createCampaignMutation.isPending}
-              >
-                {createCampaignMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Creating...
-                  </>
-                ) : (
-                  <>Create Campaign ({formData.leadIds.length} leads)</>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Campaigns List */}
       <Card>
         <CardHeader>
@@ -504,7 +251,7 @@ export default function CampaignsPage() {
           ) : (
             <div className="text-center py-12">
               <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-muted-foreground">No campaigns yet. Create one to get started!</p>
+              <p className="text-muted-foreground">No campaigns yet. Use the Email Composer to create one.</p>
             </div>
           )}
         </CardContent>

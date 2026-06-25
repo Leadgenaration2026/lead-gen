@@ -97,6 +97,11 @@ export const appRouter = router({
       return db.getLeadsByUserId(ctx.user.id);
     }),
 
+    // Leads not yet assigned to any campaign (for dashboard leads view)
+    listUnassigned: protectedProcedure.query(async ({ ctx }) => {
+      return db.getUnassignedLeadsByUserId(ctx.user.id);
+    }),
+
     // All leads with engagement status for the unified management page
     listWithStatus: protectedProcedure.query(async ({ ctx }) => {
       const allLeads = await db.getLeadsByUserId(ctx.user.id);
@@ -1457,6 +1462,30 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           throw new TRPCError({ code: "NOT_FOUND" });
         }
         return db.updateCampaign(input.id, input.data);
+      }),
+
+    // Assign leads to an existing campaign (from leads page)
+    assignLeads: protectedProcedure
+      .input(z.object({
+        campaignId: z.number(),
+        leadIds: z.array(z.number()),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+        }
+        // Get existing campaign leads to avoid duplicates
+        const existingCLs = await db.getCampaignLeads(input.campaignId);
+        const existingLeadIds = new Set(existingCLs.map(cl => cl.leadId));
+        const newLeadIds = input.leadIds.filter(id => !existingLeadIds.has(id));
+        if (newLeadIds.length === 0) {
+          return { added: 0, skipped: input.leadIds.length, message: "All selected leads are already in this campaign" };
+        }
+        await db.addLeadsToCampaign(input.campaignId, newLeadIds);
+        // Update totalLeads count
+        await db.updateCampaign(input.campaignId, { totalLeads: (campaign.totalLeads || 0) + newLeadIds.length });
+        return { added: newLeadIds.length, skipped: input.leadIds.length - newLeadIds.length };
       }),
 
     // Cancel a scheduled campaign launch

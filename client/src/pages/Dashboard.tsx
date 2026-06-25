@@ -79,9 +79,9 @@ export default function Dashboard() {
             <OverviewTab />
           </TabsContent>
 
-          {/* Leads Tab */}
+          {/* Leads Tab - shows only leads not yet assigned to any campaign */}
           <TabsContent value="leads">
-            <LeadsPage />
+            <LeadsPage showOnlyUnassigned={true} />
           </TabsContent>
 
           {/* Email Composer Tab - Unified single + bulk */}
@@ -241,12 +241,12 @@ function OverviewTab() {
           <CardDescription>Get started with your lead generation</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          <Button className="gap-2">
-            <Plus className="w-4 h-4" />
-            Create Campaign
-          </Button>
-          <Button variant="outline" className="gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => window.location.href = '/email-composer'}>
             <Mail className="w-4 h-4" />
+            Compose Email
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => window.location.href = '/dashboard?tab=leads'}>
+            <Plus className="w-4 h-4" />
             Generate Leads
           </Button>
           <Button variant="outline" className="gap-2">

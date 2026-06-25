@@ -860,3 +860,11 @@
 - [x] Add clickable "View Email" links for each lead's initial email in Campaign Detail
 - [x] Add clickable links to view all follow-up emails sent to each lead
 - [x] Show email content (subject + body) in a dialog/modal when clicked
+
+## Feature — Navigation Consistency & Lead Assignment
+- [x] Make All Leads (sidebar) match Dashboard Leads tab (same layout, CSV/AI/single add options)
+- [x] Fix Email Composer dashboard tab to match the full sidebar Email Composer version
+- [x] Add lead-to-campaign assignment feature (select leads → assign to campaign 1 or 2)
+- [x] Hide assigned leads from Dashboard Leads view (only show in Lead Sets)
+- [x] Remove Create Campaign button from sidebar Campaigns page
+- [x] Remove Create Campaign button from Dashboard Campaigns section

@@ -1,4 +1,4 @@
-import { eq, and, desc, inArray, lte, count, sql, gte } from "drizzle-orm";
+import { eq, and, desc, inArray, lte, count, sql, gte, notInArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -100,6 +100,21 @@ export async function getLeadsByUserId(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.select().from(leads).where(eq(leads.userId, userId)).orderBy(desc(leads.createdAt));
+}
+
+// Get leads not assigned to any campaign (for dashboard leads view)
+export async function getUnassignedLeadsByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Get all lead IDs that are in any campaign
+  const assignedLeadRows = await db.selectDistinct({ leadId: campaignLeads.leadId }).from(campaignLeads);
+  const assignedLeadIds = assignedLeadRows.map(r => r.leadId);
+  if (assignedLeadIds.length === 0) {
+    return db.select().from(leads).where(eq(leads.userId, userId)).orderBy(desc(leads.createdAt));
+  }
+  return db.select().from(leads).where(
+    and(eq(leads.userId, userId), notInArray(leads.id, assignedLeadIds))
+  ).orderBy(desc(leads.createdAt));
 }
 
 export async function getLeadById(id: number) {

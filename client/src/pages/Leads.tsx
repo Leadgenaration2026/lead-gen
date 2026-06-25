@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2 } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, Megaphone } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { toast } from "sonner";
@@ -42,8 +42,10 @@ const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = 
   none: { bg: "bg-gray-100 dark:bg-gray-800", text: "text-gray-500 dark:text-gray-400", label: "No Tag" },
 };
 
-export default function LeadsPage() {
-  const leadsQuery = trpc.leads.list.useQuery();
+export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnassigned?: boolean } = {}) {
+  const allLeadsQuery = trpc.leads.list.useQuery(undefined, { enabled: !showOnlyUnassigned });
+  const unassignedLeadsQuery = trpc.leads.listUnassigned.useQuery(undefined, { enabled: showOnlyUnassigned });
+  const leadsQuery = showOnlyUnassigned ? unassignedLeadsQuery : allLeadsQuery;
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
@@ -123,6 +125,12 @@ export default function LeadsPage() {
   const bulkDeleteMutation = trpc.leads.bulkDelete.useMutation();
   const [newSetName, setNewSetName] = useState("");
   const [assignToSetId, setAssignToSetId] = useState<string>("");
+
+  // Assign to campaign dialog
+  const [assignCampaignDialogOpen, setAssignCampaignDialogOpen] = useState(false);
+  const [assignToCampaignId, setAssignToCampaignId] = useState<string>("");
+  const campaignsQuery = trpc.campaigns.list.useQuery();
+  const assignToCampaignMutation = trpc.campaigns.assignLeads.useMutation();
 
   // Duplicate warning dialog state
   const [dupDialogOpen, setDupDialogOpen] = useState(false);
@@ -931,6 +939,71 @@ export default function LeadsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Assign to Campaign Dialog */}
+      <Dialog open={assignCampaignDialogOpen} onOpenChange={setAssignCampaignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5" />
+              Assign to Campaign
+            </DialogTitle>
+            <DialogDescription>
+              Assign {selectedLeadIds.size} selected lead(s) to an existing campaign
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Choose Campaign</label>
+              <Select value={assignToCampaignId} onValueChange={setAssignToCampaignId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select a campaign..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {(campaignsQuery.data || []).map((campaign: any) => (
+                    <SelectItem key={campaign.id} value={String(campaign.id)}>
+                      {campaign.name} ({campaign.status})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={async () => {
+                if (!assignToCampaignId) {
+                  toast.error("Please select a campaign");
+                  return;
+                }
+                try {
+                  const result = await assignToCampaignMutation.mutateAsync({
+                    campaignId: parseInt(assignToCampaignId),
+                    leadIds: Array.from(selectedLeadIds),
+                  });
+                  if (result.added > 0) {
+                    toast.success(`${result.added} lead(s) assigned to campaign${result.skipped > 0 ? ` (${result.skipped} already in campaign)` : ""}`);
+                  } else {
+                    toast.info(result.message || "All selected leads are already in this campaign");
+                  }
+                  setSelectedLeadIds(new Set());
+                  setAssignCampaignDialogOpen(false);
+                  setAssignToCampaignId("");
+                  leadsQuery.refetch();
+                } catch (error: any) {
+                  toast.error(error?.message || "Failed to assign leads to campaign");
+                }
+              }}
+              disabled={assignToCampaignMutation.isPending}
+              className="w-full"
+            >
+              {assignToCampaignMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
+              ) : (
+                `Assign ${selectedLeadIds.size} Lead(s) to Campaign`
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Bulk Delete Confirmation Dialog */}
       <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
         <AlertDialogContent>
@@ -1540,6 +1613,15 @@ export default function LeadsPage() {
               >
                 <FolderPlus className="w-3.5 h-3.5" />
                 Assign to Set
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssignCampaignDialogOpen(true)}
+                className="gap-1.5"
+              >
+                <Megaphone className="w-3.5 h-3.5" />
+                Assign to Campaign
               </Button>
               <Button
                 variant="destructive"
