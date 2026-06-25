@@ -129,8 +129,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // Assign to campaign dialog
   const [assignCampaignDialogOpen, setAssignCampaignDialogOpen] = useState(false);
   const [assignToCampaignId, setAssignToCampaignId] = useState<string>("");
+  const [assignCampaignMode, setAssignCampaignMode] = useState<"existing" | "new">("existing");
+  const [newCampaignName, setNewCampaignName] = useState("");
+  const [newCampaignSubject, setNewCampaignSubject] = useState("");
+  const [newCampaignTemplate, setNewCampaignTemplate] = useState("");
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const assignToCampaignMutation = trpc.campaigns.assignLeads.useMutation();
+  const createCampaignMutation = trpc.campaigns.create.useMutation();
 
   // Duplicate warning dialog state
   const [dupDialogOpen, setDupDialogOpen] = useState(false);
@@ -940,66 +945,169 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       </Dialog>
 
       {/* Assign to Campaign Dialog */}
-      <Dialog open={assignCampaignDialogOpen} onOpenChange={setAssignCampaignDialogOpen}>
-        <DialogContent className="max-w-md">
+      <Dialog open={assignCampaignDialogOpen} onOpenChange={(open) => {
+        setAssignCampaignDialogOpen(open);
+        if (!open) {
+          setAssignCampaignMode("existing");
+          setNewCampaignName("");
+          setNewCampaignSubject("");
+          setNewCampaignTemplate("");
+          setAssignToCampaignId("");
+        }
+      }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Megaphone className="w-5 h-5" />
               Assign to Campaign
             </DialogTitle>
             <DialogDescription>
-              Assign {selectedLeadIds.size} selected lead(s) to an existing campaign
+              Assign {selectedLeadIds.size} selected lead(s) to a campaign
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Choose Campaign</label>
-              <Select value={assignToCampaignId} onValueChange={setAssignToCampaignId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select a campaign..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(campaignsQuery.data || []).map((campaign: any) => (
-                    <SelectItem key={campaign.id} value={String(campaign.id)}>
-                      {campaign.name} ({campaign.status})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Toggle between existing and new */}
+            <div className="flex gap-2 p-1 bg-muted rounded-lg">
+              <button
+                className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${assignCampaignMode === "existing" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setAssignCampaignMode("existing")}
+              >
+                Existing Campaign
+              </button>
+              <button
+                className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${assignCampaignMode === "new" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setAssignCampaignMode("new")}
+              >
+                + Create New Campaign
+              </button>
             </div>
-            <Button
-              onClick={async () => {
-                if (!assignToCampaignId) {
-                  toast.error("Please select a campaign");
-                  return;
-                }
-                try {
-                  const result = await assignToCampaignMutation.mutateAsync({
-                    campaignId: parseInt(assignToCampaignId),
-                    leadIds: Array.from(selectedLeadIds),
-                  });
-                  if (result.added > 0) {
-                    toast.success(`${result.added} lead(s) assigned to campaign${result.skipped > 0 ? ` (${result.skipped} already in campaign)` : ""}`);
-                  } else {
-                    toast.info(result.message || "All selected leads are already in this campaign");
-                  }
-                  setSelectedLeadIds(new Set());
-                  setAssignCampaignDialogOpen(false);
-                  setAssignToCampaignId("");
-                  leadsQuery.refetch();
-                } catch (error: any) {
-                  toast.error(error?.message || "Failed to assign leads to campaign");
-                }
-              }}
-              disabled={assignToCampaignMutation.isPending}
-              className="w-full"
-            >
-              {assignToCampaignMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
-              ) : (
-                `Assign ${selectedLeadIds.size} Lead(s) to Campaign`
-              )}
-            </Button>
+
+            {assignCampaignMode === "existing" ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium">Choose Campaign</label>
+                  <Select value={assignToCampaignId} onValueChange={setAssignToCampaignId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select a campaign..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(campaignsQuery.data || []).map((campaign: any) => (
+                        <SelectItem key={campaign.id} value={String(campaign.id)}>
+                          {campaign.name} ({campaign.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={async () => {
+                    if (!assignToCampaignId) {
+                      toast.error("Please select a campaign");
+                      return;
+                    }
+                    try {
+                      const result = await assignToCampaignMutation.mutateAsync({
+                        campaignId: parseInt(assignToCampaignId),
+                        leadIds: Array.from(selectedLeadIds),
+                      });
+                      if (result.added > 0) {
+                        toast.success(`${result.added} lead(s) assigned to campaign${result.skipped > 0 ? ` (${result.skipped} already in campaign)` : ""}`);
+                      } else {
+                        toast.info(result.message || "All selected leads are already in this campaign");
+                      }
+                      setSelectedLeadIds(new Set());
+                      setAssignCampaignDialogOpen(false);
+                      setAssignToCampaignId("");
+                      leadsQuery.refetch();
+                    } catch (error: any) {
+                      toast.error(error?.message || "Failed to assign leads to campaign");
+                    }
+                  }}
+                  disabled={assignToCampaignMutation.isPending}
+                  className="w-full"
+                >
+                  {assignToCampaignMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
+                  ) : (
+                    `Assign ${selectedLeadIds.size} Lead(s) to Campaign`
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm font-medium">Campaign Name *</label>
+                  <Input
+                    placeholder="e.g., Q2 SaaS Outreach"
+                    value={newCampaignName}
+                    onChange={(e) => setNewCampaignName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Email Subject *</label>
+                  <Input
+                    placeholder="e.g., Quick question about {{companyName}}"
+                    value={newCampaignSubject}
+                    onChange={(e) => setNewCampaignSubject(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"} for personalization</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Email Template *</label>
+                  <Textarea
+                    placeholder="Write your email template here..."
+                    value={newCampaignTemplate}
+                    onChange={(e) => setNewCampaignTemplate(e.target.value)}
+                    className="mt-1 min-h-24 font-mono text-xs"
+                  />
+                </div>
+                <Button
+                  onClick={async () => {
+                    if (!newCampaignName.trim()) {
+                      toast.error("Please enter a campaign name");
+                      return;
+                    }
+                    if (!newCampaignSubject.trim()) {
+                      toast.error("Please enter an email subject");
+                      return;
+                    }
+                    if (!newCampaignTemplate.trim()) {
+                      toast.error("Please enter an email template");
+                      return;
+                    }
+                    try {
+                      await createCampaignMutation.mutateAsync({
+                        name: newCampaignName.trim(),
+                        subject: newCampaignSubject.trim(),
+                        emailTemplate: newCampaignTemplate.trim(),
+                        leadIds: Array.from(selectedLeadIds),
+                      });
+                      toast.success(`Campaign "${newCampaignName}" created with ${selectedLeadIds.size} lead(s)!`);
+                      setSelectedLeadIds(new Set());
+                      setAssignCampaignDialogOpen(false);
+                      setNewCampaignName("");
+                      setNewCampaignSubject("");
+                      setNewCampaignTemplate("");
+                      setAssignCampaignMode("existing");
+                      leadsQuery.refetch();
+                      campaignsQuery.refetch();
+                    } catch (error: any) {
+                      toast.error(error?.message || "Failed to create campaign");
+                    }
+                  }}
+                  disabled={createCampaignMutation.isPending}
+                  className="w-full"
+                >
+                  {createCampaignMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating...</>
+                  ) : (
+                    `Create Campaign & Assign ${selectedLeadIds.size} Lead(s)`
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

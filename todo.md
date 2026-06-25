@@ -868,3 +868,8 @@
 - [x] Hide assigned leads from Dashboard Leads view (only show in Lead Sets)
 - [x] Remove Create Campaign button from sidebar Campaigns page
 - [x] Remove Create Campaign button from Dashboard Campaigns section
+
+## Feature — Create Campaign from Assign Dialog
+- [x] Add "Create New Campaign" option in the Assign to Campaign dialog
+- [x] Allow user to enter campaign name, subject, and template inline
+- [x] After creating, auto-select the new campaign for assignment
