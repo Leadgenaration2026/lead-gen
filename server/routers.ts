@@ -1676,7 +1676,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             // Send email via SMTP
             const transporter = nodemailer.createTransport(smtpConfig as any);
 
-            await transporter.sendMail({
+            const sendResult = await transporter.sendMail({
               from: `"${senderDisplayName}" <${senderEmail}>`,
               to: lead.email,
               replyTo: "nitin@virtualassistant-group.com",
@@ -1687,10 +1687,13 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               },
             });
 
-            // Update campaign lead status
+            // Update campaign lead status with sender info and message ID
             await db.updateCampaignLead(campaignLead.id, {
               emailSent: true,
               emailSentAt: new Date(),
+              senderEmail: senderEmail || null,
+              messageId: sendResult.messageId || null,
+              threadId: sendResult.messageId || null,
             });
 
             sentCount++;
@@ -2671,8 +2674,9 @@ Respond in this exact JSON format:
         const unsubscribeHtml = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
         const htmlBody = plainTextToHtml(trackedBody) + NITIN_SIGNATURE_HTML + unsubscribeHtml + trackingPixel;
 
+        let sendResult: any;
         try {
-          await transporter.sendMail({
+          sendResult = await transporter.sendMail({
             from: `"${fromName || "Lead Gen Pro"}" <${fromEmail}>`,
             to: lead.email,
             subject: input.subject,
@@ -2710,6 +2714,9 @@ Respond in this exact JSON format:
               await db.updateCampaignLead(campaignLeadsList[0].id, {
                 emailSent: true,
                 emailSentAt: new Date(),
+                senderEmail: fromEmail || null,
+                messageId: sendResult?.messageId || null,
+                threadId: sendResult?.messageId || null,
               });
               await db.createEmailTrackingEvent({
                 campaignLeadId: campaignLeadsList[0].id,

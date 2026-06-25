@@ -809,3 +809,9 @@
 - [x] Add a clear "Save" button for webhook signing secrets that persists values
 - [x] Show "Configured" status with green banner and checkmark when secrets are already saved
 - [x] Prevent needing to re-enter values — show "Secret Saved & Active" with "Update" button to change
+
+## Feature — Store Sender Mailbox with Message/Thread ID
+- [x] Add senderEmail, messageId, and threadId columns to campaignLeads table
+- [x] When sending emails from any mailbox (teams@..., ceo@..., rotational), store which sender was used
+- [x] Store the SMTP message ID returned after sending
+- [x] Enable tracking which mailbox sent which email for reply routing and thread management

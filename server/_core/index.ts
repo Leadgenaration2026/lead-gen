@@ -230,7 +230,7 @@ async function startServer() {
           const senderDisplayName = rotationalEmail ? (rotationalEmail.senderName || settings.senderName || "Lead Gen") : (settings.senderName || "Lead Gen");
 
           const transporter = nodemailer.createTransport(smtpConfig as any);
-          await transporter.sendMail({
+          const sendResult = await transporter.sendMail({
             from: `"${senderDisplayName}" <${senderEmail}>`,
             to: lead.email,
             replyTo: "nitin@virtualassistant-group.com",
@@ -239,7 +239,13 @@ async function startServer() {
             headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
           });
 
-          await db.updateCampaignLead(campaignLead.id, { emailSent: true, emailSentAt: new Date() });
+          await db.updateCampaignLead(campaignLead.id, {
+            emailSent: true,
+            emailSentAt: new Date(),
+            senderEmail: senderEmail || null,
+            messageId: sendResult.messageId || null,
+            threadId: sendResult.messageId || null,
+          });
           sentCount++;
         } catch (err: any) {
           console.error(`[Scheduled Launch] Failed for campaignLead ${campaignLead.id}:`, err?.message);
@@ -406,7 +412,7 @@ async function startServer() {
           const senderDisplayName = rotationalEmail ? (rotationalEmail.senderName || settings.senderName || "Lead Gen") : (settings.senderName || "Lead Gen");
 
           const transporter = nodemailer.createTransport(smtpConfig as any);
-          await transporter.sendMail({
+          const sendResult = await transporter.sendMail({
             from: `"${senderDisplayName}" <${senderEmail}>`,
             to: lead.email,
             replyTo: "nitin@virtualassistant-group.com",
@@ -415,7 +421,13 @@ async function startServer() {
             headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
           });
 
-          await db.updateCampaignLead(campaignLead.id, { emailSent: true, emailSentAt: new Date() });
+          await db.updateCampaignLead(campaignLead.id, {
+            emailSent: true,
+            emailSentAt: new Date(),
+            senderEmail: senderEmail || null,
+            messageId: sendResult.messageId || null,
+            threadId: sendResult.messageId || null,
+          });
           sentCount++;
         } catch (err: any) {
           console.error(`[Daily Send] Failed for campaignLead ${campaignLead.id}:`, err?.message);

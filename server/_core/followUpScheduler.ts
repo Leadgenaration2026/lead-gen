@@ -491,8 +491,9 @@ export async function processScheduledFollowUpEmails() {
         htmlBody += `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
 
         // Send the email
-        await transporter.sendMail({
-          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+        const followUpSenderEmail = settings.senderEmail || settings.smtpUsername || '';
+        const sendResult = await transporter.sendMail({
+          from: `"${settings.senderName || "Lead Gen Pro"}" <${followUpSenderEmail}>`,
           to: lead.email,
           replyTo: "nitin@virtualassistant-group.com",
           subject: followUpEmail.subject,
@@ -507,6 +508,15 @@ export async function processScheduledFollowUpEmails() {
           status: "sent",
           sentAt: new Date(),
         });
+
+        // Store sender mailbox and message ID on the campaign lead
+        if (campaignLead) {
+          await db.updateCampaignLead(campaignLead.id, {
+            senderEmail: followUpSenderEmail,
+            messageId: sendResult.messageId || null,
+            threadId: sendResult.messageId || null,
+          });
+        }
 
         sentCount++;
         console.log(`[FollowUpScheduler] Sent follow-up email #${followUpEmail.sequenceNumber} to ${lead.email}`);
@@ -594,8 +604,9 @@ export async function processScheduledEmails() {
         const finalHtml = htmlBody + `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
 
         // Send the email
-        await transporter.sendMail({
-          from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+        const scheduledSenderEmail = settings.senderEmail || settings.smtpUsername || '';
+        const scheduledSendResult = await transporter.sendMail({
+          from: `"${settings.senderName || "Lead Gen Pro"}" <${scheduledSenderEmail}>`,
           to: lead.email,
           replyTo: "nitin@virtualassistant-group.com",
           subject: scheduledEmail.subject,
@@ -610,6 +621,11 @@ export async function processScheduledEmails() {
           status: "sent",
           sentAt: new Date(),
         });
+
+        // Note: sender mailbox and message ID are stored at campaign-level send time.
+        // Scheduled emails are standalone and don't have a campaign lead association.
+        // The messageId is logged for debugging purposes.
+        console.log(`[ScheduledEmailProcessor] Email sent from ${scheduledSenderEmail}, messageId: ${scheduledSendResult.messageId}`);
 
         // Update lead status
         await db.updateLead(lead.id, { status: "contacted" });
