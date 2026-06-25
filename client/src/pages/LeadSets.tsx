@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Save, X, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle } from "lucide-react";
+import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Save, X, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -92,6 +92,7 @@ export default function LeadSetsPage() {
   const [expandedSetId, setExpandedSetId] = useState<number | null>(null);
   const [editingLeadId, setEditingLeadId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<any>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   if (authLoading) {
     return (
@@ -111,7 +112,19 @@ export default function LeadSetsPage() {
 
   // Count leads per set
   const getLeadCount = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId).length;
-  const getLeadsForSet = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId);
+  const getLeadsForSet = (setId: number) => {
+    let leads = allLeads.filter((l: any) => l.leadSetId === setId);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      leads = leads.filter((l: any) =>
+        (l.ownerName || "").toLowerCase().includes(q) ||
+        (l.companyName || "").toLowerCase().includes(q) ||
+        (l.email || "").toLowerCase().includes(q) ||
+        (l.phoneNumber || "").replace(/\D/g, "").includes(q.replace(/\D/g, ""))
+      );
+    }
+    return leads;
+  };
   const unassignedCount = allLeads.filter((l: any) => !l.leadSetId).length;
 
   const handleRename = async () => {
@@ -266,6 +279,34 @@ export default function LeadSetsPage() {
           </Card>
         </div>
 
+        {/* Search Bar */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search leads by name, email, phone, or company..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Showing results matching "{searchQuery}" across all lead sets
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Lead Sets Table */}
         <Card>
           <CardHeader>
@@ -347,7 +388,7 @@ export default function LeadSetsPage() {
                     </div>
 
                     {/* Expanded Leads List with full details */}
-                    {expandedSetId === set.id && (
+                    {(expandedSetId === set.id || (searchQuery.trim() && getLeadsForSet(set.id).length > 0)) && (
                       <div className="border-t bg-muted/20 px-4 py-3">
                         {getLeadsForSet(set.id).length === 0 ? (
                           <p className="text-sm text-muted-foreground text-center py-4">No leads in this set</p>
@@ -362,6 +403,9 @@ export default function LeadSetsPage() {
                                   <TableHead>Email</TableHead>
                                   <TableHead>Phone</TableHead>
                                   <TableHead>Industry</TableHead>
+                                  <TableHead>Website</TableHead>
+                                  <TableHead>LinkedIn</TableHead>
+                                  <TableHead>Tag</TableHead>
                                   <TableHead>Engagement</TableHead>
                                   <TableHead>Email Status</TableHead>
                                   <TableHead className="text-right">Actions</TableHead>
@@ -481,6 +525,33 @@ export default function LeadSetsPage() {
                                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                                       <TableCell className="text-sm text-muted-foreground">{formatPhoneDisplay(lead.phoneNumber)}</TableCell>
                                       <TableCell className="text-sm">{lead.industry || "—"}</TableCell>
+                                      <TableCell className="text-sm">
+                                        {lead.website ? (
+                                          <a href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[120px] block">
+                                            {lead.website.replace(/^https?:\/\//, "").slice(0, 20)}
+                                          </a>
+                                        ) : "—"}
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {lead.linkedinUrl ? (
+                                          <a href={lead.linkedinUrl.startsWith("http") ? lead.linkedinUrl : `https://${lead.linkedinUrl}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                            Profile
+                                          </a>
+                                        ) : "—"}
+                                      </TableCell>
+                                      <TableCell>
+                                        {lead.tag && lead.tag !== "none" ? (
+                                          <Badge variant="outline" className={`text-xs ${
+                                            lead.tag === "hot" ? "border-red-300 text-red-700 bg-red-50" :
+                                            lead.tag === "warm" ? "border-orange-300 text-orange-700 bg-orange-50" :
+                                            lead.tag === "cold" ? "border-blue-300 text-blue-700 bg-blue-50" :
+                                            lead.tag === "follow_up" ? "border-purple-300 text-purple-700 bg-purple-50" :
+                                            ""
+                                          }`}>
+                                            {lead.tag === "follow_up" ? "Follow Up" : lead.tag.charAt(0).toUpperCase() + lead.tag.slice(1)}
+                                          </Badge>
+                                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                                      </TableCell>
                                       <TableCell><EngagementBadge score={lead.engagementScore} /></TableCell>
                                       <TableCell><EmailStatusBadge status={lead.emailVerificationStatus} /></TableCell>
                                       <TableCell className="text-right">

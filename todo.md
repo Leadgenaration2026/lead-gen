@@ -873,3 +873,7 @@
 - [x] Add "Create New Campaign" option in the Assign to Campaign dialog
 - [x] Allow user to enter campaign name, subject, and template inline
 - [x] After creating, auto-select the new campaign for assignment
+
+## Feature — Lead Sets Page Enhancement
+- [x] Show full lead data in Lead Sets (same columns as main Leads page)
+- [x] Add search bar to find leads by name, email, or phone number within Lead Sets
