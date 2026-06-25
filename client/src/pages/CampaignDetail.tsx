@@ -234,7 +234,12 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
                       <Send className="w-3 h-3" /> Sent
                     </Badge>
                   </TooltipTrigger>
-                  <TooltipContent>Email sent {lead.initialEmail.sentAt ? new Date(lead.initialEmail.sentAt).toLocaleDateString() : ""}</TooltipContent>
+                  <TooltipContent>
+                    {lead.initialEmail.senderEmail
+                      ? `Sent from ${lead.initialEmail.senderEmail} on ${lead.initialEmail.sentAt ? new Date(lead.initialEmail.sentAt).toLocaleDateString() : ""}`
+                      : `Email sent ${lead.initialEmail.sentAt ? new Date(lead.initialEmail.sentAt).toLocaleDateString() : ""}`
+                    }
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
@@ -313,6 +318,11 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
             <span className="flex items-center gap-1">
               <Globe className="w-3 h-3" /> {lead.companyName}
             </span>
+            {lead.initialEmail.senderEmail && (
+              <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                <Send className="w-3 h-3" /> Sent from: {lead.initialEmail.senderEmail}
+              </span>
+            )}
           </div>
         </CardContent>
       )}

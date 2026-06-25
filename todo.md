@@ -815,3 +815,8 @@
 - [x] When sending emails from any mailbox (teams@..., ceo@..., rotational), store which sender was used
 - [x] Store the SMTP message ID returned after sending
 - [x] Enable tracking which mailbox sent which email for reply routing and thread management
+
+## Feature — Sent From Column in Campaign Detail
+- [x] Add "Sent From" column in Campaign Detail page showing which mailbox was used for each lead
+- [x] Show sender email in tooltip when hovering over "Sent" badge
+- [x] Display sender email in expanded lead contact info section

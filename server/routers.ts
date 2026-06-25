@@ -2077,6 +2077,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               openedAt: cl.emailOpenedAt,
               clicked: cl.emailClicked,
               clickedAt: cl.emailClickedAt,
+              senderEmail: cl.senderEmail || null,
+              messageId: cl.messageId || null,
             },
             // Initial call
             initialCall: {
