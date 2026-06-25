@@ -820,3 +820,13 @@
 - [x] Add "Sent From" column in Campaign Detail page showing which mailbox was used for each lead
 - [x] Show sender email in tooltip when hovering over "Sent" badge
 - [x] Display sender email in expanded lead contact info section
+
+## Feature — Reply Detection & Auto-Stop Follow-ups
+- [x] Add emailReplies table to track incoming replies with classification
+- [x] Add webhook endpoint (POST /api/webhooks/reply) to receive inbound email notifications
+- [x] Build reply classification logic: detect genuine replies vs newsletters/spam/auto-replies
+- [x] On genuine reply: immediately cancel all pending follow-up emails and calls for that lead
+- [x] Mark lead as "replied" status in the campaign
+- [x] Show reply detection status in Campaign Detail page (badge + timeline + stats cards)
+- [x] Ignore: newsletters, spam, auto-replies (OOO, delivery failures, unsubscribe confirmations)
+- [x] Match replies by In-Reply-To/References header (message ID) or sender email address

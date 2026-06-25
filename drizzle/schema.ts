@@ -428,3 +428,33 @@ export const websiteInsights = mysqlTable("websiteInsights", {
 
 export type WebsiteInsight = typeof websiteInsights.$inferSelect;
 export type InsertWebsiteInsight = typeof websiteInsights.$inferInsert;
+
+// Email replies table - tracks incoming replies and their classification
+export const emailReplies = mysqlTable("emailReplies", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  leadId: int("leadId"),
+  campaignLeadId: int("campaignLeadId"),
+  campaignId: int("campaignId"),
+  // Reply metadata
+  fromEmail: varchar("fromEmail", { length: 320 }).notNull(),
+  toEmail: varchar("toEmail", { length: 320 }).notNull(), // e.g. nitin@virtualassistant-group.com
+  subject: varchar("subject", { length: 500 }),
+  bodySnippet: text("bodySnippet"), // First 500 chars of the reply body
+  inReplyToMessageId: varchar("inReplyToMessageId", { length: 500 }), // References/In-Reply-To header
+  replyMessageId: varchar("replyMessageId", { length: 500 }), // Message-ID of the reply itself
+  // Classification
+  classification: mysqlEnum("classification", ["genuine", "auto_reply", "newsletter", "spam", "bounce", "unsubscribe", "unknown"]).default("unknown").notNull(),
+  classificationReason: text("classificationReason"), // Why it was classified this way
+  confidence: int("confidence").default(0), // 0-100 confidence score
+  // Action taken
+  followUpsStopped: boolean("followUpsStopped").default(false).notNull(),
+  stoppedAt: timestamp("stoppedAt"),
+  // Raw data
+  rawHeaders: json("rawHeaders"), // Store full email headers for debugging
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type EmailReply = typeof emailReplies.$inferSelect;
+export type InsertEmailReply = typeof emailReplies.$inferInsert;

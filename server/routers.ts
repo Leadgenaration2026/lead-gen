@@ -2079,6 +2079,9 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               clickedAt: cl.emailClickedAt,
               senderEmail: cl.senderEmail || null,
               messageId: cl.messageId || null,
+              replied: cl.replied || false,
+              repliedAt: cl.repliedAt || null,
+              responseStatus: cl.responseStatus || null,
             },
             // Initial call
             initialCall: {
@@ -2137,6 +2140,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const totalCallsPending = report.reduce((sum, r) => sum + r.summary.callsPending, 0);
         const totalEmailsPending = report.reduce((sum, r) => sum + r.summary.emailsPending, 0);
         const totalBounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
+        const totalReplied = campaignLeadsList.filter((cl: any) => cl.replied).length;
 
         // Social outreach stats for this campaign
         let socialOutreachStats = { totalSent: 0, totalAccepted: 0, totalPending: 0, byPlatform: { linkedin: { sent: 0, accepted: 0, pending: 0 }, instagram: { sent: 0, accepted: 0, pending: 0 }, facebook: { sent: 0, accepted: 0, pending: 0 } } };
@@ -2189,6 +2193,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             totalCallsPending,
             totalEmailsPending,
             totalBounced,
+            totalReplied,
             socialOutreach: socialOutreachStats,
           },
           leads: report,

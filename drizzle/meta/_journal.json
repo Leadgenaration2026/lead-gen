@@ -155,6 +155,13 @@
       "when": 1782420276557,
       "tag": "0021_colossal_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1782421488515,
+      "tag": "0022_nosy_crystal",
+      "breakpoints": true
     }
   ]
 }

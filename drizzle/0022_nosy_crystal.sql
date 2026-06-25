@@ -1,0 +1,22 @@
+CREATE TABLE `emailReplies` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`userId` int NOT NULL,
+	`leadId` int,
+	`campaignLeadId` int,
+	`campaignId` int,
+	`fromEmail` varchar(320) NOT NULL,
+	`toEmail` varchar(320) NOT NULL,
+	`subject` varchar(500),
+	`bodySnippet` text,
+	`inReplyToMessageId` varchar(500),
+	`replyMessageId` varchar(500),
+	`classification` enum('genuine','auto_reply','newsletter','spam','bounce','unsubscribe','unknown') NOT NULL DEFAULT 'unknown',
+	`classificationReason` text,
+	`confidence` int DEFAULT 0,
+	`followUpsStopped` boolean NOT NULL DEFAULT false,
+	`stoppedAt` timestamp,
+	`rawHeaders` json,
+	`receivedAt` timestamp NOT NULL DEFAULT (now()),
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `emailReplies_id` PRIMARY KEY(`id`)
+);

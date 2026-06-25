@@ -72,6 +72,17 @@ function buildTimeline(lead: any): TimelineEvent[] {
     });
   }
 
+  // Reply received
+  if (lead.initialEmail.replied) {
+    events.push({
+      type: "replied",
+      timestamp: lead.initialEmail.repliedAt,
+      label: "Reply Received",
+      detail: lead.initialEmail.responseStatus === "positive" ? "Lead replied positively — follow-ups stopped" : "Lead replied — follow-ups stopped",
+      status: "success",
+    });
+  }
+
   // Call triggered
   if (lead.initialCall.triggered) {
     events.push({
@@ -251,6 +262,11 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
             {lead.initialEmail.clicked && (
               <Badge variant="outline" className="gap-1 text-xs border-purple-200 text-purple-700 bg-purple-50">
                 <MousePointerClick className="w-3 h-3" /> Clicked
+              </Badge>
+            )}
+            {lead.initialEmail.replied && (
+              <Badge variant="outline" className="gap-1 text-xs border-emerald-200 text-emerald-700 bg-emerald-50">
+                <Reply className="w-3 h-3" /> Replied
               </Badge>
             )}
             {lead.initialCall.triggered && (
@@ -483,6 +499,20 @@ export default function CampaignDetail() {
                   <p className="text-xs text-muted-foreground mt-1">Bounce Rate</p>
                 </CardContent>
               </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-emerald-600">{report.summary.totalReplied || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Replies</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-emerald-500">
+                    {report.summary.totalEmailsSent > 0 ? Math.round(((report.summary.totalReplied || 0) / report.summary.totalEmailsSent) * 100) : 0}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Reply Rate</p>
+                </CardContent>
+              </Card>
             </div>
           )}
 
@@ -500,6 +530,7 @@ export default function CampaignDetail() {
                     { label: "Clicked", value: report.summary.totalEmailsClicked, total: report.summary.totalEmailsSent || 1, color: "bg-purple-500" },
                     { label: "Calls Made", value: report.summary.totalCallsMade, total: report.summary.totalEmailsClicked || report.summary.totalEmailsOpened || 1, color: "bg-orange-500" },
                     { label: "Bounced", value: report.summary.totalBounced || 0, total: report.summary.totalEmailsSent || 1, color: "bg-red-500" },
+                    { label: "Replied", value: report.summary.totalReplied || 0, total: report.summary.totalEmailsSent || 1, color: "bg-emerald-500" },
                   ].map((step) => (
                     <div key={step.label} className="flex items-center gap-3">
                       <span className="text-sm w-24 text-muted-foreground">{step.label}</span>

@@ -571,4 +571,106 @@ export function registerEmailTrackingRoutes(app: Express) {
       res.status(500).json({ error: "Failed to process webhook" });
     }
   });
+
+  /**
+   * Email Reply Webhook
+   * POST /api/webhooks/reply
+   * Called by email forwarding service (Zapier, Make, custom IMAP monitor)
+   * when a reply is received at nitin@virtualassistant-group.com
+   * 
+   * Body: {
+   *   fromEmail: string,        // The sender's email (the lead who replied)
+   *   toEmail?: string,         // The recipient (nitin@virtualassistant-group.com)
+   *   subject?: string,         // Reply subject line
+   *   body?: string,            // Reply body text
+   *   inReplyToMessageId?: string,  // In-Reply-To header value
+   *   replyMessageId?: string,  // Message-ID of the reply
+   *   headers?: Record<string, string>  // Full email headers for classification
+   * }
+   */
+  app.post("/api/webhooks/reply", async (req: Request, res: Response) => {
+    try {
+      const {
+        fromEmail,
+        toEmail = "nitin@virtualassistant-group.com",
+        subject = "",
+        body = "",
+        inReplyToMessageId,
+        replyMessageId,
+        headers = {},
+        email, // Alternative field name for fromEmail
+      } = req.body;
+
+      const senderEmail = fromEmail || email;
+      if (!senderEmail) {
+        return res.status(400).json({ error: "fromEmail or email is required" });
+      }
+
+      console.log(`[ReplyDetection] Reply webhook received from: ${senderEmail}, subject: ${subject}`);
+
+      // Import the reply detection module
+      const { processIncomingReply } = await import("../replyDetection");
+
+      // Process the reply (classify + stop follow-ups if genuine)
+      const result = await processIncomingReply({
+        fromEmail: senderEmail,
+        toEmail,
+        subject,
+        body,
+        headers,
+        inReplyToMessageId,
+        replyMessageId,
+        userId: 1, // Owner user ID
+      });
+
+      console.log(`[ReplyDetection] Classification: ${result.classification} (${result.confidence}% confidence) - ${result.reason}`);
+      if (result.followUpsStopped) {
+        console.log(`[ReplyDetection] Follow-ups stopped! Emails cancelled: ${result.emailsCancelled}, Calls cancelled: ${result.callsCancelled}`);
+      }
+
+      // Log webhook event
+      await db.createWebhookEvent({
+        userId: 1,
+        webhookType: "email_reply",
+        status: result.classification === "genuine" ? "success" : "ignored",
+        sourceEmail: senderEmail,
+        campaignLeadId: undefined,
+        payload: {
+          classification: result.classification,
+          confidence: result.confidence,
+          reason: result.reason,
+          followUpsStopped: result.followUpsStopped,
+          emailsCancelled: result.emailsCancelled,
+          callsCancelled: result.callsCancelled,
+          leadId: result.leadId,
+          campaignId: result.campaignId,
+        },
+        ipAddress: req.ip || req.socket.remoteAddress || undefined,
+      });
+
+      res.json({
+        success: true,
+        classification: result.classification,
+        confidence: result.confidence,
+        reason: result.reason,
+        followUpsStopped: result.followUpsStopped,
+        emailsCancelled: result.emailsCancelled,
+        callsCancelled: result.callsCancelled,
+        leadMatched: !!result.leadId,
+      });
+    } catch (error) {
+      console.error("[ReplyDetection] Error processing reply webhook:", error);
+      try {
+        await db.createWebhookEvent({
+          userId: 1,
+          webhookType: "email_reply",
+          status: "failed",
+          payload: req.body,
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          ipAddress: req.ip || req.socket.remoteAddress || undefined,
+        });
+      } catch (_) {}
+      res.status(500).json({ error: "Failed to process reply" });
+    }
+  });
 }
