@@ -11,7 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Save, X, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle, Search } from "lucide-react";
+import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Save, X, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle, Search, Globe, Linkedin, Instagram, Facebook, TrendingUp, TrendingDown } from "lucide-react";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -93,6 +95,16 @@ export default function LeadSetsPage() {
   const [editingLeadId, setEditingLeadId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const updateTagMutation = trpc.leads.updateTag.useMutation({
+    onSuccess: () => { leadsQuery.refetch(); toast.success("Tag updated"); },
+    onError: (err: any) => toast.error(err?.message || "Failed to update tag"),
+  });
+  const handleUpdateTag = async (leadId: number, tag: string) => {
+    try { await updateTagMutation.mutateAsync({ leadId, tag: tag as any }); } catch {}
+  };
 
   if (authLoading) {
     return (
@@ -398,16 +410,17 @@ export default function LeadSetsPage() {
                               <TableHeader>
                                 <TableRow>
                                   <TableHead>Company</TableHead>
-                                  <TableHead>Contact</TableHead>
+                                  <TableHead>Owner</TableHead>
                                   <TableHead>Job Title</TableHead>
+                                  <TableHead>Industry</TableHead>
                                   <TableHead>Email</TableHead>
                                   <TableHead>Phone</TableHead>
-                                  <TableHead>Industry</TableHead>
-                                  <TableHead>Website</TableHead>
-                                  <TableHead>LinkedIn</TableHead>
+                                  <TableHead>Socials</TableHead>
+                                  <TableHead className="text-center">Engagement Score</TableHead>
+                                  <TableHead className="text-center">Email Status</TableHead>
+                                  <TableHead>Country</TableHead>
+                                  <TableHead>Status</TableHead>
                                   <TableHead>Tag</TableHead>
-                                  <TableHead>Engagement</TableHead>
-                                  <TableHead>Email Status</TableHead>
                                   <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -517,44 +530,198 @@ export default function LeadSetsPage() {
                                       </TableCell>
                                     </TableRow>
                                   ) : (
-                                    /* Display Mode Row - Full details matching main leads view */
-                                    <TableRow key={lead.id}>
+                                    /* Display Mode Row - Exact match with main Leads page */
+                                    <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setDrawerLeadId(lead.id); setDrawerOpen(true); }}>
                                       <TableCell className="font-medium text-sm">{lead.companyName}</TableCell>
                                       <TableCell className="text-sm">{lead.ownerName}</TableCell>
                                       <TableCell className="text-sm text-muted-foreground">{lead.jobTitle || "—"}</TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">{lead.industry || "—"}</TableCell>
                                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
-                                      <TableCell className="text-sm text-muted-foreground">{formatPhoneDisplay(lead.phoneNumber)}</TableCell>
-                                      <TableCell className="text-sm">{lead.industry || "—"}</TableCell>
                                       <TableCell className="text-sm">
-                                        {lead.website ? (
-                                          <a href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate max-w-[120px] block">
-                                            {lead.website.replace(/^https?:\/\//, "").slice(0, 20)}
-                                          </a>
-                                        ) : "—"}
-                                      </TableCell>
-                                      <TableCell className="text-sm">
-                                        {lead.linkedinUrl ? (
-                                          <a href={lead.linkedinUrl.startsWith("http") ? lead.linkedinUrl : `https://${lead.linkedinUrl}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                            Profile
-                                          </a>
-                                        ) : "—"}
+                                        <div>{formatPhoneDisplay(lead.phoneNumber)}</div>
+                                        {lead.secondaryPhone && <div className="text-xs text-muted-foreground mt-0.5">{formatPhoneDisplay(lead.secondaryPhone)}</div>}
                                       </TableCell>
                                       <TableCell>
-                                        {lead.tag && lead.tag !== "none" ? (
-                                          <Badge variant="outline" className={`text-xs ${
-                                            lead.tag === "hot" ? "border-red-300 text-red-700 bg-red-50" :
-                                            lead.tag === "warm" ? "border-orange-300 text-orange-700 bg-orange-50" :
-                                            lead.tag === "cold" ? "border-blue-300 text-blue-700 bg-blue-50" :
-                                            lead.tag === "follow_up" ? "border-purple-300 text-purple-700 bg-purple-50" :
-                                            ""
-                                          }`}>
-                                            {lead.tag === "follow_up" ? "Follow Up" : lead.tag.charAt(0).toUpperCase() + lead.tag.slice(1)}
-                                          </Badge>
-                                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                                        <div className="flex items-center gap-1">
+                                          {lead.website && (
+                                            <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer" title="Website" className="text-muted-foreground hover:text-blue-600 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                              <Globe className="w-3.5 h-3.5" />
+                                            </a>
+                                          )}
+                                          {lead.linkedinUrl && (
+                                            <a href={lead.linkedinUrl} target="_blank" rel="noopener noreferrer" title="LinkedIn" className="text-muted-foreground hover:text-[#0A66C2] transition-colors" onClick={(e) => e.stopPropagation()}>
+                                              <Linkedin className="w-3.5 h-3.5" />
+                                            </a>
+                                          )}
+                                          {lead.instagramUrl && (
+                                            <a href={lead.instagramUrl} target="_blank" rel="noopener noreferrer" title="Instagram" className="text-muted-foreground hover:text-[#E4405F] transition-colors" onClick={(e) => e.stopPropagation()}>
+                                              <Instagram className="w-3.5 h-3.5" />
+                                            </a>
+                                          )}
+                                          {lead.facebookUrl && (
+                                            <a href={lead.facebookUrl} target="_blank" rel="noopener noreferrer" title="Facebook" className="text-muted-foreground hover:text-[#1877F2] transition-colors" onClick={(e) => e.stopPropagation()}>
+                                              <Facebook className="w-3.5 h-3.5" />
+                                            </a>
+                                          )}
+                                          {!lead.website && !lead.linkedinUrl && !lead.instagramUrl && !lead.facebookUrl && (
+                                            <span className="text-xs text-muted-foreground">—</span>
+                                          )}
+                                        </div>
                                       </TableCell>
-                                      <TableCell><EngagementBadge score={lead.engagementScore} /></TableCell>
-                                      <TableCell><EmailStatusBadge status={lead.emailVerificationStatus} /></TableCell>
-                                      <TableCell className="text-right">
+                                      <TableCell className="text-center">
+                                        {lead.engagementScore != null && lead.engagementScore > 0 ? (
+                                          <HoverCard openDelay={200} closeDelay={100}>
+                                            <HoverCardTrigger asChild>
+                                              <div className="flex items-center justify-center gap-1.5 cursor-pointer">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                                                  lead.engagementScore >= 50 ? "bg-green-100 text-green-700" :
+                                                  lead.engagementScore >= 30 ? "bg-yellow-100 text-yellow-700" :
+                                                  "bg-gray-100 text-gray-600"
+                                                }`}>
+                                                  {lead.engagementScore}
+                                                </div>
+                                                <span className={`text-xs font-medium ${
+                                                  lead.engagementScore >= 50 ? "text-green-600" :
+                                                  lead.engagementScore >= 30 ? "text-yellow-600" :
+                                                  "text-gray-500"
+                                                }`}>
+                                                  {lead.engagementScore >= 50 ? "High" : lead.engagementScore >= 30 ? "Medium" : "Low"}
+                                                </span>
+                                              </div>
+                                            </HoverCardTrigger>
+                                            <HoverCardContent className="w-72 p-3" side="left">
+                                              <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-sm font-semibold">Engagement Score</span>
+                                                  <span className={`text-sm font-bold ${
+                                                    lead.engagementScore >= 50 ? "text-green-600" :
+                                                    lead.engagementScore >= 30 ? "text-yellow-600" :
+                                                    "text-gray-600"
+                                                  }`}>{lead.engagementScore}/100</span>
+                                                </div>
+                                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                  <div className={`h-full rounded-full transition-all ${
+                                                    lead.engagementScore >= 50 ? "bg-green-500" :
+                                                    lead.engagementScore >= 30 ? "bg-yellow-500" :
+                                                    "bg-gray-400"
+                                                  }`} style={{ width: `${lead.engagementScore}%` }} />
+                                                </div>
+                                                {lead.engagementData ? (() => {
+                                                  const data = typeof lead.engagementData === 'string' ? JSON.parse(lead.engagementData) : lead.engagementData;
+                                                  return (
+                                                    <div className="space-y-1.5 pt-1 border-t">
+                                                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">LinkedIn (up to 75 pts)</p>
+                                                      {data.linkedin ? (
+                                                        <div className="space-y-0.5">
+                                                          {data.linkedin.hasProfile && <div className="flex justify-between text-xs"><span>Has LinkedIn profile</span><span className="text-green-600 font-medium">+15</span></div>}
+                                                          {data.linkedin.isCreator && <div className="flex justify-between text-xs"><span>Creator badge</span><span className="text-green-600 font-medium">+12</span></div>}
+                                                          {data.linkedin.isTopVoice && <div className="flex justify-between text-xs"><span>Top Voice badge</span><span className="text-green-600 font-medium">+12</span></div>}
+                                                          {data.linkedin.isPremium && <div className="flex justify-between text-xs"><span>Premium account</span><span className="text-green-600 font-medium">+8</span></div>}
+                                                          {data.linkedin.endorsements > 50 && <div className="flex justify-between text-xs"><span>High endorsements ({data.linkedin.endorsements})</span><span className="text-green-600 font-medium">+10</span></div>}
+                                                          {data.linkedin.positions >= 3 && <div className="flex justify-between text-xs"><span>Multiple positions ({data.linkedin.positions})</span><span className="text-green-600 font-medium">+6</span></div>}
+                                                          {data.linkedin.hasLeadershipRole && <div className="flex justify-between text-xs"><span>Leadership role</span><span className="text-green-600 font-medium">+7</span></div>}
+                                                          {data.linkedin.hasDetailedProfile && <div className="flex justify-between text-xs"><span>Detailed profile</span><span className="text-green-600 font-medium">+5</span></div>}
+                                                          {data.linkedin.headline && <div className="text-xs text-muted-foreground mt-1 italic truncate">"{data.linkedin.headline}"</div>}
+                                                        </div>
+                                                      ) : <p className="text-xs text-muted-foreground">No LinkedIn data available</p>}
+                                                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-1">Website (up to 25 pts)</p>
+                                                      {data.website?.loadsSuccessfully ? (
+                                                        <div className="space-y-0.5">
+                                                          <div className="flex justify-between text-xs"><span>Real website confirmed</span><span className="text-green-600 font-medium">+15</span></div>
+                                                          {data.website.hasSocialLinks && <div className="flex justify-between text-xs"><span>Social links on site</span><span className="text-green-600 font-medium">+5</span></div>}
+                                                          <div className="flex justify-between text-xs"><span>Loads successfully</span><span className="text-green-600 font-medium">+5</span></div>
+                                                        </div>
+                                                      ) : data.website?.exists ? (
+                                                        <div className="flex justify-between text-xs"><span className="text-red-500">Website doesn't load / parked domain</span><span className="text-red-500 font-medium">+0</span></div>
+                                                      ) : <p className="text-xs text-muted-foreground">No website found</p>}
+                                                      {data.scoredAt && <p className="text-[10px] text-muted-foreground pt-1 border-t">Scored: {new Date(data.scoredAt).toLocaleDateString()}</p>}
+                                                    </div>
+                                                  );
+                                                })() : <p className="text-xs text-muted-foreground pt-1 border-t">Click row for details & website analysis.</p>}
+                                              </div>
+                                            </HoverCardContent>
+                                          </HoverCard>
+                                        ) : lead.socialMediaScore === "high" ? (
+                                          <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 text-xs gap-1">
+                                            <TrendingUp className="w-3 h-3" /> High
+                                          </Badge>
+                                        ) : lead.socialMediaScore === "low" ? (
+                                          <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 text-xs gap-1">
+                                            <TrendingDown className="w-3 h-3" /> Low
+                                          </Badge>
+                                        ) : (
+                                          <Badge className="bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-50 text-xs gap-1">
+                                            <Loader2 className="w-3 h-3" /> Pending
+                                          </Badge>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          {lead.emailVerificationStatus === "deliverable" ? (
+                                            <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 text-xs gap-1">
+                                              <CheckCircle2 className="w-3 h-3" /> Verified
+                                            </Badge>
+                                          ) : lead.emailVerificationStatus === "undeliverable" ? (
+                                            <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 text-xs gap-1">
+                                              <AlertTriangle className="w-3 h-3" /> Blocked
+                                            </Badge>
+                                          ) : lead.emailVerificationStatus === "risky" ? (
+                                            <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 text-xs gap-1">
+                                              <AlertTriangle className="w-3 h-3" /> Risky
+                                            </Badge>
+                                          ) : lead.emailVerificationStatus === "unknown" ? (
+                                            <Badge className="bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100 text-xs gap-1">
+                                              Unknown
+                                            </Badge>
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground">—</span>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {lead.country ? lead.country : <span className="text-muted-foreground">—</span>}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge variant={
+                                          lead.status === "new" ? "secondary" :
+                                          lead.status === "contacted" ? "outline" :
+                                          lead.status === "qualified" ? "default" :
+                                          lead.status === "converted" ? "default" :
+                                          "destructive"
+                                        }>
+                                          {lead.status}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell onClick={(e) => e.stopPropagation()}>
+                                        <Select value={lead.tag || "none"} onValueChange={(val) => handleUpdateTag(lead.id, val)}>
+                                          <SelectTrigger className="h-7 w-28 text-xs border-0 bg-transparent hover:bg-muted/50 transition-colors">
+                                            <span className={`inline-flex items-center gap-1.5 ${
+                                              lead.tag === "hot" ? "text-red-700" :
+                                              lead.tag === "warm" ? "text-orange-700" :
+                                              lead.tag === "cold" ? "text-blue-700" :
+                                              lead.tag === "follow_up" ? "text-purple-700" :
+                                              "text-gray-500"
+                                            }`}>
+                                              <span className={`w-2 h-2 rounded-full ${
+                                                lead.tag === "hot" ? "bg-red-500" :
+                                                lead.tag === "warm" ? "bg-orange-500" :
+                                                lead.tag === "cold" ? "bg-blue-500" :
+                                                lead.tag === "follow_up" ? "bg-purple-500" :
+                                                "bg-gray-400"
+                                              }`} />
+                                              {lead.tag === "hot" ? "Hot" : lead.tag === "warm" ? "Warm" : lead.tag === "cold" ? "Cold" : lead.tag === "follow_up" ? "Follow Up" : "No Tag"}
+                                            </span>
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="hot"><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-500" /> Hot</span></SelectItem>
+                                            <SelectItem value="warm"><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500" /> Warm</span></SelectItem>
+                                            <SelectItem value="cold"><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500" /> Cold</span></SelectItem>
+                                            <SelectItem value="follow_up"><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500" /> Follow Up</span></SelectItem>
+                                            <SelectItem value="none"><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-400" /> No Tag</span></SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </TableCell>
+                                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-end gap-1">
                                           <Button
                                             variant="ghost"
@@ -707,6 +874,13 @@ export default function LeadSetsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Lead Detail Drawer - opens on row click for website analysis & engagement details */}
+        <LeadDetailDrawer
+          leadId={drawerLeadId}
+          open={drawerOpen}
+          onClose={() => { setDrawerOpen(false); setDrawerLeadId(null); }}
+        />
       </div>
     </DashboardLayout>
   );

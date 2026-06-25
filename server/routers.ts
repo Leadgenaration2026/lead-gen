@@ -3849,12 +3849,28 @@ Website: ${lead.website || "N/A"}` },
       }),
   }),
   webhooks: router({
-    // Get recent webhook events
+    // Get recent webhook events (with optional date range filter)
     list: protectedProcedure
-      .input(z.object({ limit: z.number().min(1).max(100).default(50) }).optional())
+      .input(z.object({
+        limit: z.number().min(1).max(500).default(100),
+        startDate: z.string().optional(), // ISO date string
+        endDate: z.string().optional(), // ISO date string
+      }).optional())
       .query(async ({ ctx, input }) => {
         const userId = ctx.user!.id;
-        return db.getWebhookEvents(userId, input?.limit || 50);
+        return db.getWebhookEvents(userId, input?.limit || 100, input?.startDate, input?.endDate);
+      }),
+
+    // Clear webhook events for a date range
+    clear: protectedProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional())
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user!.id;
+        await db.clearWebhookEvents(userId, input?.startDate, input?.endDate);
+        return { success: true };
       }),
 
     // Get webhook stats (counts + last event times)

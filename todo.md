@@ -877,3 +877,11 @@
 ## Feature — Lead Sets Page Enhancement
 - [x] Show full lead data in Lead Sets (same columns as main Leads page)
 - [x] Add search bar to find leads by name, email, or phone number within Lead Sets
+
+## Feature — Lead Sets Format & Webhook Weekly Cycling
+- [x] Lead Sets page must exactly match main Leads page columns and format (engagement scores visible, website analysis option)
+- [x] Webhook events should show data for current week only (Monday to Sunday)
+- [x] Auto-clear/refresh webhook events every Monday
+- [x] Add calendar picker to view webhook events from previous weeks/months/years
+- [x] Add "Clear Events" button for manual clearing
+- [x] Add campaign scheduling option (send immediately or pick date/time via calendar)

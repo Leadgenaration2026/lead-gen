@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink, Shield, KeyRound, Eye, EyeOff, Globe, Linkedin, Instagram, Facebook } from "lucide-react";
+import { Loader2, Save, Phone, Mail, PenTool, CheckCircle2, Send, RotateCcw, ShieldCheck, XCircle, AlertTriangle, Webhook, Copy, Clock, Activity, Zap, ExternalLink, Shield, KeyRound, Eye, EyeOff, Globe, Linkedin, Instagram, Facebook, ChevronLeft, ChevronRight, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 
 const DAY_NAMES = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -1679,9 +1681,36 @@ function ClaudeAISection({
 
 // ============ Webhook Status Panel Component ============
 
+function getWeekRange(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+  const monday = new Date(d.setDate(diff));
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { start: monday, end: sunday };
+}
+
 function WebhookStatusPanel() {
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const weekRange = useMemo(() => getWeekRange(selectedDate), [selectedDate]);
+
   const statsQuery = trpc.webhooks.stats.useQuery();
-  const eventsQuery = trpc.webhooks.list.useQuery({ limit: 20 });
+  const eventsQuery = trpc.webhooks.list.useQuery({
+    limit: 200,
+    startDate: weekRange.start.toISOString(),
+    endDate: weekRange.end.toISOString(),
+  });
+  const clearMutation = trpc.webhooks.clear.useMutation({
+    onSuccess: () => {
+      toast.success("Webhook events cleared for this week");
+      eventsQuery.refetch();
+      statsQuery.refetch();
+    },
+    onError: () => toast.error("Failed to clear events"),
+  });
   const sendTestMutation = trpc.webhooks.sendTest.useMutation({
     onSuccess: () => {
       toast.success("Test webhook event logged successfully");
@@ -1690,6 +1719,24 @@ function WebhookStatusPanel() {
     },
     onError: () => toast.error("Failed to send test event"),
   });
+
+  const isCurrentWeek = useMemo(() => {
+    const now = new Date();
+    const currentWeek = getWeekRange(now);
+    return weekRange.start.getTime() === currentWeek.start.getTime();
+  }, [weekRange]);
+
+  const goToPreviousWeek = () => {
+    const prev = new Date(selectedDate);
+    prev.setDate(prev.getDate() - 7);
+    setSelectedDate(prev);
+  };
+  const goToNextWeek = () => {
+    const next = new Date(selectedDate);
+    next.setDate(next.getDate() + 7);
+    setSelectedDate(next);
+  };
+  const goToCurrentWeek = () => setSelectedDate(new Date());
 
   const deployedDomain = "leadgenoutreach-gkqazghm.manus.space";
   const calcomUrl = `https://${deployedDomain}/api/webhooks/calendly`;
@@ -1898,13 +1945,57 @@ function WebhookStatusPanel() {
       {/* Recent Events Log */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Recent Webhook Events
-          </CardTitle>
-          <CardDescription>
-            Last 20 incoming webhook events across all integrations.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Webhook Events
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Showing events for week: {weekRange.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {weekRange.end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                {isCurrentWeek && <Badge className="ml-2 bg-green-100 text-green-700 border-green-200 text-[10px]">Current Week</Badge>}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={goToPreviousWeek} title="Previous week">
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              {!isCurrentWeek && (
+                <Button variant="outline" size="sm" onClick={goToCurrentWeek} title="Go to current week">
+                  Today
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={goToNextWeek} title="Next week">
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1">
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    Pick Date
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => { if (date) setSelectedDate(date); }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => clearMutation.mutate({ startDate: weekRange.start.toISOString(), endDate: weekRange.end.toISOString() })}
+                disabled={clearMutation.isPending || !eventsQuery.data?.length}
+                className="gap-1"
+              >
+                {clearMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                Clear Week
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {eventsQuery.isLoading ? (

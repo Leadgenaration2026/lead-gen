@@ -12,7 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, Megaphone } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, Megaphone, CalendarDays } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { toast } from "sonner";
@@ -133,6 +135,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [newCampaignName, setNewCampaignName] = useState("");
   const [newCampaignSubject, setNewCampaignSubject] = useState("");
   const [newCampaignTemplate, setNewCampaignTemplate] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<"immediate" | "scheduled">("immediate");
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  const [scheduledTime, setScheduledTime] = useState("09:00");
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const assignToCampaignMutation = trpc.campaigns.assignLeads.useMutation();
   const createCampaignMutation = trpc.campaigns.create.useMutation();
@@ -1063,6 +1068,67 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     className="mt-1 min-h-24 font-mono text-xs"
                   />
                 </div>
+
+                {/* Schedule Options */}
+                <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+                  <label className="text-sm font-medium">Campaign Schedule</label>
+                  <div className="flex gap-2">
+                    <button
+                      className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${
+                        scheduleMode === "immediate"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-muted-foreground border-border hover:text-foreground"
+                      }`}
+                      onClick={() => setScheduleMode("immediate")}
+                    >
+                      Send Immediately
+                    </button>
+                    <button
+                      className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${
+                        scheduleMode === "scheduled"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-muted-foreground border-border hover:text-foreground"
+                      }`}
+                      onClick={() => setScheduleMode("scheduled")}
+                    >
+                      Schedule for Later
+                    </button>
+                  </div>
+                  {scheduleMode === "scheduled" && (
+                    <div className="flex gap-3 items-end">
+                      <div className="flex-1">
+                        <label className="text-xs text-muted-foreground">Date</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className="w-full mt-1 justify-start text-left font-normal">
+                              <CalendarDays className="w-4 h-4 mr-2" />
+                              {scheduledDate ? scheduledDate.toLocaleDateString() : "Pick a date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={scheduledDate}
+                              onSelect={(date: Date | undefined) => setScheduledDate(date)}
+                              disabled={(date: Date) => date < new Date(new Date().setHours(0,0,0,0))}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div className="w-28">
+                        <label className="text-xs text-muted-foreground">Time</label>
+                        <Input
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <Button
                   onClick={async () => {
                     if (!newCampaignName.trim()) {
@@ -1077,19 +1143,38 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       toast.error("Please enter an email template");
                       return;
                     }
+                    if (scheduleMode === "scheduled" && !scheduledDate) {
+                      toast.error("Please pick a date for scheduling");
+                      return;
+                    }
                     try {
+                      let scheduledAt: string | undefined;
+                      if (scheduleMode === "scheduled" && scheduledDate) {
+                        const [hours, mins] = scheduledTime.split(":").map(Number);
+                        const dt = new Date(scheduledDate);
+                        dt.setHours(hours, mins, 0, 0);
+                        scheduledAt = dt.toISOString();
+                      }
                       await createCampaignMutation.mutateAsync({
                         name: newCampaignName.trim(),
                         subject: newCampaignSubject.trim(),
                         emailTemplate: newCampaignTemplate.trim(),
                         leadIds: Array.from(selectedLeadIds),
+                        scheduledAt,
                       });
-                      toast.success(`Campaign "${newCampaignName}" created with ${selectedLeadIds.size} lead(s)!`);
+                      toast.success(
+                        scheduleMode === "scheduled"
+                          ? `Campaign "${newCampaignName}" scheduled for ${scheduledDate?.toLocaleDateString()} at ${scheduledTime}`
+                          : `Campaign "${newCampaignName}" created with ${selectedLeadIds.size} lead(s)!`
+                      );
                       setSelectedLeadIds(new Set());
                       setAssignCampaignDialogOpen(false);
                       setNewCampaignName("");
                       setNewCampaignSubject("");
                       setNewCampaignTemplate("");
+                      setScheduleMode("immediate");
+                      setScheduledDate(undefined);
+                      setScheduledTime("09:00");
                       setAssignCampaignMode("existing");
                       leadsQuery.refetch();
                       campaignsQuery.refetch();
@@ -1102,6 +1187,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 >
                   {createCampaignMutation.isPending ? (
                     <><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating...</>
+                  ) : scheduleMode === "scheduled" ? (
+                    `Schedule Campaign & Assign ${selectedLeadIds.size} Lead(s)`
                   ) : (
                     `Create Campaign & Assign ${selectedLeadIds.size} Lead(s)`
                   )}

@@ -783,13 +783,33 @@ export async function createWebhookEvent(data: InsertWebhookEvent) {
   return result[0].insertId;
 }
 
-export async function getWebhookEvents(userId: number, limit: number = 50) {
+export async function getWebhookEvents(userId: number, limit: number = 100, startDate?: string, endDate?: string) {
   const db = await getDb();
   if (!db) return [];
+  const conditions: any[] = [eq(webhookEvents.userId, userId)];
+  if (startDate) {
+    conditions.push(gte(webhookEvents.createdAt, new Date(startDate)));
+  }
+  if (endDate) {
+    conditions.push(lte(webhookEvents.createdAt, new Date(endDate)));
+  }
   return db.select().from(webhookEvents)
-    .where(eq(webhookEvents.userId, userId))
+    .where(and(...conditions))
     .orderBy(desc(webhookEvents.createdAt))
     .limit(limit);
+}
+
+export async function clearWebhookEvents(userId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return;
+  const conditions: any[] = [eq(webhookEvents.userId, userId)];
+  if (startDate) {
+    conditions.push(gte(webhookEvents.createdAt, new Date(startDate)));
+  }
+  if (endDate) {
+    conditions.push(lte(webhookEvents.createdAt, new Date(endDate)));
+  }
+  await db.delete(webhookEvents).where(and(...conditions));
 }
 
 export async function getWebhookStats(userId: number) {
