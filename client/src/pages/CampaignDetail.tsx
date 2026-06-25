@@ -30,6 +30,9 @@ import {
   StopCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Eye, FileText } from "lucide-react";
 
 type TimelineEvent = {
   type: "email_sent" | "email_opened" | "email_clicked" | "call_triggered" | "call_completed" | "call_failed" | "call_no_answer" | "replied" | "unsubscribed" | "follow_up_email" | "follow_up_call";
@@ -320,6 +323,102 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
                 </div>
               ))
             )}
+          </div>
+
+          {/* View Sent Emails Section */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" /> Sent Emails
+            </h4>
+            <div className="space-y-2">
+              {/* Initial Email */}
+              {lead.initialEmail.sent && lead.initialEmail.emailBody && (
+                <EmailPreviewDialog
+                  subject={lead.initialEmail.subject || "(No subject)"}
+                  body={lead.initialEmail.emailBody}
+                  recipientName={lead.leadName}
+                  recipientEmail={lead.email}
+                  recipientCompany={lead.companyName}
+                  senderEmail={lead.initialEmail.senderEmail || undefined}
+                  trigger={
+                    <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 transition-all text-left group">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                        <Mail className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{lead.initialEmail.subject || "Initial Campaign Email"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Sent {lead.initialEmail.sentAt ? new Date(lead.initialEmail.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                        </p>
+                      </div>
+                      <Eye className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </button>
+                  }
+                />
+              )}
+
+              {/* Follow-up Emails */}
+              {lead.followUpEmails && lead.followUpEmails.filter((e: any) => e.emailBody && ["sent", "opened", "clicked"].includes(e.status)).map((followUp: any) => (
+                <EmailPreviewDialog
+                  key={followUp.id}
+                  subject={followUp.subject}
+                  body={followUp.emailBody}
+                  recipientName={lead.leadName}
+                  recipientEmail={lead.email}
+                  recipientCompany={lead.companyName}
+                  trigger={
+                    <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 transition-all text-left group">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                        <Reply className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">Follow-up #{followUp.sequenceNumber}: {followUp.subject}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {followUp.emailType} · Sent {followUp.sentAt ? new Date(followUp.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Scheduled"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">{followUp.status}</Badge>
+                        <Eye className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      </div>
+                    </button>
+                  }
+                />
+              ))}
+
+              {/* Scheduled follow-ups (not yet sent) */}
+              {lead.followUpEmails && lead.followUpEmails.filter((e: any) => ["draft", "scheduled"].includes(e.status) && e.emailBody).map((followUp: any) => (
+                <EmailPreviewDialog
+                  key={followUp.id}
+                  subject={followUp.subject}
+                  body={followUp.emailBody}
+                  recipientName={lead.leadName}
+                  recipientEmail={lead.email}
+                  recipientCompany={lead.companyName}
+                  trigger={
+                    <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-dashed border-muted-foreground/30 hover:border-primary/40 hover:bg-primary/5 transition-all text-left group opacity-70">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                        <Clock className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">Follow-up #{followUp.sequenceNumber}: {followUp.subject}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {followUp.emailType} · Scheduled for {followUp.scheduledFor ? new Date(followUp.scheduledFor).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "TBD"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs border-amber-200 text-amber-700">Scheduled</Badge>
+                        <Eye className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      </div>
+                    </button>
+                  }
+                />
+              ))}
+
+              {!lead.initialEmail.sent && (!lead.followUpEmails || lead.followUpEmails.length === 0) && (
+                <p className="text-xs text-muted-foreground py-2">No emails sent yet</p>
+              )}
+            </div>
           </div>
 
           {/* Lead contact info */}

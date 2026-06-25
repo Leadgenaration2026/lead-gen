@@ -2146,6 +2146,18 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               replied: cl.replied || false,
               repliedAt: cl.repliedAt || null,
               responseStatus: cl.responseStatus || null,
+              // Reconstructed email content for preview
+              subject: (campaign.subject || "")
+                .replace(/{{companyName}}/g, lead.companyName || '')
+                .replace(/{{ownerName}}/g, lead.ownerName || '')
+                .replace(/{{email}}/g, lead.email || '')
+                .replace(/{{industry}}/g, lead.industry || 'your industry'),
+              emailBody: (campaign.emailTemplate || "")
+                .replace(/{{companyName}}/g, lead.companyName || '')
+                .replace(/{{ownerName}}/g, lead.ownerName || '')
+                .replace(/{{email}}/g, lead.email || '')
+                .replace(/{{industry}}/g, lead.industry || 'your industry')
+                .replace(/{{phoneNumber}}/g, lead.phoneNumber || ''),
             },
             // Initial call
             initialCall: {
@@ -2160,6 +2172,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               sequenceNumber: e.sequenceNumber,
               emailType: e.emailType,
               subject: e.subject,
+              emailBody: e.emailBody || "",
               status: e.status,
               scheduledFor: e.scheduledFor,
               sentAt: e.sentAt,

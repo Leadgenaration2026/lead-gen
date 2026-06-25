@@ -855,3 +855,8 @@
 - [x] Add claudeApiUsage table to track API calls (userId, timestamp, purpose)
 - [x] Increment usage counter on every Claude API call
 - [x] Show monthly usage count in the Claude AI settings tab
+
+## Feature — View Sent Email Content in Campaign Detail
+- [x] Add clickable "View Email" links for each lead's initial email in Campaign Detail
+- [x] Add clickable links to view all follow-up emails sent to each lead
+- [x] Show email content (subject + body) in a dialog/modal when clicked
