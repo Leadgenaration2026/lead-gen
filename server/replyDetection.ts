@@ -9,6 +9,7 @@
 import { eq, and, or, inArray } from "drizzle-orm";
 import { emailReplies, campaignLeads, followUpEmails, followUpCalls, leads } from "../drizzle/schema";
 import * as db from "./db";
+import { notifyOwner } from "./_core/notification";
 
 // ============================================================
 // CLASSIFICATION TYPES
@@ -482,6 +483,26 @@ export async function processIncomingReply(params: {
         .update(leads)
         .set({ status: "qualified" })
         .where(eq(leads.id, leadId));
+    }
+
+    // Send instant notification to owner
+    try {
+      // Try to get lead's actual name from DB
+      let leadDisplayName = params.fromEmail;
+      if (leadId) {
+        const leadRecord = await database.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+        if (leadRecord.length > 0 && leadRecord[0].ownerName) {
+          leadDisplayName = `${leadRecord[0].ownerName} (${leadRecord[0].companyName || params.fromEmail})`;
+        }
+      }
+      const snippet = params.body.substring(0, 200).replace(/\n/g, " ");
+      await notifyOwner({
+        title: `\u2709\uFE0F Positive Reply from ${leadDisplayName}`,
+        content: `Lead: ${leadDisplayName}\nEmail: ${params.fromEmail}\nSubject: ${params.subject || "(no subject)"}\n\nReply snippet:\n${snippet}${params.body.length > 200 ? "..." : ""}\n\nAll follow-ups have been automatically stopped. ${emailsCancelled} emails and ${callsCancelled} calls cancelled.`,
+      });
+    } catch (notifErr) {
+      // Notification failure should not break reply processing
+      console.error("[ReplyDetection] Failed to send owner notification:", notifErr);
     }
   }
 

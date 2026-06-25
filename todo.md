@@ -830,3 +830,9 @@
 - [x] Show reply detection status in Campaign Detail page (badge + timeline + stats cards)
 - [x] Ignore: newsletters, spam, auto-replies (OOO, delivery failures, unsubscribe confirmations)
 - [x] Match replies by In-Reply-To/References header (message ID) or sender email address
+
+## Feature — Reply Notification Alerts
+- [x] Send in-app notification when a lead replies positively (via Manus notifyOwner)
+- [x] Notification includes lead name, company, email, subject, and reply snippet
+- [x] Notification confirms follow-ups were stopped (X emails and Y calls cancelled)
+- [x] Notification failure does not break reply processing (graceful error handling)
