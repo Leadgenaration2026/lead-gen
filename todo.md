@@ -912,3 +912,14 @@
 - [x] Email Composer bulk mode: remove LeadPicker list after tag selection (only show tag dropdown)
 - [x] Email Composer single lead mode: add search bar to find leads by name/email/company
 - [x] Lead Sets page: only show tags (lead set names), not the full individual leads list
+
+## Fix — Email Composer Dropdown & Single Lead Search Cleanup
+- [x] Bulk mode: dropdown should ONLY show custom tags (lead sets), remove any imported list entries
+- [x] Single lead mode: after selecting a lead, hide the full list — only show the selected lead name
+
+## Feature — Distinguish Imported Lists from Tags
+- [x] Add `type` field to leadSets schema (values: "list" for CSV/AI imports, "tag" for manual tags)
+- [x] Migrate existing data: mark CSV-imported sets as "list", manually created as "tag"
+- [x] Email Composer bulk dropdown: only show type="tag" entries
+- [x] Lead Sets page: only show type="tag" entries (imported lists stay in All Leads)
+- [x] Single lead search: hide list after selecting a lead, only show selected lead name

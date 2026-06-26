@@ -18,7 +18,7 @@ export default function LeadSetsPage() {
   const { user, isLoading: authLoading } = useAuth() as any;
   const [, navigate] = useLocation();
 
-  const leadSetsQuery = trpc.leadSets.list.useQuery(undefined, { enabled: !!user });
+  const leadSetsQuery = trpc.leadSets.listTags.useQuery(undefined, { enabled: !!user });
   const leadsQuery = trpc.leads.list.useQuery(undefined, { enabled: !!user });
   const createMutation = trpc.leadSets.create.useMutation();
   const renameMutation = trpc.leadSets.rename.useMutation();

@@ -55,7 +55,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const csvImportOverwriteMutation = trpc.leads.csvImportOverwrite.useMutation();
   const updateTagMutation = trpc.leads.updateTag.useMutation();
   const dedupCheckMutation = trpc.dedup.check.useMutation();
-  const leadSetsQuery = trpc.leadSets.list.useQuery();
+  const leadSetsQuery = trpc.leadSets.listTags.useQuery();
 
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);

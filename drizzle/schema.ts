@@ -339,6 +339,7 @@ export const leadSets = mysqlTable("leadSets", {
   userId: int("userId").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
+  type: varchar("type", { length: 20 }).notNull().default("tag"), // "tag" for manual tags, "list" for CSV/AI imports
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

@@ -96,7 +96,7 @@ export default function EmailComposer() {
 
   // Queries
   const leadsQuery = trpc.leads.list.useQuery();
-  const leadSetsQuery = trpc.leadSets.list.useQuery();
+  const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const leadSets = leadSetsQuery.data || [];
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
@@ -318,54 +318,74 @@ export default function EmailComposer() {
                   {/* Lead Selection with Search */}
                   <div className="space-y-2">
                     <Label htmlFor="lead-search">Select Lead *</Label>
-                    <Input
-                      id="lead-search"
-                      placeholder="Search by name, email, or company..."
-                      value={leadSearchQuery}
-                      onChange={(e) => setLeadSearchQuery(e.target.value)}
-                      className="mb-2"
-                    />
-                    <div className="max-h-48 overflow-y-auto border rounded-md">
-                      {(leadsQuery.data || []).filter((lead: any) => {
-                        if (!leadSearchQuery.trim()) return true;
-                        const q = leadSearchQuery.toLowerCase();
-                        return (
-                          (lead.ownerName || "").toLowerCase().includes(q) ||
-                          (lead.companyName || "").toLowerCase().includes(q) ||
-                          (lead.email || "").toLowerCase().includes(q)
-                        );
-                      }).slice(0, 50).map((lead: any) => (
-                        <button
-                          key={lead.id}
+                    {selectedLead ? (
+                      <div className="flex items-center justify-between p-3 border rounded-md bg-green-50/50 border-green-200">
+                        {(() => {
+                          const lead = (leadsQuery.data || []).find((l: any) => l.id === selectedLead);
+                          return lead ? (
+                            <div>
+                              <p className="text-sm font-medium text-green-800">{lead.ownerName} — {lead.companyName}</p>
+                              {lead.email && <p className="text-xs text-green-600">{lead.email}</p>}
+                            </div>
+                          ) : <p className="text-sm">Lead selected</p>;
+                        })()}
+                        <Button
                           type="button"
-                          onClick={() => { setSelectedLead(lead.id); setLeadSearchQuery(""); }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0 ${
-                            selectedLead === lead.id ? "bg-primary/10 font-medium" : ""
-                          }`}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setSelectedLead(null); setLeadSearchQuery(""); }}
+                          className="text-muted-foreground hover:text-foreground"
                         >
-                          <span className="font-medium">{lead.ownerName}</span>
-                          <span className="text-muted-foreground"> — {lead.companyName}</span>
-                          {lead.email && <span className="text-xs text-muted-foreground block">{lead.email}</span>}
-                        </button>
-                      ))}
-                      {(leadsQuery.data || []).filter((lead: any) => {
-                        if (!leadSearchQuery.trim()) return true;
-                        const q = leadSearchQuery.toLowerCase();
-                        return (
-                          (lead.ownerName || "").toLowerCase().includes(q) ||
-                          (lead.companyName || "").toLowerCase().includes(q) ||
-                          (lead.email || "").toLowerCase().includes(q)
-                        );
-                      }).length === 0 && (
-                        <p className="px-3 py-2 text-sm text-muted-foreground">No leads found</p>
-                      )}
-                    </div>
-                    {selectedLead && (() => {
-                      const lead = (leadsQuery.data || []).find((l: any) => l.id === selectedLead);
-                      return lead ? (
-                        <p className="text-xs text-green-600 font-medium">Selected: {lead.ownerName} — {lead.companyName}</p>
-                      ) : null;
-                    })()}
+                          Change
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Input
+                          id="lead-search"
+                          placeholder="Search by name, email, or company..."
+                          value={leadSearchQuery}
+                          onChange={(e) => setLeadSearchQuery(e.target.value)}
+                          className="mb-2"
+                        />
+                        {leadSearchQuery.trim() && (
+                          <div className="max-h-48 overflow-y-auto border rounded-md">
+                            {(leadsQuery.data || []).filter((lead: any) => {
+                              const q = leadSearchQuery.toLowerCase();
+                              return (
+                                (lead.ownerName || "").toLowerCase().includes(q) ||
+                                (lead.companyName || "").toLowerCase().includes(q) ||
+                                (lead.email || "").toLowerCase().includes(q)
+                              );
+                            }).slice(0, 20).map((lead: any) => (
+                              <button
+                                key={lead.id}
+                                type="button"
+                                onClick={() => { setSelectedLead(lead.id); setLeadSearchQuery(""); }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                              >
+                                <span className="font-medium">{lead.ownerName}</span>
+                                <span className="text-muted-foreground"> — {lead.companyName}</span>
+                                {lead.email && <span className="text-xs text-muted-foreground block">{lead.email}</span>}
+                              </button>
+                            ))}
+                            {(leadsQuery.data || []).filter((lead: any) => {
+                              const q = leadSearchQuery.toLowerCase();
+                              return (
+                                (lead.ownerName || "").toLowerCase().includes(q) ||
+                                (lead.companyName || "").toLowerCase().includes(q) ||
+                                (lead.email || "").toLowerCase().includes(q)
+                              );
+                            }).length === 0 && (
+                              <p className="px-3 py-2 text-sm text-muted-foreground">No leads found</p>
+                            )}
+                          </div>
+                        )}
+                        {!leadSearchQuery.trim() && (
+                          <p className="text-xs text-muted-foreground">Start typing to search for a lead...</p>
+                        )}
+                      </>
+                    )}
                   </div>
 
                   {/* Email Type Selection */}

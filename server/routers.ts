@@ -561,6 +561,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               userId: ctx.user.id,
               name: input.leadSetName.trim(),
               description: `Auto-created from ${input.source === "seamless" ? "Seamless.AI" : "AI"} generation: ${input.instruction.slice(0, 100)}`,
+              type: "list",
             });
           }
         }
@@ -740,6 +741,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               userId: ctx.user.id,
               name: input.leadSetName.trim(),
               description: `Auto-created from CSV import`,
+              type: "list",
             });
           }
         }
@@ -3386,6 +3388,11 @@ Respond in this exact JSON format:
       return db.getLeadSetsByUserId(ctx.user.id);
     }),
 
+    listTags: protectedProcedure.query(async ({ ctx }) => {
+      const all = await db.getLeadSetsByUserId(ctx.user.id);
+      return all.filter((s: any) => s.type === "tag");
+    }),
+
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1),
@@ -3396,6 +3403,7 @@ Respond in this exact JSON format:
           userId: ctx.user.id,
           name: input.name,
           description: input.description || null,
+          type: "tag",
         });
         return { id };
       }),

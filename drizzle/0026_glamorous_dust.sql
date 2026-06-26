@@ -1,0 +1,1 @@
+ALTER TABLE `leadSets` ADD `type` varchar(20) DEFAULT 'tag' NOT NULL;
