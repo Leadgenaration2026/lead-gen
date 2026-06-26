@@ -892,3 +892,8 @@
 - [x] Email Composer selects leads by tag instead of individual leads
 - [x] Campaign Detail shows which tag each lead belongs to
 - [x] Lead Sets page has tag filter to find which leads are assigned to which tag
+
+## Fix — Tag/Campaign UI Cleanup
+- [x] Email Composer bulk mode: remove lead set selection, show only tag selection
+- [x] Assign leads to a tag dialog: remove "Create a Tag" option and remove lead sets display
+- [x] Schedule campaign: add proper calendar and clock picker for date/time selection

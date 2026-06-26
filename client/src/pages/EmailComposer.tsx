@@ -58,7 +58,7 @@ export default function EmailComposer() {
   const [bulkDeliverabilityResult, setBulkDeliverabilityResult] = useState<{ allPassed: boolean; score: number; checks: Array<{ name: string; status: "pass" | "fail" | "warning"; message: string; category: string }> } | null>(null);
   const [showBulkDeliverabilityDetails, setShowBulkDeliverabilityDetails] = useState(false);
   // Bulk campaign state
-  const [selectedLeadSetId, setSelectedLeadSetId] = useState<number | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string>("");
   const [campaignFormData, setCampaignFormData] = useState({
     name: "",
     description: "",
@@ -95,7 +95,6 @@ export default function EmailComposer() {
 
   // Queries
   const leadsQuery = trpc.leads.list.useQuery();
-  const leadSetsQuery = trpc.leadSets.list.useQuery();
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
   const settingsQuery = trpc.settings.get.useQuery();
@@ -141,12 +140,12 @@ export default function EmailComposer() {
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
-  // Filter leads by selected lead set for bulk mode
+  // Filter leads by selected tag for bulk mode
   const filteredLeads = useMemo(() => {
     const allLeads = leadsQuery.data || [];
-    if (!selectedLeadSetId) return allLeads;
-    return allLeads.filter((l: any) => l.leadSetId === selectedLeadSetId);
-  }, [leadsQuery.data, selectedLeadSetId]);
+    if (!selectedTag) return allLeads;
+    return allLeads.filter((l: any) => l.tag === selectedTag);
+  }, [leadsQuery.data, selectedTag]);
 
   // Single lead handlers
   const handleGenerateEmail = async () => {
@@ -974,13 +973,13 @@ export default function EmailComposer() {
                   <Label className="mb-2 block">Select Leads by Tag *</Label>
                   <div className="mb-2">
                     <select
-                      value={selectedLeadSetId || ""}
+                      value={selectedTag}
                       onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : null;
-                        setSelectedLeadSetId(val);
+                        const val = e.target.value;
+                        setSelectedTag(val);
                         if (val) {
-                          const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === val);
-                          setCampaignFormData({ ...campaignFormData, leadIds: setLeads.map((l: any) => l.id) });
+                          const tagLeads = (leadsQuery.data || []).filter((l: any) => l.tag === val);
+                          setCampaignFormData({ ...campaignFormData, leadIds: tagLeads.map((l: any) => l.id) });
                         } else {
                           setCampaignFormData({ ...campaignFormData, leadIds: [] });
                         }
@@ -988,24 +987,23 @@ export default function EmailComposer() {
                       className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">-- Select a Tag --</option>
-                      {(leadSetsQuery.data || []).map((set: any) => (
-                        <option key={set.id} value={set.id}>
-                          {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
-                        </option>
-                      ))}
+                      <option value="hot">🔥 Hot ({(leadsQuery.data || []).filter((l: any) => l.tag === "hot").length} leads)</option>
+                      <option value="warm">🌤 Warm ({(leadsQuery.data || []).filter((l: any) => l.tag === "warm").length} leads)</option>
+                      <option value="cold">❄️ Cold ({(leadsQuery.data || []).filter((l: any) => l.tag === "cold").length} leads)</option>
+                      <option value="follow_up">📋 Follow Up ({(leadsQuery.data || []).filter((l: any) => l.tag === "follow_up").length} leads)</option>
                     </select>
-                    {selectedLeadSetId && (
+                    {selectedTag && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {filteredLeads.length} lead(s) in this tag will be included in the campaign
+                        {filteredLeads.length} lead(s) with "{selectedTag}" tag will be included in the campaign
                       </p>
                     )}
-                    {!selectedLeadSetId && (
+                    {!selectedTag && (
                       <p className="mt-1 text-xs text-amber-600">
                         Please select a tag to choose which leads to include
                       </p>
                     )}
                   </div>
-                  {selectedLeadSetId && (
+                  {selectedTag && (
                     <LeadPicker
                       leads={filteredLeads}
                       selectedIds={campaignFormData.leadIds}
@@ -1382,15 +1380,42 @@ export default function EmailComposer() {
                     </label>
                   </div>
                   {enableScheduling && (
-                    <div className="mt-3 space-y-2">
-                      <Input
-                        type="datetime-local"
-                        value={campaignFormData.scheduledAt ? campaignFormData.scheduledAt.slice(0, 16) : ""}
-                        onChange={(e) => setCampaignFormData(prev => ({ ...prev, scheduledAt: e.target.value ? new Date(e.target.value).toISOString() : "" }))}
-                        min={new Date(Date.now() + 5 * 60000).toISOString().slice(0, 16)}
-                        className="text-sm h-9 bg-white"
-                      />
-                      <p className="text-xs text-purple-700">Campaign will auto-launch at the scheduled time. Emails will be sent using your rotational SMTP accounts.</p>
+                    <div className="mt-3 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-purple-700 mb-1 block">Date</Label>
+                          <Input
+                            type="date"
+                            value={campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toISOString().split('T')[0] : ""}
+                            onChange={(e) => {
+                              const currentTime = campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toTimeString().slice(0, 5) : "09:00";
+                              const newDate = e.target.value ? new Date(`${e.target.value}T${currentTime}:00`).toISOString() : "";
+                              setCampaignFormData(prev => ({ ...prev, scheduledAt: newDate }));
+                            }}
+                            min={new Date().toISOString().split('T')[0]}
+                            className="text-sm h-9 bg-white"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-purple-700 mb-1 block">Time</Label>
+                          <Input
+                            type="time"
+                            value={campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toTimeString().slice(0, 5) : ""}
+                            onChange={(e) => {
+                              const currentDate = campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+                              const newDate = e.target.value ? new Date(`${currentDate}T${e.target.value}:00`).toISOString() : "";
+                              setCampaignFormData(prev => ({ ...prev, scheduledAt: newDate }));
+                            }}
+                            className="text-sm h-9 bg-white"
+                          />
+                        </div>
+                      </div>
+                      {campaignFormData.scheduledAt && (
+                        <p className="text-xs text-purple-800 font-medium">
+                          Scheduled for: {new Date(campaignFormData.scheduledAt).toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
+                      <p className="text-xs text-purple-700">Campaign will auto-launch at the scheduled time. Best open rates: Tue-Thu, 9-11 AM.</p>
                     </div>
                   )}
                 </div>

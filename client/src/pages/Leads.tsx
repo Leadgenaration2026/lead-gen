@@ -56,8 +56,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const updateTagMutation = trpc.leads.updateTag.useMutation();
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const leadSetsQuery = trpc.leadSets.list.useQuery();
-  const createLeadSetMutation = trpc.leadSets.create.useMutation();
-  const assignLeadsMutation = trpc.leadSets.assignLeads.useMutation();
 
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);
@@ -124,7 +122,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const bulkDeleteMutation = trpc.leads.bulkDelete.useMutation();
-  const [newSetName, setNewSetName] = useState("");
   const [assignToSetId, setAssignToSetId] = useState<string>("");
 
 
@@ -728,39 +725,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const handleBulkAssign = async () => {
     if (selectedLeadIds.size === 0) return;
 
-    let targetSetId: number | null = null;
-
-    if (assignToSetId === "new" && newSetName.trim()) {
-      try {
-        const result = await createLeadSetMutation.mutateAsync({ name: newSetName.trim() });
-        targetSetId = result.id as number;
-      } catch (error) {
-        toast.error("Failed to create lead set");
-        return;
-      }
-    } else if (assignToSetId === "remove") {
-      targetSetId = null;
-    } else if (assignToSetId && assignToSetId !== "new") {
-      targetSetId = parseInt(assignToSetId);
-    } else {
-      toast.error("Please select a lead set");
+    if (!assignToSetId) {
+      toast.error("Please select a tag");
       return;
     }
 
     try {
-      await assignLeadsMutation.mutateAsync({
-        leadIds: Array.from(selectedLeadIds),
-        leadSetId: targetSetId,
-      });
-      toast.success(`${selectedLeadIds.size} lead(s) assigned to set`);
+      // Update tag for each selected lead
+      const promises = Array.from(selectedLeadIds).map((leadId) =>
+        updateTagMutation.mutateAsync({ leadId, tag: assignToSetId as any })
+      );
+      await Promise.all(promises);
+      toast.success(`${selectedLeadIds.size} lead(s) assigned to "${assignToSetId}" tag`);
       setSelectedLeadIds(new Set());
       setAssignDialogOpen(false);
-      setNewSetName("");
       setAssignToSetId("");
       leadsQuery.refetch();
-      leadSetsQuery.refetch();
     } catch (error) {
-      toast.error("Failed to assign leads");
+      toast.error("Failed to assign tags");
     }
   };
 
@@ -876,7 +858,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bulk Assign to Lead Set Dialog */}
+      {/* Bulk Assign to Tag Dialog */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -885,7 +867,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               Assign Leads to a Tag
             </DialogTitle>
             <DialogDescription>
-              Assign {selectedLeadIds.size} selected lead(s) to a tag (lead set)
+              Assign {selectedLeadIds.size} selected lead(s) to a tag
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -896,37 +878,30 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <SelectValue placeholder="Select a tag..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="new">
-                    <span className="flex items-center gap-2"><FolderPlus className="w-3.5 h-3.5" /> Create New Tag</span>
+                  <SelectItem value="hot">
+                    <span className="flex items-center gap-2">🔥 Hot</span>
                   </SelectItem>
-                  <SelectItem value="remove">
-                    <span className="flex items-center gap-2 text-muted-foreground">Remove from tag</span>
+                  <SelectItem value="warm">
+                    <span className="flex items-center gap-2">🌤 Warm</span>
                   </SelectItem>
-                  {leadSets.map((set: any) => (
-                    <SelectItem key={set.id} value={String(set.id)}>
-                      {set.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="cold">
+                    <span className="flex items-center gap-2">❄️ Cold</span>
+                  </SelectItem>
+                  <SelectItem value="follow_up">
+                    <span className="flex items-center gap-2">📋 Follow Up</span>
+                  </SelectItem>
+                  <SelectItem value="none">
+                    <span className="flex items-center gap-2 text-muted-foreground">Remove Tag</span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {assignToSetId === "new" && (
-              <div>
-                <label className="text-sm font-medium">New Tag Name</label>
-                <Input
-                  placeholder="e.g., SaaS Companies Q1"
-                  value={newSetName}
-                  onChange={(e) => setNewSetName(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            )}
             <Button
               onClick={handleBulkAssign}
-              disabled={assignLeadsMutation.isPending || createLeadSetMutation.isPending}
+              disabled={updateTagMutation.isPending}
               className="w-full"
             >
-              {(assignLeadsMutation.isPending || createLeadSetMutation.isPending) ? (
+              {updateTagMutation.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
               ) : (
                 `Assign ${selectedLeadIds.size} Lead(s)`
