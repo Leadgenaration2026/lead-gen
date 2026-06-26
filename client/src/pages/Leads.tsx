@@ -722,6 +722,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
+  const assignLeadsMutation = trpc.leadSets.assignLeads.useMutation();
+  const createLeadSetMutation = trpc.leadSets.create.useMutation();
+  const [newTagName, setNewTagName] = useState("");
+  const [showCreateTag, setShowCreateTag] = useState(false);
+
   const handleBulkAssign = async () => {
     if (selectedLeadIds.size === 0) return;
 
@@ -731,18 +736,44 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
 
     try {
-      // Update tag for each selected lead
-      const promises = Array.from(selectedLeadIds).map((leadId) =>
-        updateTagMutation.mutateAsync({ leadId, tag: assignToSetId as any })
-      );
-      await Promise.all(promises);
-      toast.success(`${selectedLeadIds.size} lead(s) assigned to "${assignToSetId}" tag`);
+      await assignLeadsMutation.mutateAsync({
+        leadIds: Array.from(selectedLeadIds),
+        leadSetId: parseInt(assignToSetId),
+      });
+      const setName = leadSets.find((s: any) => s.id === parseInt(assignToSetId))?.name || assignToSetId;
+      toast.success(`${selectedLeadIds.size} lead(s) assigned to "${setName}"`);
       setSelectedLeadIds(new Set());
       setAssignDialogOpen(false);
       setAssignToSetId("");
       leadsQuery.refetch();
+      leadSetsQuery.refetch();
     } catch (error) {
-      toast.error("Failed to assign tags");
+      toast.error("Failed to assign leads");
+    }
+  };
+
+  const handleCreateTagAndAssign = async () => {
+    if (!newTagName.trim()) {
+      toast.error("Please enter a tag name");
+      return;
+    }
+    try {
+      const result = await createLeadSetMutation.mutateAsync({ name: newTagName.trim() });
+      // Now assign leads to the newly created set
+      await assignLeadsMutation.mutateAsync({
+        leadIds: Array.from(selectedLeadIds),
+        leadSetId: result.id,
+      });
+      toast.success(`Created "${newTagName.trim()}" and assigned ${selectedLeadIds.size} lead(s)`);
+      setSelectedLeadIds(new Set());
+      setAssignDialogOpen(false);
+      setAssignToSetId("");
+      setNewTagName("");
+      setShowCreateTag(false);
+      leadsQuery.refetch();
+      leadSetsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to create tag");
     }
   };
 
@@ -859,7 +890,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       </AlertDialog>
 
       {/* Bulk Assign to Tag Dialog */}
-      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+      <Dialog open={assignDialogOpen} onOpenChange={(open) => { setAssignDialogOpen(open); if (!open) { setShowCreateTag(false); setNewTagName(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -867,46 +898,89 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               Assign Leads to a Tag
             </DialogTitle>
             <DialogDescription>
-              Assign {selectedLeadIds.size} selected lead(s) to a tag
+              Assign {selectedLeadIds.size} selected lead(s) to a tag for batch sending
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Choose Tag</label>
-              <Select value={assignToSetId} onValueChange={setAssignToSetId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select a tag..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="hot">
-                    <span className="flex items-center gap-2">🔥 Hot</span>
-                  </SelectItem>
-                  <SelectItem value="warm">
-                    <span className="flex items-center gap-2">🌤 Warm</span>
-                  </SelectItem>
-                  <SelectItem value="cold">
-                    <span className="flex items-center gap-2">❄️ Cold</span>
-                  </SelectItem>
-                  <SelectItem value="follow_up">
-                    <span className="flex items-center gap-2">📋 Follow Up</span>
-                  </SelectItem>
-                  <SelectItem value="none">
-                    <span className="flex items-center gap-2 text-muted-foreground">Remove Tag</span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              onClick={handleBulkAssign}
-              disabled={updateTagMutation.isPending}
-              className="w-full"
-            >
-              {updateTagMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
-              ) : (
-                `Assign ${selectedLeadIds.size} Lead(s)`
-              )}
-            </Button>
+            {!showCreateTag ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium">Choose Tag</label>
+                  <Select value={assignToSetId} onValueChange={setAssignToSetId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select a tag..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leadSets.map((set: any) => (
+                        <SelectItem key={set.id} value={String(set.id)}>
+                          <span className="flex items-center gap-2">
+                            <Layers className="w-3.5 h-3.5 text-primary" />
+                            {set.name}
+                            <span className="text-xs text-muted-foreground">({set.leadCount || 0} leads)</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleBulkAssign}
+                    disabled={!assignToSetId || assignLeadsMutation.isPending}
+                    className="flex-1"
+                  >
+                    {assignLeadsMutation.isPending ? (
+                      <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
+                    ) : (
+                      `Assign ${selectedLeadIds.size} Lead(s)`
+                    )}
+                  </Button>
+                </div>
+                <div className="border-t pt-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCreateTag(true)}
+                    className="w-full gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create New Tag
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm font-medium">New Tag Name</label>
+                  <Input
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="e.g., Motivational Speaker Set 1"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Create a custom tag to group leads for batch email sending</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => { setShowCreateTag(false); setNewTagName(""); }}
+                    className="flex-1"
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    onClick={handleCreateTagAndAssign}
+                    disabled={!newTagName.trim() || createLeadSetMutation.isPending || assignLeadsMutation.isPending}
+                    className="flex-1"
+                  >
+                    {(createLeadSetMutation.isPending || assignLeadsMutation.isPending) ? (
+                      <><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating...</>
+                    ) : (
+                      `Create & Assign ${selectedLeadIds.size} Lead(s)`
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -897,3 +897,8 @@
 - [x] Email Composer bulk mode: remove lead set selection, show only tag selection
 - [x] Assign leads to a tag dialog: remove "Create a Tag" option and remove lead sets display
 - [x] Schedule campaign: add proper calendar and clock picker for date/time selection
+
+## Fix — Tag System Should Use Custom Lead Set Names
+- [x] Assign Leads to a Tag dialog: show lead sets (custom names like "Motivational Speaker Set 1") with option to create new ones
+- [x] Email Composer: select from lead sets (custom tags) instead of predefined hot/warm/cold
+- [x] The "tag" concept = lead sets = user-created custom group names for batch sending control

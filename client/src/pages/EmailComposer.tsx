@@ -95,6 +95,8 @@ export default function EmailComposer() {
 
   // Queries
   const leadsQuery = trpc.leads.list.useQuery();
+  const leadSetsQuery = trpc.leadSets.list.useQuery();
+  const leadSets = leadSetsQuery.data || [];
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
   const settingsQuery = trpc.settings.get.useQuery();
@@ -140,11 +142,12 @@ export default function EmailComposer() {
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
-  // Filter leads by selected tag for bulk mode
+  // Filter leads by selected tag (lead set) for bulk mode
   const filteredLeads = useMemo(() => {
     const allLeads = leadsQuery.data || [];
     if (!selectedTag) return allLeads;
-    return allLeads.filter((l: any) => l.tag === selectedTag);
+    const setId = parseInt(selectedTag);
+    return allLeads.filter((l: any) => l.leadSetId === setId);
   }, [leadsQuery.data, selectedTag]);
 
   // Single lead handlers
@@ -978,7 +981,8 @@ export default function EmailComposer() {
                         const val = e.target.value;
                         setSelectedTag(val);
                         if (val) {
-                          const tagLeads = (leadsQuery.data || []).filter((l: any) => l.tag === val);
+                          const setId = parseInt(val);
+                          const tagLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === setId);
                           setCampaignFormData({ ...campaignFormData, leadIds: tagLeads.map((l: any) => l.id) });
                         } else {
                           setCampaignFormData({ ...campaignFormData, leadIds: [] });
@@ -987,14 +991,15 @@ export default function EmailComposer() {
                       className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">-- Select a Tag --</option>
-                      <option value="hot">🔥 Hot ({(leadsQuery.data || []).filter((l: any) => l.tag === "hot").length} leads)</option>
-                      <option value="warm">🌤 Warm ({(leadsQuery.data || []).filter((l: any) => l.tag === "warm").length} leads)</option>
-                      <option value="cold">❄️ Cold ({(leadsQuery.data || []).filter((l: any) => l.tag === "cold").length} leads)</option>
-                      <option value="follow_up">📋 Follow Up ({(leadsQuery.data || []).filter((l: any) => l.tag === "follow_up").length} leads)</option>
+                      {leadSets.map((set: any) => (
+                        <option key={set.id} value={String(set.id)}>
+                          {set.name} ({set.leadCount || 0} leads)
+                        </option>
+                      ))}
                     </select>
                     {selectedTag && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {filteredLeads.length} lead(s) with "{selectedTag}" tag will be included in the campaign
+                        {filteredLeads.length} lead(s) in "{leadSets.find((s: any) => s.id === parseInt(selectedTag))?.name || 'selected tag'}" will be included in the campaign
                       </p>
                     )}
                     {!selectedTag && (
