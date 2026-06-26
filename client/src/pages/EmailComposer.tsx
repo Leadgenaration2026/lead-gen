@@ -39,6 +39,7 @@ export default function EmailComposer() {
 
   // Single lead state
   const [selectedLead, setSelectedLead] = useState<number | null>(null);
+  const [leadSearchQuery, setLeadSearchQuery] = useState("");
   const [emailType, setEmailType] = useState<EmailType>("discovery");
   const [instructions, setInstructions] = useState("");
   const [subject, setSubject] = useState("");
@@ -314,21 +315,57 @@ export default function EmailComposer() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Lead Selection */}
+                  {/* Lead Selection with Search */}
                   <div className="space-y-2">
-                    <Label htmlFor="lead-select">Select Lead *</Label>
-                    <Select value={selectedLead?.toString() || ""} onValueChange={(v) => setSelectedLead(parseInt(v))}>
-                      <SelectTrigger id="lead-select">
-                        <SelectValue placeholder="Choose a lead..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {leadsQuery.data?.map((lead) => (
-                          <SelectItem key={lead.id} value={lead.id.toString()}>
-                            {lead.ownerName} - {lead.companyName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="lead-search">Select Lead *</Label>
+                    <Input
+                      id="lead-search"
+                      placeholder="Search by name, email, or company..."
+                      value={leadSearchQuery}
+                      onChange={(e) => setLeadSearchQuery(e.target.value)}
+                      className="mb-2"
+                    />
+                    <div className="max-h-48 overflow-y-auto border rounded-md">
+                      {(leadsQuery.data || []).filter((lead: any) => {
+                        if (!leadSearchQuery.trim()) return true;
+                        const q = leadSearchQuery.toLowerCase();
+                        return (
+                          (lead.ownerName || "").toLowerCase().includes(q) ||
+                          (lead.companyName || "").toLowerCase().includes(q) ||
+                          (lead.email || "").toLowerCase().includes(q)
+                        );
+                      }).slice(0, 50).map((lead: any) => (
+                        <button
+                          key={lead.id}
+                          type="button"
+                          onClick={() => { setSelectedLead(lead.id); setLeadSearchQuery(""); }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0 ${
+                            selectedLead === lead.id ? "bg-primary/10 font-medium" : ""
+                          }`}
+                        >
+                          <span className="font-medium">{lead.ownerName}</span>
+                          <span className="text-muted-foreground"> — {lead.companyName}</span>
+                          {lead.email && <span className="text-xs text-muted-foreground block">{lead.email}</span>}
+                        </button>
+                      ))}
+                      {(leadsQuery.data || []).filter((lead: any) => {
+                        if (!leadSearchQuery.trim()) return true;
+                        const q = leadSearchQuery.toLowerCase();
+                        return (
+                          (lead.ownerName || "").toLowerCase().includes(q) ||
+                          (lead.companyName || "").toLowerCase().includes(q) ||
+                          (lead.email || "").toLowerCase().includes(q)
+                        );
+                      }).length === 0 && (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">No leads found</p>
+                      )}
+                    </div>
+                    {selectedLead && (() => {
+                      const lead = (leadsQuery.data || []).find((l: any) => l.id === selectedLead);
+                      return lead ? (
+                        <p className="text-xs text-green-600 font-medium">Selected: {lead.ownerName} — {lead.companyName}</p>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Email Type Selection */}
@@ -1026,14 +1063,7 @@ export default function EmailComposer() {
                       </p>
                     )}
                   </div>
-                  {selectedTag && (
-                    <LeadPicker
-                      leads={filteredLeads}
-                      selectedIds={campaignFormData.leadIds}
-                      onChange={(ids) => setCampaignFormData({ ...campaignFormData, leadIds: ids })}
-                      isLoading={leadsQuery.isLoading}
-                    />
-                  )}
+
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

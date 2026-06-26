@@ -907,3 +907,8 @@
 - [x] Add "Remove from Tag" option in the Assign Leads to a Tag dialog to unassign leads back to untagged
 - [x] Show tag name (lead set name) in Campaign Detail leads list so user can see which batch each lead came from
 - [x] Add verified vs undeliverable lead count indicator next to each tag in Email Composer dropdown
+
+## Fix — Tag/Lead UI Cleanup
+- [x] Email Composer bulk mode: remove LeadPicker list after tag selection (only show tag dropdown)
+- [x] Email Composer single lead mode: add search bar to find leads by name/email/company
+- [x] Lead Sets page: only show tags (lead set names), not the full individual leads list
