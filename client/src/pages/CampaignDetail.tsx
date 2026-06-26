@@ -228,7 +228,23 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
               <User className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-base">{lead.leadName}</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                {lead.leadName}
+                {lead.tag && lead.tag !== "none" && (
+                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                    lead.tag === "hot" ? "border-red-200 text-red-700 bg-red-50" :
+                    lead.tag === "warm" ? "border-orange-200 text-orange-700 bg-orange-50" :
+                    lead.tag === "cold" ? "border-blue-200 text-blue-700 bg-blue-50" :
+                    lead.tag === "qualified" ? "border-green-200 text-green-700 bg-green-50" :
+                    lead.tag === "nurture" ? "border-emerald-200 text-emerald-700 bg-emerald-50" :
+                    lead.tag === "lost" ? "border-gray-300 text-gray-600 bg-gray-100" :
+                    lead.tag === "follow_up" ? "border-purple-200 text-purple-700 bg-purple-50" :
+                    "border-gray-200 text-gray-700 bg-gray-50"
+                  }`}>
+                    {lead.tag === "hot" ? "🔥 Hot" : lead.tag === "warm" ? "🌡️ Warm" : lead.tag === "cold" ? "❄️ Cold" : lead.tag === "qualified" ? "✅ Qualified" : lead.tag === "nurture" ? "🌱 Nurture" : lead.tag === "lost" ? "💀 Lost" : lead.tag === "follow_up" ? "Follow Up" : lead.tag}
+                  </Badge>
+                )}
+              </CardTitle>
               <CardDescription className="flex items-center gap-2 mt-0.5">
                 <Building2 className="w-3 h-3" />
                 {lead.companyName}

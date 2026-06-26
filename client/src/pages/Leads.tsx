@@ -12,9 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, Megaphone, CalendarDays } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2 } from "lucide-react";
+
 import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { toast } from "sonner";
@@ -128,19 +127,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [newSetName, setNewSetName] = useState("");
   const [assignToSetId, setAssignToSetId] = useState<string>("");
 
-  // Assign to campaign dialog
-  const [assignCampaignDialogOpen, setAssignCampaignDialogOpen] = useState(false);
-  const [assignToCampaignId, setAssignToCampaignId] = useState<string>("");
-  const [assignCampaignMode, setAssignCampaignMode] = useState<"existing" | "new">("existing");
-  const [newCampaignName, setNewCampaignName] = useState("");
-  const [newCampaignSubject, setNewCampaignSubject] = useState("");
-  const [newCampaignTemplate, setNewCampaignTemplate] = useState("");
-  const [scheduleMode, setScheduleMode] = useState<"immediate" | "scheduled">("immediate");
-  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
-  const [scheduledTime, setScheduledTime] = useState("09:00");
-  const campaignsQuery = trpc.campaigns.list.useQuery();
-  const assignToCampaignMutation = trpc.campaigns.assignLeads.useMutation();
-  const createCampaignMutation = trpc.campaigns.create.useMutation();
+
 
   // Duplicate warning dialog state
   const [dupDialogOpen, setDupDialogOpen] = useState(false);
@@ -895,25 +882,25 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderPlus className="w-5 h-5" />
-              Assign to Lead Set
+              Assign Leads to a Tag
             </DialogTitle>
             <DialogDescription>
-              Assign {selectedLeadIds.size} selected lead(s) to a lead set
+              Assign {selectedLeadIds.size} selected lead(s) to a tag (lead set)
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">Choose Lead Set</label>
+              <label className="text-sm font-medium">Choose Tag</label>
               <Select value={assignToSetId} onValueChange={setAssignToSetId}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select a lead set..." />
+                  <SelectValue placeholder="Select a tag..." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="new">
-                    <span className="flex items-center gap-2"><FolderPlus className="w-3.5 h-3.5" /> Create New Set</span>
+                    <span className="flex items-center gap-2"><FolderPlus className="w-3.5 h-3.5" /> Create New Tag</span>
                   </SelectItem>
                   <SelectItem value="remove">
-                    <span className="flex items-center gap-2 text-muted-foreground">Remove from set</span>
+                    <span className="flex items-center gap-2 text-muted-foreground">Remove from tag</span>
                   </SelectItem>
                   {leadSets.map((set: any) => (
                     <SelectItem key={set.id} value={String(set.id)}>
@@ -925,7 +912,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             </div>
             {assignToSetId === "new" && (
               <div>
-                <label className="text-sm font-medium">New Set Name</label>
+                <label className="text-sm font-medium">New Tag Name</label>
                 <Input
                   placeholder="e.g., SaaS Companies Q1"
                   value={newSetName}
@@ -949,255 +936,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         </DialogContent>
       </Dialog>
 
-      {/* Assign to Campaign Dialog */}
-      <Dialog open={assignCampaignDialogOpen} onOpenChange={(open) => {
-        setAssignCampaignDialogOpen(open);
-        if (!open) {
-          setAssignCampaignMode("existing");
-          setNewCampaignName("");
-          setNewCampaignSubject("");
-          setNewCampaignTemplate("");
-          setAssignToCampaignId("");
-        }
-      }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Megaphone className="w-5 h-5" />
-              Assign to Campaign
-            </DialogTitle>
-            <DialogDescription>
-              Assign {selectedLeadIds.size} selected lead(s) to a campaign
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Toggle between existing and new */}
-            <div className="flex gap-2 p-1 bg-muted rounded-lg">
-              <button
-                className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${assignCampaignMode === "existing" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => setAssignCampaignMode("existing")}
-              >
-                Existing Campaign
-              </button>
-              <button
-                className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${assignCampaignMode === "new" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() => setAssignCampaignMode("new")}
-              >
-                + Create New Campaign
-              </button>
-            </div>
 
-            {assignCampaignMode === "existing" ? (
-              <>
-                <div>
-                  <label className="text-sm font-medium">Choose Campaign</label>
-                  <Select value={assignToCampaignId} onValueChange={setAssignToCampaignId}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select a campaign..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(campaignsQuery.data || []).map((campaign: any) => (
-                        <SelectItem key={campaign.id} value={String(campaign.id)}>
-                          {campaign.name} ({campaign.status})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={async () => {
-                    if (!assignToCampaignId) {
-                      toast.error("Please select a campaign");
-                      return;
-                    }
-                    try {
-                      const result = await assignToCampaignMutation.mutateAsync({
-                        campaignId: parseInt(assignToCampaignId),
-                        leadIds: Array.from(selectedLeadIds),
-                      });
-                      if (result.added > 0) {
-                        toast.success(`${result.added} lead(s) assigned to campaign${result.skipped > 0 ? ` (${result.skipped} already in campaign)` : ""}`);
-                      } else {
-                        toast.info(result.message || "All selected leads are already in this campaign");
-                      }
-                      setSelectedLeadIds(new Set());
-                      setAssignCampaignDialogOpen(false);
-                      setAssignToCampaignId("");
-                      leadsQuery.refetch();
-                    } catch (error: any) {
-                      toast.error(error?.message || "Failed to assign leads to campaign");
-                    }
-                  }}
-                  disabled={assignToCampaignMutation.isPending}
-                  className="w-full"
-                >
-                  {assignToCampaignMutation.isPending ? (
-                    <><Loader2 className="w-4 h-4 animate-spin mr-2" />Assigning...</>
-                  ) : (
-                    `Assign ${selectedLeadIds.size} Lead(s) to Campaign`
-                  )}
-                </Button>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className="text-sm font-medium">Campaign Name *</label>
-                  <Input
-                    placeholder="e.g., Q2 SaaS Outreach"
-                    value={newCampaignName}
-                    onChange={(e) => setNewCampaignName(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Email Subject *</label>
-                  <Input
-                    placeholder="e.g., Quick question about {{companyName}}"
-                    value={newCampaignSubject}
-                    onChange={(e) => setNewCampaignSubject(e.target.value)}
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Use {"{{ownerName}}"}, {"{{companyName}}"} for personalization</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Email Template *</label>
-                  <Textarea
-                    placeholder="Write your email template here..."
-                    value={newCampaignTemplate}
-                    onChange={(e) => setNewCampaignTemplate(e.target.value)}
-                    className="mt-1 min-h-24 font-mono text-xs"
-                  />
-                </div>
-
-                {/* Schedule Options */}
-                <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
-                  <label className="text-sm font-medium">Campaign Schedule</label>
-                  <div className="flex gap-2">
-                    <button
-                      className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${
-                        scheduleMode === "immediate"
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-background text-muted-foreground border-border hover:text-foreground"
-                      }`}
-                      onClick={() => setScheduleMode("immediate")}
-                    >
-                      Send Immediately
-                    </button>
-                    <button
-                      className={`flex-1 px-3 py-2 text-sm font-medium rounded-md border transition-colors ${
-                        scheduleMode === "scheduled"
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-background text-muted-foreground border-border hover:text-foreground"
-                      }`}
-                      onClick={() => setScheduleMode("scheduled")}
-                    >
-                      Schedule for Later
-                    </button>
-                  </div>
-                  {scheduleMode === "scheduled" && (
-                    <div className="flex gap-3 items-end">
-                      <div className="flex-1">
-                        <label className="text-xs text-muted-foreground">Date</label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full mt-1 justify-start text-left font-normal">
-                              <CalendarDays className="w-4 h-4 mr-2" />
-                              {scheduledDate ? scheduledDate.toLocaleDateString() : "Pick a date"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={scheduledDate}
-                              onSelect={(date: Date | undefined) => setScheduledDate(date)}
-                              disabled={(date: Date) => date < new Date(new Date().setHours(0,0,0,0))}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                      <div className="w-28">
-                        <label className="text-xs text-muted-foreground">Time</label>
-                        <Input
-                          type="time"
-                          value={scheduledTime}
-                          onChange={(e) => setScheduledTime(e.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  onClick={async () => {
-                    if (!newCampaignName.trim()) {
-                      toast.error("Please enter a campaign name");
-                      return;
-                    }
-                    if (!newCampaignSubject.trim()) {
-                      toast.error("Please enter an email subject");
-                      return;
-                    }
-                    if (!newCampaignTemplate.trim()) {
-                      toast.error("Please enter an email template");
-                      return;
-                    }
-                    if (scheduleMode === "scheduled" && !scheduledDate) {
-                      toast.error("Please pick a date for scheduling");
-                      return;
-                    }
-                    try {
-                      let scheduledAt: string | undefined;
-                      if (scheduleMode === "scheduled" && scheduledDate) {
-                        const [hours, mins] = scheduledTime.split(":").map(Number);
-                        const dt = new Date(scheduledDate);
-                        dt.setHours(hours, mins, 0, 0);
-                        scheduledAt = dt.toISOString();
-                      }
-                      await createCampaignMutation.mutateAsync({
-                        name: newCampaignName.trim(),
-                        subject: newCampaignSubject.trim(),
-                        emailTemplate: newCampaignTemplate.trim(),
-                        leadIds: Array.from(selectedLeadIds),
-                        scheduledAt,
-                      });
-                      toast.success(
-                        scheduleMode === "scheduled"
-                          ? `Campaign "${newCampaignName}" scheduled for ${scheduledDate?.toLocaleDateString()} at ${scheduledTime}`
-                          : `Campaign "${newCampaignName}" created with ${selectedLeadIds.size} lead(s)!`
-                      );
-                      setSelectedLeadIds(new Set());
-                      setAssignCampaignDialogOpen(false);
-                      setNewCampaignName("");
-                      setNewCampaignSubject("");
-                      setNewCampaignTemplate("");
-                      setScheduleMode("immediate");
-                      setScheduledDate(undefined);
-                      setScheduledTime("09:00");
-                      setAssignCampaignMode("existing");
-                      leadsQuery.refetch();
-                      campaignsQuery.refetch();
-                    } catch (error: any) {
-                      toast.error(error?.message || "Failed to create campaign");
-                    }
-                  }}
-                  disabled={createCampaignMutation.isPending}
-                  className="w-full"
-                >
-                  {createCampaignMutation.isPending ? (
-                    <><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating...</>
-                  ) : scheduleMode === "scheduled" ? (
-                    `Schedule Campaign & Assign ${selectedLeadIds.size} Lead(s)`
-                  ) : (
-                    `Create Campaign & Assign ${selectedLeadIds.size} Lead(s)`
-                  )}
-                </Button>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Bulk Delete Confirmation Dialog */}
       <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
@@ -1807,16 +1546,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 className="gap-1.5"
               >
                 <FolderPlus className="w-3.5 h-3.5" />
-                Assign to Set
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setAssignCampaignDialogOpen(true)}
-                className="gap-1.5"
-              >
-                <Megaphone className="w-3.5 h-3.5" />
-                Assign to Campaign
+                Assign Leads to a Tag
               </Button>
               <Button
                 variant="destructive"

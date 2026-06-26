@@ -2162,6 +2162,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             companyName: lead.companyName,
             email: lead.email,
             phone: lead.phoneNumber,
+            tag: lead.tag || null,
             // Initial email status
             initialEmail: {
               sent: cl.emailSent,

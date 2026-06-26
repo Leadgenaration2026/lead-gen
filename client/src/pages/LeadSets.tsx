@@ -95,6 +95,7 @@ export default function LeadSetsPage() {
   const [editingLeadId, setEditingLeadId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string>("all");
   const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -126,6 +127,9 @@ export default function LeadSetsPage() {
   const getLeadCount = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId).length;
   const getLeadsForSet = (setId: number) => {
     let leads = allLeads.filter((l: any) => l.leadSetId === setId);
+    if (tagFilter && tagFilter !== "all") {
+      leads = leads.filter((l: any) => (l.tag || "none") === tagFilter);
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       leads = leads.filter((l: any) =>
@@ -291,29 +295,49 @@ export default function LeadSetsPage() {
           </Card>
         </div>
 
-        {/* Search Bar */}
+        {/* Search & Filter Bar */}
         <Card>
           <CardContent className="pt-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search leads by name, email, phone, or company..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+            <div className="flex gap-3 items-start">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search leads by name, email, phone, or company..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <Select value={tagFilter} onValueChange={setTagFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tags</SelectItem>
+                  <SelectItem value="hot">🔥 Hot</SelectItem>
+                  <SelectItem value="warm">🌡️ Warm</SelectItem>
+                  <SelectItem value="cold">❄️ Cold</SelectItem>
+                  <SelectItem value="qualified">✅ Qualified</SelectItem>
+                  <SelectItem value="nurture">🌱 Nurture</SelectItem>
+                  <SelectItem value="lost">💀 Lost</SelectItem>
+                  <SelectItem value="none">No Tag</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            {searchQuery && (
+            {(searchQuery || tagFilter !== "all") && (
               <p className="text-xs text-muted-foreground mt-2">
-                Showing results matching "{searchQuery}" across all lead sets
+                {searchQuery && <>Showing results matching "{searchQuery}"</>}
+                {searchQuery && tagFilter !== "all" && <> with </>}
+                {tagFilter !== "all" && <>tag: {tagFilter}</>}
+                {" "}across all lead sets
               </p>
             )}
           </CardContent>
@@ -400,7 +424,7 @@ export default function LeadSetsPage() {
                     </div>
 
                     {/* Expanded Leads List with full details */}
-                    {(expandedSetId === set.id || (searchQuery.trim() && getLeadsForSet(set.id).length > 0)) && (
+                    {(expandedSetId === set.id || ((searchQuery.trim() || tagFilter !== "all") && getLeadsForSet(set.id).length > 0)) && (
                       <div className="border-t bg-muted/20 px-4 py-3">
                         {getLeadsForSet(set.id).length === 0 ? (
                           <p className="text-sm text-muted-foreground text-center py-4">No leads in this set</p>

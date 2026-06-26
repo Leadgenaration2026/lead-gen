@@ -971,7 +971,7 @@ export default function EmailComposer() {
                 })()}
 
                 <div>
-                  <Label className="mb-2 block">Select Leads *</Label>
+                  <Label className="mb-2 block">Select Leads by Tag *</Label>
                   <div className="mb-2">
                     <select
                       value={selectedLeadSetId || ""}
@@ -987,7 +987,7 @@ export default function EmailComposer() {
                       }}
                       className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      <option value="">All Leads (no set filter)</option>
+                      <option value="">-- Select a Tag --</option>
                       {(leadSetsQuery.data || []).map((set: any) => (
                         <option key={set.id} value={set.id}>
                           {set.name} ({(leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id).length} leads)
@@ -995,22 +995,24 @@ export default function EmailComposer() {
                       ))}
                     </select>
                     {selectedLeadSetId && (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/leads?setId=${selectedLeadSetId}`)}
-                        className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                      >
-                        <Users className="w-3 h-3" />
-                        View leads in this set →
-                      </button>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {filteredLeads.length} lead(s) in this tag will be included in the campaign
+                      </p>
+                    )}
+                    {!selectedLeadSetId && (
+                      <p className="mt-1 text-xs text-amber-600">
+                        Please select a tag to choose which leads to include
+                      </p>
                     )}
                   </div>
-                  <LeadPicker
-                    leads={filteredLeads}
-                    selectedIds={campaignFormData.leadIds}
-                    onChange={(ids) => setCampaignFormData({ ...campaignFormData, leadIds: ids })}
-                    isLoading={leadsQuery.isLoading}
-                  />
+                  {selectedLeadSetId && (
+                    <LeadPicker
+                      leads={filteredLeads}
+                      selectedIds={campaignFormData.leadIds}
+                      onChange={(ids) => setCampaignFormData({ ...campaignFormData, leadIds: ids })}
+                      isLoading={leadsQuery.isLoading}
+                    />
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>

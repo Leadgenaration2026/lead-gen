@@ -885,3 +885,10 @@
 - [x] Add calendar picker to view webhook events from previous weeks/months/years
 - [x] Add "Clear Events" button for manual clearing
 - [x] Add campaign scheduling option (send immediately or pick date/time via calendar)
+
+## Feature — Tag-Based Lead Management Workflow
+- [x] Remove "Assign to Campaign" button from Dashboard Leads and All Leads pages
+- [x] Rename "Assign to Set" → "Assign leads to a tag" with option to create a new tag
+- [x] Email Composer selects leads by tag instead of individual leads
+- [x] Campaign Detail shows which tag each lead belongs to
+- [x] Lead Sets page has tag filter to find which leads are assigned to which tag
