@@ -991,17 +991,35 @@ export default function EmailComposer() {
                       className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">-- Select a Tag --</option>
-                      {leadSets.map((set: any) => (
-                        <option key={set.id} value={String(set.id)}>
-                          {set.name} ({set.leadCount || 0} leads)
-                        </option>
-                      ))}
+                      {leadSets.map((set: any) => {
+                        const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id);
+                        const verified = setLeads.filter((l: any) => l.emailVerificationStatus === "deliverable").length;
+                        const undeliverable = setLeads.filter((l: any) => l.emailVerificationStatus === "undeliverable").length;
+                        const total = setLeads.length;
+                        return (
+                          <option key={set.id} value={String(set.id)}>
+                            {set.name} — {total} leads ({verified} verified, {undeliverable} undeliverable)
+                          </option>
+                        );
+                      })}
                     </select>
-                    {selectedTag && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {filteredLeads.length} lead(s) in "{leadSets.find((s: any) => s.id === parseInt(selectedTag))?.name || 'selected tag'}" will be included in the campaign
-                      </p>
-                    )}
+                    {selectedTag && (() => {
+                      const verified = filteredLeads.filter((l: any) => l.emailVerificationStatus === "deliverable").length;
+                      const undeliverable = filteredLeads.filter((l: any) => l.emailVerificationStatus === "undeliverable").length;
+                      const sendable = filteredLeads.filter((l: any) => l.emailVerificationStatus !== "undeliverable").length;
+                      return (
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-xs text-muted-foreground">
+                            {filteredLeads.length} lead(s) in "{leadSets.find((s: any) => s.id === parseInt(selectedTag))?.name || 'selected tag'}"
+                          </p>
+                          <p className="text-xs">
+                            <span className="text-green-600 font-medium">{verified} verified</span>
+                            {undeliverable > 0 && <span className="text-red-600 font-medium"> · {undeliverable} undeliverable</span>}
+                            <span className="text-muted-foreground"> · {sendable} sendable</span>
+                          </p>
+                        </div>
+                      );
+                    })()}
                     {!selectedTag && (
                       <p className="mt-1 text-xs text-amber-600">
                         Please select a tag to choose which leads to include

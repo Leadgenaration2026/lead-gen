@@ -902,3 +902,8 @@
 - [x] Assign Leads to a Tag dialog: show lead sets (custom names like "Motivational Speaker Set 1") with option to create new ones
 - [x] Email Composer: select from lead sets (custom tags) instead of predefined hot/warm/cold
 - [x] The "tag" concept = lead sets = user-created custom group names for batch sending control
+
+## Feature — Remove from Tag Option
+- [x] Add "Remove from Tag" option in the Assign Leads to a Tag dialog to unassign leads back to untagged
+- [x] Show tag name (lead set name) in Campaign Detail leads list so user can see which batch each lead came from
+- [x] Add verified vs undeliverable lead count indicator next to each tag in Email Composer dropdown

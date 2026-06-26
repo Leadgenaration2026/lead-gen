@@ -230,6 +230,11 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
             <div>
               <CardTitle className="text-base flex items-center gap-2">
                 {lead.leadName}
+                {lead.leadSetName && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-indigo-200 text-indigo-700 bg-indigo-50">
+                    {lead.leadSetName}
+                  </Badge>
+                )}
                 {lead.tag && lead.tag !== "none" && (
                   <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
                     lead.tag === "hot" ? "border-red-200 text-red-700 bg-red-50" :

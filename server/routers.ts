@@ -2156,6 +2156,13 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           const callsDone = followUpCallsList.filter((c: any) => ["completed", "in_progress", "no_answer", "voicemail", "failed"].includes(c.status));
           const callsPending = followUpCallsList.filter((c: any) => ["scheduled", "initiated", "ringing"].includes(c.status));
 
+          // Get lead set name if assigned
+          let leadSetName: string | null = null;
+          if (lead.leadSetId) {
+            const leadSet = await db.getLeadSetById(lead.leadSetId);
+            if (leadSet) leadSetName = leadSet.name;
+          }
+
           report.push({
             leadId: lead.id,
             leadName: lead.ownerName,
@@ -2163,6 +2170,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             email: lead.email,
             phone: lead.phoneNumber,
             tag: lead.tag || null,
+            leadSetName,
             // Initial email status
             initialEmail: {
               sent: cl.emailSent,

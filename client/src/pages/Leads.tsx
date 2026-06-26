@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2 } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, X } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -777,6 +777,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
+  const handleRemoveFromTag = async () => {
+    if (selectedLeadIds.size === 0) return;
+    try {
+      await assignLeadsMutation.mutateAsync({
+        leadIds: Array.from(selectedLeadIds),
+        leadSetId: null,
+      });
+      toast.success(`${selectedLeadIds.size} lead(s) removed from tag (now untagged)`);
+      setSelectedLeadIds(new Set());
+      setAssignDialogOpen(false);
+      setAssignToSetId("");
+      leadsQuery.refetch();
+      leadSetsQuery.refetch();
+    } catch (error) {
+      toast.error("Failed to remove from tag");
+    }
+  };
+
   // Filter leads
   // Get unique industries for filter dropdown
   const industries = useMemo(() => {
@@ -936,14 +954,27 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     )}
                   </Button>
                 </div>
-                <div className="border-t pt-3">
+                <div className="border-t pt-3 flex gap-2">
                   <Button
                     variant="outline"
                     onClick={() => setShowCreateTag(true)}
-                    className="w-full gap-2"
+                    className="flex-1 gap-2"
                   >
                     <Plus className="w-4 h-4" />
                     Create New Tag
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleRemoveFromTag}
+                    disabled={assignLeadsMutation.isPending}
+                    className="flex-1 gap-2 text-destructive hover:text-destructive"
+                  >
+                    {assignLeadsMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <X className="w-4 h-4" />
+                    )}
+                    Remove from Tag
                   </Button>
                 </div>
               </>
