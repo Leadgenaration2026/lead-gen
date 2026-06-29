@@ -1702,27 +1702,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48" />
               </div>
               <Select value={filterTag} onValueChange={setFilterTag}>
-                <SelectTrigger className="w-36">
-                  <Tag className="w-3.5 h-3.5 mr-1.5" />
-                  <SelectValue placeholder="Filter by tag" />
+                <SelectTrigger className="w-40">
+                  <Layers className="w-3.5 h-3.5 mr-1.5" />
+                  <SelectValue placeholder="Filter" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Tags</SelectItem>
-                  <SelectItem value="hot">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-500" /> Hot</span>
-                  </SelectItem>
-                  <SelectItem value="warm">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-orange-500" /> Warm</span>
-                  </SelectItem>
-                  <SelectItem value="cold">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500" /> Cold</span>
-                  </SelectItem>
-                  <SelectItem value="follow_up">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-purple-500" /> Follow Up</span>
-                  </SelectItem>
-                  <SelectItem value="none">
-                    <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-gray-400" /> No Tag</span>
-                  </SelectItem>
+                  <SelectItem value="all">All Lead Sets</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterLeadSet} onValueChange={setFilterLeadSet}>

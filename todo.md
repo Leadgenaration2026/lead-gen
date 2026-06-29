@@ -923,3 +923,7 @@
 - [x] Email Composer bulk dropdown: only show type="tag" entries
 - [x] Lead Sets page: only show type="tag" entries (imported lists stay in All Leads)
 - [x] Single lead search: hide list after selecting a lead, only show selected lead name
+
+## Fix — Lead Sets & Unassigned Leads Display
+- [x] Leads main page: change tag filter to "All Lead Sets" showing only uploaded leads
+- [ ] Lead Sets page: add "Unassigned" tab to show leads with no tag/set assigned
