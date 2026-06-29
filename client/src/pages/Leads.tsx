@@ -56,6 +56,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const updateTagMutation = trpc.leads.updateTag.useMutation();
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
+  const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);
@@ -809,7 +810,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
   const filteredLeads = useMemo(() => {
     const filtered = (leadsQuery.data || []).filter((lead: any) => {
-      const matchesTag = filterTag === "all" || lead.tag === filterTag;
       const matchesSearch =
         !searchQuery ||
         lead.companyName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -820,7 +820,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         (filterLeadSet === "unassigned" ? !lead.leadSetId : lead.leadSetId === parseInt(filterLeadSet));
       const matchesIndustry =
         filterIndustry === "all" || lead.industry === filterIndustry;
-      return matchesTag && matchesSearch && matchesSet && matchesIndustry;
+      const matchesList = filterTag === "all" || lead.sourceListId === parseInt(filterTag);
+      return matchesList && matchesSearch && matchesSet && matchesIndustry;
     });
 
     // Apply sorting
@@ -1702,12 +1703,17 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48" />
               </div>
               <Select value={filterTag} onValueChange={setFilterTag}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-44">
                   <Layers className="w-3.5 h-3.5 mr-1.5" />
-                  <SelectValue placeholder="Filter" />
+                  <SelectValue placeholder="Filter by list" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Lead Sets</SelectItem>
+                  <SelectItem value="all">All Imported Lists</SelectItem>
+                  {(importedListsQuery.data || []).filter((list: any) => list.type === "list").map((list: any) => (
+                    <SelectItem key={list.id} value={String(list.id)}>
+                      {list.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Select value={filterLeadSet} onValueChange={setFilterLeadSet}>

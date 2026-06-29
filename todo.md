@@ -927,3 +927,8 @@
 ## Fix — Lead Sets & Unassigned Leads Display
 - [x] Leads main page: change tag filter to "All Lead Sets" showing only uploaded leads
 - [x] Lead Sets page: add "Unassigned" tab to show leads with no tag/set assigned
+
+## Feature — Show Leads by Imported List
+- [x] Update Leads page filter: show imported lists (type='list') as separate filter options
+- [x] When a list is selected, show only leads from that list
+- [x] Allow assigning those leads to custom tags from the list view
