@@ -824,7 +824,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
       let matchesListFilter = true;
       if (filterSourceListId !== "all") {
-        matchesListFilter = lead.sourceListId === parseInt(filterSourceListId) && !lead.leadSetId;
+        matchesListFilter = lead.sourceListId === parseInt(filterSourceListId);
       } else if (filterLeadSet === "all") {
         matchesListFilter = !!lead.leadSetId;
       } else if (filterLeadSet === "unassigned") {

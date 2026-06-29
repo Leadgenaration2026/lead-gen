@@ -948,3 +948,8 @@
 - [x] Filter imported lists dropdown to only show type='list' (not tags)
 - [x] Add sourceListId field to leads table to track which list each lead came from
 - [x] Update CSV import to set sourceListId when creating leads
+
+## Fix — Leads Page Layout Redesign
+- [x] Fix filter logic: show ALL leads from selected imported list (not just unassigned ones)
+- [x] Imported Lists section: show clickable list items, display leads from selected list below
+- [x] All Sets section: show clickable tag items, display leads from selected tag below
