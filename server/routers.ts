@@ -355,6 +355,7 @@ export const appRouter = router({
           phoneNumber: string;
           website?: string;
           industry?: string;
+          companySize?: string;
           timezone?: string;
           linkedinUrl?: string;
           instagramUrl?: string;
@@ -470,11 +471,13 @@ export const appRouter = router({
         
 Return a JSON array with exactly ${input.count} leads. Each lead must have:
 - companyName: string
-- ownerName: string  
+- ownerName: string
+- jobTitle: string (job title of the contact person)
 - email: string (valid email format)
 - phoneNumber: string (valid phone format with country code, e.g. +1-555-123-4567)
 - website: string (optional, valid URL if provided)
 - industry: string (the industry/sector of the business)
+- companySize: string (e.g. "1-10", "11-50", "51-200", "201-500", "500+")
 - timezone: string (IANA timezone of the lead's location, e.g. "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London")
 - linkedinUrl: string (optional, LinkedIn profile URL if available, e.g. "https://linkedin.com/in/john-smith")
 - instagramUrl: string (optional, Instagram profile URL if available, e.g. "https://instagram.com/companyname")
@@ -578,6 +581,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               phoneNumber: leadData.phoneNumber || "",
               website: leadData.website,
               industry: leadData.industry,
+              companySize: leadData.companySize || undefined,
               timezone: leadData.timezone || "America/New_York",
               linkedinUrl: leadData.linkedinUrl || undefined,
               instagramUrl: leadData.instagramUrl || undefined,
@@ -658,47 +662,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           }
         });
 
-        // Auto-verify emails via Bouncer in background for AI-generated leads
-        setImmediate(async () => {
-          try {
-            const settings = await db.getUserSettings(ctx.user.id);
-            if (!settings?.bouncerApiKey) {
-              console.log(`[AutoVerify] Skipping AI batch - no Bouncer API key configured`);
-              return;
-            }
-            const { validateEmail } = await import("./bouncer");
-            const allLeads = await db.getLeadsByUserId(ctx.user.id);
-            for (let i = 0; i < uniqueLeadsData.length; i++) {
-              const matchingLead = allLeads.find(l => l.email === uniqueLeadsData[i].email);
-              if (!matchingLead) continue;
-              try {
-                const result = await validateEmail(settings.bouncerApiKey, matchingLead.email);
-                await db.updateLead(matchingLead.id, {
-                  emailVerificationStatus: result.status as any,
-                  emailVerificationData: {
-                    score: result.score,
-                    reason: result.reason,
-                    toxic: result.toxic,
-                    toxicity: result.toxicity,
-                    shouldSend: result.status !== "undeliverable",
-                    verifiedAt: new Date().toISOString(),
-                  },
-                });
-              } catch (e: any) {
-                if (e.message === "BOUNCER_NO_CREDITS" || e.message === "BOUNCER_INVALID_API_KEY") break;
-                if (e.message === "BOUNCER_RATE_LIMIT") {
-                  await new Promise(r => setTimeout(r, 5000));
-                  i--;
-                  continue;
-                }
-              }
-              if (i < uniqueLeadsData.length - 1) await new Promise(r => setTimeout(r, 100));
-            }
-            console.log(`[AutoVerify] AI-generated leads batch verified`);
-          } catch (e: any) {
-            console.warn(`[AutoVerify] AI batch verification failed:`, e.message);
-          }
-        });
+        // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
+        console.log(`[AutoVerify] AI import auto-verification disabled - user must manually verify emails`);
 
         return {
           success: true,
@@ -804,55 +769,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             }
           });
 
-          // Auto-verify emails via Bouncer in background
-          setImmediate(async () => {
-            try {
-              const settings = await db.getUserSettings(ctx.user.id);
-              if (!settings?.bouncerApiKey) {
-                console.log(`[AutoVerify] Skipping - no Bouncer API key configured`);
-                return;
-              }
-              const { validateEmail } = await import("./bouncer");
-              for (let i = 0; i < importedIds.length; i++) {
-                try {
-                  const lead = await db.getLeadById(importedIds[i]);
-                  if (!lead || !lead.email) continue;
-                  const result = await validateEmail(settings.bouncerApiKey, lead.email);
-                  await db.updateLead(importedIds[i], {
-                    emailVerificationStatus: result.status as any,
-                    emailVerificationData: {
-                      score: result.score,
-                      reason: result.reason,
-                      toxic: result.toxic,
-                      toxicity: result.toxicity,
-                      shouldSend: result.status !== "undeliverable",
-                      verifiedAt: new Date().toISOString(),
-                    },
-                  });
-                } catch (e: any) {
-                  if (e.message === "BOUNCER_NO_CREDITS") {
-                    console.warn(`[AutoVerify] Ran out of Bouncer credits at lead index ${i}`);
-                    break;
-                  }
-                  if (e.message === "BOUNCER_INVALID_API_KEY") {
-                    console.warn(`[AutoVerify] Invalid Bouncer API key`);
-                    break;
-                  }
-                  // Rate limit - wait and retry
-                  if (e.message === "BOUNCER_RATE_LIMIT") {
-                    await new Promise(r => setTimeout(r, 5000));
-                    i--; // retry this one
-                    continue;
-                  }
-                }
-                // Respect rate limit: ~16 req/sec max, we do 1 per 100ms
-                if (i < importedIds.length - 1) await new Promise(r => setTimeout(r, 100));
-              }
-              console.log(`[AutoVerify] CSV import batch verified ${importedIds.length} leads`);
-            } catch (e: any) {
-              console.warn(`[AutoVerify] CSV batch verification failed:`, e.message);
-            }
-          });
+          // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
+          console.log(`[AutoVerify] CSV import auto-verification disabled - user must manually verify emails`);
         }
         return { success: true, imported: createdLeads.length, errors, leadIds: importedIds };
       }),

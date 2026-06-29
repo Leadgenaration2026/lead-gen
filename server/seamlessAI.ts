@@ -525,15 +525,15 @@ export async function getSeamlessLeads(
     const contact = {
       companyName: c.company || "Unknown",
       ownerName: fullName,
-      jobTitle: (c as any).title || (c as any).jobTitle || (c as any).position || "",
+      jobTitle: (c as any).title || (c as any).jobTitle || (c as any).position || undefined,
       email,
-      phoneNumber: c.phone || "",
+      phoneNumber: c.phone || (c as any).phoneNumber || (c as any).workPhone || "",
       linkedinUrl: c.lIProfileUrl || "",
       industry: (c as any).industry || (c as any).companyIndustry || "",
       website: (c as any).website || (c as any).companyWebsite || (c as any).companyUrl || "",
       timezone: (c as any).timezone || (c as any).companyTimezone || "",
       country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || "",
-      companySize: (c as any).companySize || (c as any).employeeCount || (c as any).employees || "",
+      companySize: (c as any).companySize || (c as any).employeeCount || (c as any).employees || undefined,
     };
     
     contacts.push(contact);
