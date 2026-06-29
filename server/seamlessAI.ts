@@ -389,10 +389,12 @@ export async function getSeamlessLeads(
   contacts: Array<{
     companyName: string;
     ownerName: string;
+    jobTitle?: string;
     email: string;
     phoneNumber: string;
     website?: string;
     industry?: string;
+    companySize?: string;
     linkedinUrl?: string;
     timezone?: string;
     country?: string;

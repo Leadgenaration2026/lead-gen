@@ -599,6 +599,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               userId: ctx.user.id,
               status: "new",
               leadSetId,
+              sourceListId: leadSetId || undefined,
             });
             createdLeads.push(result);
           } catch (e) {

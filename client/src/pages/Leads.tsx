@@ -2419,7 +2419,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               try {
                 await deleteListMutation.mutateAsync({ id: deleteListId });
                 toast.success("List deleted successfully");
-                leadsQuery.refetch();
+                // Invalidate queries to force immediate refresh
+                trpc.useUtils().leads.list.invalidate();
+                importedListsQuery.refetch();
+                leadSetsQuery.refetch();
                 setDeleteListDialogOpen(false);
                 setDeleteListId(null);
                 setFilterSourceListId("all");
