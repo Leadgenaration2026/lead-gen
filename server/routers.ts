@@ -304,24 +304,44 @@ export const appRouter = router({
         
         for (const lead of validLeads) {
           try {
-            const result = await getSeamlessLeads(
+            // First try: Search by company + job title for precise match
+            let result = await getSeamlessLeads(
               seamlessApiKey,
               {
                 companyName: lead.companyName ? [lead.companyName] : undefined,
+                jobTitle: lead.jobTitle ? [lead.jobTitle] : undefined,
               },
               1
             );
 
+            // Fallback: If no results, search by company name only
+            if (!result.contacts || result.contacts.length === 0) {
+              result = await getSeamlessLeads(
+                seamlessApiKey,
+                {
+                  companyName: lead.companyName ? [lead.companyName] : undefined,
+                },
+                1
+              );
+            }
+
             if (result.contacts && result.contacts.length > 0) {
               const enrichedContact = result.contacts[0];
               
+              // Always update with enriched data - don't use fallback to old data
               await db.updateLead(lead.id, {
-                phoneNumber: enrichedContact.phoneNumber || lead.phoneNumber,
-                companySize: enrichedContact.companySize || lead.companySize,
-                jobTitle: enrichedContact.jobTitle || lead.jobTitle,
-                industry: enrichedContact.industry || lead.industry,
-                website: enrichedContact.website || lead.website,
-                timezone: enrichedContact.timezone || lead.timezone,
+                phoneNumber: enrichedContact.phoneNumber,
+                phoneType: enrichedContact.phoneType || "unknown",
+                secondaryPhone: enrichedContact.secondaryPhone,
+                secondaryPhoneType: enrichedContact.secondaryPhoneType,
+                personalEmail: enrichedContact.personalEmail,
+                workEmail: enrichedContact.workEmail,
+                allEmails: enrichedContact.allEmails ? enrichedContact.allEmails : null,
+                companySize: enrichedContact.companySize,
+                jobTitle: enrichedContact.jobTitle,
+                industry: enrichedContact.industry,
+                website: enrichedContact.website,
+                timezone: enrichedContact.timezone,
               });
               
               enrichedResults.push({

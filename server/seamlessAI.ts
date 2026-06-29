@@ -407,6 +407,12 @@ export async function getSeamlessLeads(
     jobTitle?: string;
     email: string;
     phoneNumber: string;
+    phoneType?: "cell" | "office" | "unknown";
+    secondaryPhone?: string;
+    secondaryPhoneType?: "cell" | "office" | "unknown";
+    personalEmail?: string;
+    workEmail?: string;
+    allEmails?: string[];
     website?: string;
     industry?: string;
     companySize?: string;
@@ -517,8 +523,15 @@ export async function getSeamlessLeads(
     jobTitle?: string;
     email: string;
     phoneNumber: string;
+    phoneType?: "cell" | "office" | "unknown";
+    secondaryPhone?: string;
+    secondaryPhoneType?: "cell" | "office" | "unknown";
+    personalEmail?: string;
+    workEmail?: string;
+    allEmails?: string[];
     website?: string;
     industry?: string;
+    companySize?: string;
     linkedinUrl?: string;
     timezone?: string;
     country?: string;
@@ -540,6 +553,22 @@ export async function getSeamlessLeads(
     const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unknown";
     const email = c.email || c.personalEmail || "";
     
+    // Detect phone type (cell vs office)
+    const detectPhoneType = (phone: string | undefined): "cell" | "office" | "unknown" => {
+      if (!phone) return "unknown";
+      // Cell phone patterns: starts with +1 or 1, or contains common cell indicators
+      // Office patterns: typically have extensions or are listed as "office"
+      // For now, we'll default to "unknown" since Seamless.AI doesn't clearly distinguish
+      // In production, you'd use a phone validation library
+      return "unknown";
+    };
+    
+    // Collect all available emails
+    const allEmails = [];
+    if (c.email) allEmails.push(c.email);
+    if (c.personalEmail && c.personalEmail !== c.email) allEmails.push(c.personalEmail);
+    if ((c as any).workEmail && (c as any).workEmail !== c.email && (c as any).workEmail !== c.personalEmail) allEmails.push((c as any).workEmail);
+    
     // Debug: Log first contact to see available fields
     if (contacts.length === 0) {
       console.log("[Seamless.AI Debug] First contact keys:", Object.keys(c));
@@ -548,12 +577,21 @@ export async function getSeamlessLeads(
       console.log("[Seamless.AI Debug] companySize:", (c as any).companySize);
     }
     
+    const primaryPhone = c.phone || (c as any).phoneNumber || (c as any).workPhone || "";
+    const secondaryPhone = (c as any).personalPhone || (c as any).mobilePhone || "";
+    
     const contact = {
       companyName: c.company || "Unknown",
       ownerName: fullName,
       jobTitle: (c as any).title || (c as any).jobTitle || (c as any).position || undefined,
       email,
-      phoneNumber: c.phone || (c as any).phoneNumber || (c as any).workPhone || "",
+      phoneNumber: primaryPhone,
+      phoneType: detectPhoneType(primaryPhone),
+      secondaryPhone: secondaryPhone,
+      secondaryPhoneType: detectPhoneType(secondaryPhone),
+      personalEmail: c.personalEmail,
+      workEmail: (c as any).workEmail,
+      allEmails: allEmails.length > 0 ? allEmails : undefined,
       linkedinUrl: c.lIProfileUrl || "",
       industry: (c as any).industry || (c as any).companyIndustry || "",
       website: (c as any).website || (c as any).companyWebsite || (c as any).companyUrl || "",

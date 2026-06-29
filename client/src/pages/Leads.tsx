@@ -2018,10 +2018,27 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       <TableCell className="text-sm text-muted-foreground">{lead.companySize || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                       <TableCell className="text-sm">
-                        <div>{formatUSPhone(lead.phoneNumber)}</div>
-                        {(lead as any).secondaryPhone && (
-                          <div className="text-xs text-muted-foreground mt-0.5">{formatUSPhone((lead as any).secondaryPhone)}</div>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {lead.phoneNumber && (
+                            <div className="flex items-center gap-2">
+                              <span>{formatUSPhone(lead.phoneNumber)}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                {(lead as any).phoneType === 'cell' ? 'Cell' : (lead as any).phoneType === 'office' ? 'Office' : 'Unknown'}
+                              </span>
+                            </div>
+                          )}
+                          {(lead as any).secondaryPhone && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">{formatUSPhone((lead as any).secondaryPhone)}</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                                {(lead as any).secondaryPhoneType === 'cell' ? 'Cell' : (lead as any).secondaryPhoneType === 'office' ? 'Office' : 'Unknown'}
+                              </span>
+                            </div>
+                          )}
+                          {!(lead.phoneNumber || (lead as any).secondaryPhone) && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">

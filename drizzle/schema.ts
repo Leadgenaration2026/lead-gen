@@ -34,7 +34,12 @@ export const leads = mysqlTable("leads", {
   jobTitle: varchar("jobTitle", { length: 255 }),
   email: varchar("email", { length: 320 }).notNull(),
   phoneNumber: varchar("phoneNumber", { length: 20 }).notNull(),
+  phoneType: mysqlEnum("phoneType", ["cell", "office", "unknown"]).default("unknown"),
   secondaryPhone: varchar("secondaryPhone", { length: 20 }),
+  secondaryPhoneType: mysqlEnum("secondaryPhoneType", ["cell", "office", "unknown"]),
+  personalEmail: varchar("personalEmail", { length: 320 }),
+  workEmail: varchar("workEmail", { length: 320 }),
+  allEmails: json("allEmails"),
   website: varchar("website", { length: 255 }),
   industry: varchar("industry", { length: 100 }),
   companySize: varchar("companySize", { length: 50 }), // e.g. "1-10", "11-50", "51-200", etc.
