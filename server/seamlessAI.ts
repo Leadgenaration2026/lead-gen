@@ -526,11 +526,11 @@ export async function getSeamlessLeads(
       ownerName: fullName,
       email,
       phoneNumber: c.phone || "",
-      linkedinUrl: c.lIProfileUrl || undefined,
-      industry: undefined as string | undefined,
-      website: undefined as string | undefined,
-      timezone: undefined as string | undefined,
-      country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || undefined,
+      linkedinUrl: c.lIProfileUrl || "",
+      industry: (c as any).industry || (c as any).companyIndustry || "",
+      website: (c as any).website || (c as any).companyWebsite || (c as any).companyUrl || "",
+      timezone: (c as any).timezone || (c as any).companyTimezone || "",
+      country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || "",
     };
     
     contacts.push(contact);

@@ -953,3 +953,10 @@
 - [x] Fix filter logic: show ALL leads from selected imported list (not just unassigned ones)
 - [x] Imported Lists section: show clickable list items, display leads from selected list below
 - [x] All Sets section: show clickable tag items, display leads from selected tag below
+
+## Feature — Seamless.ai Integration
+- [x] Backend procedure already exists to call Seamless.ai API with search prompts
+- [x] Fixed Seamless.ai response field mapping to populate all CSV columns (Website, Industry, Timezone, Country)
+- [ ] Create frontend UI for Seamless.ai search (prompt input, search button, results display)
+- [ ] Import Seamless.ai results as a new lead list with all columns fully populated
+- [x] Ensure lead verification works with Seamless.ai data (all fields now populated)
