@@ -963,3 +963,8 @@
 
 ## Fix — Add Job Title to Seamless.ai Mapping
 - [x] Add jobTitle field to Seamless.ai contact mapping so job titles are extracted and populated from Seamless.ai responses
+
+## Feature — Delete List & Tag Options
+- [x] Add delete button for imported lists in the Leads page (Imported Lists section)
+- [x] Add delete button for custom tags in the Leads page (All Sets section)
+- [x] Delete buttons already exist in the Lead Sets page for both lists and tags

@@ -84,6 +84,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   }, [searchString]);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteListDialogOpen, setDeleteListDialogOpen] = useState(false);
+  const [deleteTagDialogOpen, setDeleteTagDialogOpen] = useState(false);
+  const [deleteTagId, setDeleteTagId] = useState<number | null>(null);
   const [deleteListId, setDeleteListId] = useState<number | null>(null);
   const [assignAllDialogOpen, setAssignAllDialogOpen] = useState(false);
   const [assignAllListId, setAssignAllListId] = useState<number | null>(null);
@@ -2410,6 +2412,33 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 toast.error(err.message || "Failed to delete list");
               }
             }}>Delete List</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Tag Dialog */}
+      <Dialog open={deleteTagDialogOpen} onOpenChange={setDeleteTagDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Tag</DialogTitle>
+            <DialogDescription>Are you sure you want to delete this tag? Leads will be unassigned but not deleted.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTagDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={async () => {
+              if (!deleteTagId) return;
+              try {
+                await deleteListMutation.mutateAsync({ id: deleteTagId });
+                toast.success("Tag deleted successfully");
+                leadsQuery.refetch();
+                leadSetsQuery.refetch();
+                setDeleteTagDialogOpen(false);
+                setDeleteTagId(null);
+                setFilterLeadSet("all");
+              } catch (err: any) {
+                toast.error(err.message || "Failed to delete tag");
+              }
+            }}>Delete Tag</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
