@@ -55,6 +55,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const csvImportOverwriteMutation = trpc.leads.csvImportOverwrite.useMutation();
   const updateTagMutation = trpc.leads.updateTag.useMutation();
   const dedupCheckMutation = trpc.dedup.check.useMutation();
+  const deleteListMutation = trpc.leadSets.delete.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -81,6 +82,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   }, [searchString]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleteListDialogOpen, setDeleteListDialogOpen] = useState(false);
+  const [deleteListId, setDeleteListId] = useState<number | null>(null);
+  const [assignAllDialogOpen, setAssignAllDialogOpen] = useState(false);
+  const [assignAllListId, setAssignAllListId] = useState<number | null>(null);
+  const [assignAllTagId, setAssignAllTagId] = useState<string>("");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [csvFileName, setCsvFileName] = useState("");
@@ -1709,7 +1715,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Imported Lists</SelectItem>
-                  {(importedListsQuery.data || []).filter((list: any) => list.type === "list").map((list: any) => (
+                  {(importedListsQuery.data || []).map((list: any) => (
                     <SelectItem key={list.id} value={String(list.id)}>
                       {list.name}
                     </SelectItem>
@@ -1757,6 +1763,34 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                    <SelectItem value="name_asc">Name: A → Z</SelectItem>
                 </SelectContent>
               </Select>
+              {filterTag !== "all" && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAssignAllListId(parseInt(filterTag));
+                      setAssignAllDialogOpen(true);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Assign All to Tag
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setDeleteListId(parseInt(filterTag));
+                      setDeleteListDialogOpen(true);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete List
+                  </Button>
+                </>
+              )}
               <Button
                 variant="outline"
                 size="sm"

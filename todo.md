@@ -932,3 +932,7 @@
 - [x] Update Leads page filter: show imported lists (type='list') as separate filter options
 - [x] When a list is selected, show only leads from that list
 - [x] Allow assigning those leads to custom tags from the list view
+
+## Feature — Delete List & Bulk Assign from List
+- [x] Add delete button for imported lists in Leads page filter
+- [x] Add "Assign all to tag" button when viewing a specific list to assign all untagged leads to a tag in one click
