@@ -190,6 +190,13 @@
       "when": 1782498844486,
       "tag": "0026_glamorous_dust",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1782746265517,
+      "tag": "0027_useful_namorita",
+      "breakpoints": true
     }
   ]
 }

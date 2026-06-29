@@ -943,3 +943,8 @@
 - [x] List filter: When a specific list is selected, show only leads from that list
 - [x] Bulk assign: Move leads from imported list to tag, automatically update filters
 - [x] Lead deletion: When lead is removed from tag, it returns to All Imported Lists
+
+## Fix — Imported Lists Filter Issues
+- [x] Filter imported lists dropdown to only show type='list' (not tags)
+- [x] Add sourceListId field to leads table to track which list each lead came from
+- [x] Update CSV import to set sourceListId when creating leads

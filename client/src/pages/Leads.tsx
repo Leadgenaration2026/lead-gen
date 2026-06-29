@@ -1722,7 +1722,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Imported Lists</SelectItem>
-                  {(importedListsQuery.data || []).map((list: any) => (
+                  {(importedListsQuery.data || []).filter((list: any) => list.type === "list").map((list: any) => (
                     <SelectItem key={list.id} value={String(list.id)}>
                       {list.name}
                     </SelectItem>

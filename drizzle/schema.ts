@@ -41,6 +41,7 @@ export const leads = mysqlTable("leads", {
   status: mysqlEnum("status", ["new", "contacted", "qualified", "converted", "rejected"]).default("new").notNull(),
   tag: mysqlEnum("tag", ["hot", "warm", "cold", "follow_up", "none"]).default("none").notNull(),
   leadSetId: int("leadSetId"),
+  sourceListId: int("sourceListId"), // Track which imported list this lead came from
   timezone: varchar("timezone", { length: 50 }).default("America/New_York"),
   linkedinUrl: varchar("linkedinUrl", { length: 500 }),
   instagramUrl: varchar("instagramUrl", { length: 500 }),

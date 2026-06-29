@@ -765,6 +765,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               userId: ctx.user.id,
               status: "new",
               leadSetId,
+              sourceListId: leadSetId || undefined,
             });
             // Update tag if provided
             if (leadData.tag && leadData.tag !== "none" && result) {
