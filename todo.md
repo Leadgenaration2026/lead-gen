@@ -968,3 +968,9 @@
 - [x] Add delete button for imported lists in the Leads page (Imported Lists section)
 - [x] Add delete button for custom tags in the Leads page (All Sets section)
 - [x] Delete buttons already exist in the Lead Sets page for both lists and tags
+
+## Feature — Company Size Column for CSV & Seamless.ai
+- [x] Add companySize to Seamless.ai extraction and populate from API response
+- [x] Verify CSV import captures companySize column
+- [x] Ensure all columns match between CSV import and Seamless.ai extraction
+- [ ] Display companySize in lead cards and lead detail views

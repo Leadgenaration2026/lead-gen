@@ -1,0 +1,1 @@
+ALTER TABLE `leads` ADD `companySize` varchar(50);

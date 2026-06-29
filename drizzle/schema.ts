@@ -37,6 +37,7 @@ export const leads = mysqlTable("leads", {
   secondaryPhone: varchar("secondaryPhone", { length: 20 }),
   website: varchar("website", { length: 255 }),
   industry: varchar("industry", { length: 100 }),
+  companySize: varchar("companySize", { length: 50 }), // e.g. "1-10", "11-50", "51-200", etc.
   customData: json("customData"), // For storing additional lead attributes
   status: mysqlEnum("status", ["new", "contacted", "qualified", "converted", "rejected"]).default("new").notNull(),
   tag: mysqlEnum("tag", ["hot", "warm", "cold", "follow_up", "none"]).default("none").notNull(),

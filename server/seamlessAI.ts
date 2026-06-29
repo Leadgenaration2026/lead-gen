@@ -533,6 +533,7 @@ export async function getSeamlessLeads(
       website: (c as any).website || (c as any).companyWebsite || (c as any).companyUrl || "",
       timezone: (c as any).timezone || (c as any).companyTimezone || "",
       country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || "",
+      companySize: (c as any).companySize || (c as any).employeeCount || (c as any).employees || "",
     };
     
     contacts.push(contact);
