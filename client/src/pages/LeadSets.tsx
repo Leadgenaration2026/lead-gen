@@ -305,6 +305,78 @@ export default function LeadSetsPage() {
           </CardContent>
         </Card>
 
+        {/* Unassigned Leads */}
+        {unassignedCount > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Unassigned Leads</CardTitle>
+              <CardDescription>Leads that haven't been assigned to any tag yet. Click to expand and see verification breakdown.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-lg overflow-hidden">
+                {/* Unassigned Row */}
+                <div
+                  className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => toggleExpand(-1)}
+                >
+                  <div className="flex items-center gap-3">
+                    {expandedSetId === -1 ? (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <Badge variant="outline" className="text-sm px-3 py-1 bg-orange-50 border-orange-200">
+                      Unassigned
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">Leads waiting to be tagged</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant="secondary">{unassignedCount} leads</Badge>
+                  </div>
+                </div>
+
+                {/* Expanded: verification breakdown */}
+                {expandedSetId === -1 && (
+                  <div className="border-t bg-muted/20 px-4 py-3">
+                    {(() => {
+                      const unassignedLeads = allLeads.filter((l: any) => !l.leadSetId);
+                      const verified = unassignedLeads.filter((l: any) => l.emailVerificationStatus === "deliverable").length;
+                      const undeliverable = unassignedLeads.filter((l: any) => l.emailVerificationStatus === "undeliverable").length;
+                      const risky = unassignedLeads.filter((l: any) => l.emailVerificationStatus === "risky").length;
+                      const pending = unassignedLeads.filter((l: any) => !l.emailVerificationStatus || l.emailVerificationStatus === "pending").length;
+                      return (
+                        <div className="flex flex-wrap gap-4 items-center">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                            <span className="text-sm"><span className="font-medium text-green-700">{verified}</span> verified</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <ShieldAlert className="w-4 h-4 text-red-600" />
+                            <span className="text-sm"><span className="font-medium text-red-700">{undeliverable}</span> undeliverable</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600" />
+                            <span className="text-sm"><span className="font-medium text-amber-700">{risky}</span> risky</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <HelpCircle className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm"><span className="font-medium">{pending}</span> pending</span>
+                          </div>
+                          <div className="ml-auto">
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate("/leads?set=unassigned"); }}>
+                              View Unassigned in All Leads
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Create Tag Dialog */}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogContent className="max-w-sm">

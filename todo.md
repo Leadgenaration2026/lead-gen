@@ -926,4 +926,4 @@
 
 ## Fix — Lead Sets & Unassigned Leads Display
 - [x] Leads main page: change tag filter to "All Lead Sets" showing only uploaded leads
-- [ ] Lead Sets page: add "Unassigned" tab to show leads with no tag/set assigned
+- [x] Lead Sets page: add "Unassigned" tab to show leads with no tag/set assigned
