@@ -973,4 +973,4 @@
 - [x] Add companySize to Seamless.ai extraction and populate from API response
 - [x] Verify CSV import captures companySize column
 - [x] Ensure all columns match between CSV import and Seamless.ai extraction
-- [ ] Display companySize in lead cards and lead detail views
+- [x] Display companySize in lead cards and lead detail views

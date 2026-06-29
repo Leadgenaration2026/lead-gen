@@ -1965,6 +1965,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     <TableHead>Owner</TableHead>
                     <TableHead>Job Title</TableHead>
                     <TableHead>Industry</TableHead>
+                    <TableHead>Company Size</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
                     <TableHead>Socials</TableHead>
@@ -1991,6 +1992,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       <TableCell>{lead.ownerName}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{(lead as any).jobTitle || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.industry || "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{lead.companySize || "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{lead.email}</TableCell>
                       <TableCell className="text-sm">
                         <div>{formatUSPhone(lead.phoneNumber)}</div>

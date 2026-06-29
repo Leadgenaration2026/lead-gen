@@ -95,6 +95,12 @@ export function LeadDetailDrawer({ leadId, open, onClose }: LeadDetailDrawerProp
                     <Badge variant="outline" className="text-xs">{lead.industry}</Badge>
                   </div>
                 )}
+                {lead?.companySize && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-muted-foreground">Company Size</span>
+                    <Badge variant="outline" className="text-xs">{lead.companySize}</Badge>
+                  </div>
+                )}
                 {/* Social Links */}
                 <div className="flex gap-2 pt-2">
                   {lead?.website && (
