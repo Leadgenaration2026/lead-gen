@@ -960,3 +960,6 @@
 - [x] Frontend UI for Seamless.ai search already exists ("Generate with AI" → "Seamless.AI (API Credits)" option)
 - [x] Import Seamless.ai results as a new lead list with all columns fully populated
 - [x] Ensure lead verification works with Seamless.ai data (all fields now populated)
+
+## Fix — Add Job Title to Seamless.ai Mapping
+- [x] Add jobTitle field to Seamless.ai contact mapping so job titles are extracted and populated from Seamless.ai responses

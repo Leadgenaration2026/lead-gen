@@ -497,6 +497,7 @@ export async function getSeamlessLeads(
   const contacts: Array<{
     companyName: string;
     ownerName: string;
+    jobTitle?: string;
     email: string;
     phoneNumber: string;
     website?: string;
@@ -524,6 +525,7 @@ export async function getSeamlessLeads(
     const contact = {
       companyName: c.company || "Unknown",
       ownerName: fullName,
+      jobTitle: (c as any).title || (c as any).jobTitle || (c as any).position || "",
       email,
       phoneNumber: c.phone || "",
       linkedinUrl: c.lIProfileUrl || "",
