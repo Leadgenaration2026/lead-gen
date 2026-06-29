@@ -826,7 +826,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
       let matchesListFilter = true;
       if (filterSourceListId !== "all") {
-        matchesListFilter = lead.sourceListId === parseInt(filterSourceListId);
+        // Check both sourceListId (new) and leadSetId (old) for backward compatibility
+        const listId = parseInt(filterSourceListId);
+        matchesListFilter = lead.sourceListId === listId || lead.leadSetId === listId;
       } else if (filterLeadSet === "unassigned") {
         matchesListFilter = !lead.leadSetId;
       } else if (filterLeadSet !== "all") {
