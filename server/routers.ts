@@ -272,6 +272,86 @@ export const appRouter = router({
         return { deleted: allLeads.length };
       }),
 
+    enrichFromSeamless: protectedProcedure
+      .input(z.object({
+        leadIds: z.array(z.number()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { getSeamlessLeads } = await import("./seamlessAI");
+        const settings = await db.getUserSettings(ctx.user.id);
+        const seamlessApiKey = settings?.seamlessApiKey;
+        
+        if (!seamlessApiKey) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Seamless.AI API key not configured. Please add it in Settings.",
+          });
+        }
+
+        const leads = await Promise.all(
+          input.leadIds.map(id => db.getLeadById(id))
+        );
+
+        const validLeads = leads.filter(l => l && l.userId === ctx.user.id);
+        if (validLeads.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No valid leads found to enrich.",
+          });
+        }
+
+        const enrichedResults = [];
+        
+        for (const lead of validLeads) {
+          try {
+            const result = await getSeamlessLeads(
+              seamlessApiKey,
+              {
+                companyName: lead.companyName ? [lead.companyName] : undefined,
+              },
+              1
+            );
+
+            if (result.contacts && result.contacts.length > 0) {
+              const enrichedContact = result.contacts[0];
+              
+              await db.updateLead(lead.id, {
+                phoneNumber: enrichedContact.phoneNumber || lead.phoneNumber,
+                companySize: enrichedContact.companySize || lead.companySize,
+                jobTitle: enrichedContact.jobTitle || lead.jobTitle,
+                industry: enrichedContact.industry || lead.industry,
+                website: enrichedContact.website || lead.website,
+                timezone: enrichedContact.timezone || lead.timezone,
+              });
+              
+              enrichedResults.push({
+                leadId: lead.id,
+                success: true,
+                data: enrichedContact,
+              });
+            } else {
+              enrichedResults.push({
+                leadId: lead.id,
+                success: false,
+                error: "No match found on Seamless.AI",
+              });
+            }
+          } catch (error: any) {
+            enrichedResults.push({
+              leadId: lead.id,
+              success: false,
+              error: error.message,
+            });
+          }
+        }
+
+        return {
+          enriched: enrichedResults.filter(r => r.success).length,
+          failed: enrichedResults.filter(r => !r.success).length,
+          results: enrichedResults,
+        };
+      }),
+
     addManual: protectedProcedure
       .input(z.object({
         companyName: z.string().min(1),

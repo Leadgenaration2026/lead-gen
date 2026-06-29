@@ -57,6 +57,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const deleteListMutation = trpc.leadSets.delete.useMutation();
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
+  const enrichFromSeamlessMutation = trpc.leads.enrichFromSeamless.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -1877,6 +1878,27 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               >
                 {verifyEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                 Verify Emails
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const ids = selectedLeadIds.size > 0 ? Array.from(selectedLeadIds) : filteredLeads.map((l: any) => l.id);
+                  if (ids.length === 0) { toast.error("No leads to enrich"); return; }
+                  toast.info(`Finding details for ${ids.length} leads on Seamless.AI... This may take up to 4 minutes.`);
+                  try {
+                    const result = await enrichFromSeamlessMutation.mutateAsync({ leadIds: ids });
+                    toast.success(`Enriched ${result.enriched} leads with phone numbers and company size (${result.failed} not found)`);
+                    leadsQuery.refetch();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to enrich leads");
+                  }
+                }}
+                disabled={enrichFromSeamlessMutation.isPending}
+                className="gap-1.5"
+              >
+                {enrichFromSeamlessMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                Find Details
               </Button>
               <Button
                 variant="outline"
