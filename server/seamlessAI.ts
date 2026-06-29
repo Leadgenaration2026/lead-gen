@@ -268,8 +268,8 @@ export async function researchContacts(
 export async function pollContactResults(
   apiKey: string,
   requestIds: string[],
-  maxAttempts = 30,
-  pollIntervalMs = 3000
+  maxAttempts = 120,
+  pollIntervalMs = 2000
 ): Promise<SeamlessPollResult[]> {
   const completedResults: SeamlessPollResult[] = [];
   let pendingIds = [...requestIds];
