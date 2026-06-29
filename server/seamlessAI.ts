@@ -37,6 +37,21 @@ interface SeamlessContact {
     country?: string;
   };
   lIProfileUrl?: string;
+  // Additional fields that may be in the API response
+  jobTitle?: string;
+  position?: string;
+  phoneNumber?: string;
+  workPhone?: string;
+  industry?: string;
+  companyIndustry?: string;
+  website?: string;
+  companyWebsite?: string;
+  companyUrl?: string;
+  timezone?: string;
+  companyTimezone?: string;
+  companySize?: string;
+  employeeCount?: string | number;
+  employees?: string | number;
 }
 
 interface SeamlessSearchResponse {
@@ -524,6 +539,15 @@ export async function getSeamlessLeads(
     const c = r.contact;
     const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unknown";
     const email = c.email || c.personalEmail || "";
+    
+    // Debug: Log first contact to see available fields
+    if (contacts.length === 0) {
+      console.log("[Seamless.AI Debug] First contact keys:", Object.keys(c));
+      console.log("[Seamless.AI Debug] title:", (c as any).title);
+      console.log("[Seamless.AI Debug] phone:", c.phone);
+      console.log("[Seamless.AI Debug] companySize:", (c as any).companySize);
+    }
+    
     const contact = {
       companyName: c.company || "Unknown",
       ownerName: fullName,
