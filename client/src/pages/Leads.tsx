@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const updateTagMutation = trpc.leads.updateTag.useMutation();
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const deleteListMutation = trpc.leadSets.delete.useMutation();
+  const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -821,13 +822,19 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         lead.companyName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         lead.ownerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesSet =
-        filterLeadSet === "all" ||
-        (filterLeadSet === "unassigned" ? !lead.leadSetId : lead.leadSetId === parseInt(filterLeadSet));
+      let matchesListFilter = true;
+      if (filterTag !== "all") {
+        matchesListFilter = lead.sourceListId === parseInt(filterTag) && !lead.leadSetId;
+      } else if (filterLeadSet === "all") {
+        matchesListFilter = !!lead.leadSetId;
+      } else if (filterLeadSet === "unassigned") {
+        matchesListFilter = !lead.leadSetId;
+      } else {
+        matchesListFilter = lead.leadSetId === parseInt(filterLeadSet);
+      }
       const matchesIndustry =
         filterIndustry === "all" || lead.industry === filterIndustry;
-      const matchesList = filterTag === "all" || lead.sourceListId === parseInt(filterTag);
-      return matchesList && matchesSearch && matchesSet && matchesIndustry;
+      return matchesListFilter && matchesSearch && matchesIndustry;
     });
 
     // Apply sorting
@@ -2332,6 +2339,80 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setDrawerLeadId(null); }}
       />
+      
+      {/* Assign All to Tag Dialog */}
+      <Dialog open={assignAllDialogOpen} onOpenChange={setAssignAllDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign All Leads to Tag</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Select a tag to assign all untagged leads from this list:</p>
+            <Select value={assignAllTagId} onValueChange={setAssignAllTagId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a tag" />
+              </SelectTrigger>
+              <SelectContent>
+                {leadSets.map((set: any) => (
+                  <SelectItem key={set.id} value={String(set.id)}>
+                    {set.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignAllDialogOpen(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              if (!assignAllTagId) return;
+              try {
+                const listId = assignAllListId;
+                const leads = (leadsQuery.data || []).filter((l: any) => l.sourceListId === listId && !l.leadSetId);
+                await assignLeadsToSetMutation.mutateAsync({
+                  leadIds: leads.map((l: any) => l.id),
+                  leadSetId: parseInt(assignAllTagId)
+                });
+                toast.success(`Assigned ${leads.length} leads to tag`);
+                leadsQuery.refetch();
+                setAssignAllDialogOpen(false);
+                setAssignAllTagId("");
+              } catch (err: any) {
+                toast.error(err.message || "Failed to assign leads");
+              }
+            }}>Assign All</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Delete List Dialog */}
+      <Dialog open={deleteListDialogOpen} onOpenChange={setDeleteListDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Imported List</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete this imported list? All leads from this list will become unassigned and move back to "All Imported Lists".
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteListDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={async () => {
+              if (!deleteListId) return;
+              try {
+                await deleteListMutation.mutateAsync({ id: deleteListId });
+                toast.success("List deleted successfully");
+                leadsQuery.refetch();
+                setDeleteListDialogOpen(false);
+                setDeleteListId(null);
+                setFilterTag("all");
+              } catch (err: any) {
+                toast.error(err.message || "Failed to delete list");
+              }
+            }}>Delete List</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

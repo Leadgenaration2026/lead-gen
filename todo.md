@@ -936,3 +936,10 @@
 ## Feature — Delete List & Bulk Assign from List
 - [x] Add delete button for imported lists in Leads page filter
 - [x] Add "Assign all to tag" button when viewing a specific list to assign all untagged leads to a tag in one click
+
+## Fix — Lead Organization System (Two-Stage Workflow)
+- [x] All Imported Lists: Show only untagged leads from imported lists (not tagged leads)
+- [x] All Sets: Show only tagged leads (not untagged leads)
+- [x] List filter: When a specific list is selected, show only leads from that list
+- [x] Bulk assign: Move leads from imported list to tag, automatically update filters
+- [x] Lead deletion: When lead is removed from tag, it returns to All Imported Lists
