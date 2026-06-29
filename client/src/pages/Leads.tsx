@@ -63,7 +63,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [instruction, setInstruction] = useState("");
   const [count, setCount] = useState(10);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [filterTag, setFilterTag] = useState<string>("all");
+  const [filterSourceListId, setFilterSourceListId] = useState<string>("all"); // For imported lists
   const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const searchString = useSearch();
@@ -823,8 +823,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         lead.ownerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
       let matchesListFilter = true;
-      if (filterTag !== "all") {
-        matchesListFilter = lead.sourceListId === parseInt(filterTag) && !lead.leadSetId;
+      if (filterSourceListId !== "all") {
+        matchesListFilter = lead.sourceListId === parseInt(filterSourceListId) && !lead.leadSetId;
       } else if (filterLeadSet === "all") {
         matchesListFilter = !!lead.leadSetId;
       } else if (filterLeadSet === "unassigned") {
@@ -856,7 +856,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       return [...filtered].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
     return filtered;
-  }, [leadsQuery.data, filterTag, searchQuery, filterLeadSet, filterIndustry, sortBy]);
+  }, [leadsQuery.data, filterSourceListId, searchQuery, filterLeadSet, filterIndustry, sortBy]);
 
   const leadSets = leadSetsQuery.data || [];
 
@@ -1715,7 +1715,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48" />
               </div>
-              <Select value={filterTag} onValueChange={setFilterTag}>
+              <Select value={filterSourceListId} onValueChange={setFilterSourceListId}>
                 <SelectTrigger className="w-44">
                   <Layers className="w-3.5 h-3.5 mr-1.5" />
                   <SelectValue placeholder="Filter by list" />
@@ -1770,13 +1770,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                    <SelectItem value="name_asc">Name: A → Z</SelectItem>
                 </SelectContent>
               </Select>
-              {filterTag !== "all" && (
+              {filterSourceListId !== "all" && (
                 <>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setAssignAllListId(parseInt(filterTag));
+                      setAssignAllListId(parseInt(filterSourceListId));
                       setAssignAllDialogOpen(true);
                     }}
                     className="gap-1.5"
@@ -1788,7 +1788,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     variant="destructive"
                     size="sm"
                     onClick={() => {
-                      setDeleteListId(parseInt(filterTag));
+                      setDeleteListId(parseInt(filterSourceListId));
                       setDeleteListDialogOpen(true);
                     }}
                     className="gap-1.5"
@@ -2221,7 +2221,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <div className="text-center py-12">
               <Plus className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground">
-                {searchQuery || filterTag !== "all" || filterLeadSet !== "all" || filterIndustry !== "all"
+                {searchQuery || filterSourceListId !== "all" || filterLeadSet !== "all" || filterIndustry !== "all"
                   ? "No leads match your filters"
                   : "No leads yet. Add manually, import CSV, or generate with AI!"}
               </p>
@@ -2405,7 +2405,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 leadsQuery.refetch();
                 setDeleteListDialogOpen(false);
                 setDeleteListId(null);
-                setFilterTag("all");
+                setFilterSourceListId("all");
               } catch (err: any) {
                 toast.error(err.message || "Failed to delete list");
               }
