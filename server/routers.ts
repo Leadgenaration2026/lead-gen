@@ -470,18 +470,20 @@ export const appRouter = router({
           const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryHint}
         
 Return a JSON array with exactly ${input.count} leads. Each lead must have:
-- companyName: string
-- ownerName: string
-- jobTitle: string (job title of the contact person)
+- companyName: string (company name only)
+- ownerName: string (person's actual name)
+- jobTitle: string (actual job title like CEO, Manager, Developer - NOT the search instruction)
 - email: string (valid email format)
 - phoneNumber: string (valid phone format with country code, e.g. +1-555-123-4567)
 - website: string (optional, valid URL if provided)
 - industry: string (the industry/sector of the business)
-- companySize: string (e.g. "1-10", "11-50", "51-200", "201-500", "500+")
+- companySize: string (REQUIRED - must be one of: "1-10", "11-50", "51-200", "201-500", "500+" - never empty)
 - timezone: string (IANA timezone of the lead's location, e.g. "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London")
 - linkedinUrl: string (optional, LinkedIn profile URL if available, e.g. "https://linkedin.com/in/john-smith")
 - instagramUrl: string (optional, Instagram profile URL if available, e.g. "https://instagram.com/companyname")
 - facebookUrl: string (optional, Facebook profile/page URL if available, e.g. "https://facebook.com/companyname")
+
+IMPORTANT: Do NOT include the search instruction in any field. Generate realistic diverse job titles based on industry.
 
 Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
@@ -508,6 +510,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
             const parsed = JSON.parse(content);
             leadsData = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || Object.values(parsed)[0]);
+            
+            // Post-process to ensure all fields are properly populated
+            leadsData = leadsData.map((lead: any) => ({
+              ...lead,
+              companySize: lead.companySize && String(lead.companySize).trim() ? String(lead.companySize).trim() : "1-10",
+              jobTitle: lead.jobTitle && String(lead.jobTitle).trim() ? String(lead.jobTitle).trim() : undefined,
+              phoneNumber: lead.phoneNumber && String(lead.phoneNumber).trim() ? String(lead.phoneNumber).trim() : "",
+            }));
           } catch (error: any) {
             console.error("Lead generation parse error:", error.message);
             throw new TRPCError({

@@ -827,13 +827,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       let matchesListFilter = true;
       if (filterSourceListId !== "all") {
         matchesListFilter = lead.sourceListId === parseInt(filterSourceListId);
-      } else if (filterLeadSet === "all") {
-        matchesListFilter = !!lead.leadSetId;
       } else if (filterLeadSet === "unassigned") {
         matchesListFilter = !lead.leadSetId;
-      } else {
+      } else if (filterLeadSet !== "all") {
         matchesListFilter = lead.leadSetId === parseInt(filterLeadSet);
       }
+      // If filterLeadSet === "all" and filterSourceListId === "all", show all leads
       const matchesIndustry =
         filterIndustry === "all" || lead.industry === filterIndustry;
       return matchesListFilter && matchesSearch && matchesIndustry;
