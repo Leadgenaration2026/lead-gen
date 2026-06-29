@@ -1800,6 +1800,20 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   </Button>
                 </>
               )}
+              {filterLeadSet !== "all" && filterLeadSet !== "unassigned" && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    setDeleteTagId(parseInt(filterLeadSet));
+                    setDeleteTagDialogOpen(true);
+                  }}
+                  className="gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Tag
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
