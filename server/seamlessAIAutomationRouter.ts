@@ -103,7 +103,7 @@ export const seamlessAIAutomationRouter = router({
 
         const automation = new SeamlessAIAutomation();
         await automation.start(input.seamlessAIUrl);
-        const stats = await automation.enrichAllLeads(automation.page!, input.leadIds, requestedExtraction);
+        const stats = await automation.enrichSelectedLeads(input.leadIds);
         await automation.stop();
 
         console.log(
