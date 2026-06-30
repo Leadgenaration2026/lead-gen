@@ -278,44 +278,80 @@ class EnrichmentWatcher {
 class DataExtractor {
   async extractLeadData(leadRow: Locator): Promise<EnrichedLeadData> {
     try {
-      console.log("[DataExtractor] Starting data extraction...");
-
-      // CRITICAL: Look for hidden popup with enriched data
-      console.log("[DataExtractor] Looking for enrichment popup...");
-      const popup = await this.findEnrichmentPopup(leadRow);
-
-      if (popup) {
-        console.log("[DataExtractor] Found enrichment popup! Extracting from popup...");
-        const popupData = await this.extractFromPopup(popup);
-        if (Object.keys(popupData).length > 0) {
-          console.log("[DataExtractor] Successfully extracted from popup:", popupData);
-          return popupData;
-        }
-      }
-
-      // Get all cells/columns in the row
-      const cells = await leadRow.locator("td, div[role='cell'], [class*='cell']").all();
-      console.log(`[DataExtractor] Found ${cells.length} cells in row`);
-
+      console.log("[DataExtractor] Starting data extraction from table row...");
       const data: EnrichedLeadData = {};
 
-      // Extract data from cells
-      if (cells.length > 0) {
-        for (let i = 0; i < Math.min(cells.length, 10); i++) {
-          const cellText = await cells[i].textContent();
-          console.log(`[DataExtractor] Cell ${i}: ${cellText?.substring(0, 50)}`);
-        }
+      // Get all cells in the row - these are the table columns
+      const cells = await leadRow.locator("td, div[role='cell']").all();
+      console.log(`[DataExtractor] Found ${cells.length} table cells in row`);
 
-        data.fullName = await this.extractFromCells(cells, 0, "name");
-        data.company = await this.extractFromCells(cells, 1, "company");
-        data.email = await this.extractFromCells(cells, 2, "email");
-        data.phoneNumber = await this.extractFromCells(cells, 3, "phone");
-        data.jobTitle = await this.extractFromCells(cells, 4, "title");
-        data.companySize = await this.extractFromCells(cells, 5, "size");
-        data.industry = await this.extractFromCells(cells, 6, "industry");
+      // Extract text from each cell
+      const cellTexts: string[] = [];
+      for (let i = 0; i < cells.length; i++) {
+        try {
+          const cellText = await cells[i].textContent();
+          const trimmed = cellText ? cellText.trim() : "";
+          cellTexts.push(trimmed);
+          console.log(`[DataExtractor] Cell ${i}: "${trimmed.substring(0, 100)}"`);
+        } catch (e) {
+          cellTexts.push("");
+        }
       }
 
-      console.log(`[DataExtractor] Extracted data:`, data);
+      // Based on the table structure:
+      // Column 0: Checkbox
+      // Column 1: Name
+      // Column 2: Phones
+      // Column 3: Company
+      // Column 4: Emails
+      // Column 5+: Other fields
+
+      // Extract from Phones column (column 2)
+      if (cellTexts.length > 2) {
+        const phonesCell = cellTexts[2];
+        console.log(`[DataExtractor] Phones cell content: "${phonesCell}"`);
+        
+        // Look for phone pattern: (XXX) XXX-XXXX or similar
+        const phonePattern = /(\+?1?\s*)?(\()?([0-9]{3})(\))?[-.]?([0-9]{3})[-.]?([0-9]{4})/;
+        const phoneMatch = phonesCell.match(phonePattern);
+        if (phoneMatch && phoneMatch[0]) {
+          data.phoneNumber = phoneMatch[0].trim();
+          console.log(`[DataExtractor] Extracted phone from column 2: ${data.phoneNumber}`);
+        }
+      }
+
+      // Extract from Emails column (column 4)
+      if (cellTexts.length > 4) {
+        const emailsCell = cellTexts[4];
+        console.log(`[DataExtractor] Emails cell content: "${emailsCell}"`);
+        
+        // Look for email pattern
+        const emailPattern = /([a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
+        const emailMatch = emailsCell.match(emailPattern);
+        if (emailMatch && emailMatch[0]) {
+          data.email = emailMatch[0].trim();
+          console.log(`[DataExtractor] Extracted email from column 4: ${data.email}`);
+        }
+      }
+
+      // Extract job title from all cells (it might be in a separate column or in the name cell)
+      const allCellText = cellTexts.join(" ");
+      const jobTitlePattern = /(Manager|Director|Engineer|Developer|Designer|Analyst|Specialist|Coordinator|Consultant|Officer|Executive|President|CEO|CTO|CFO|COO|CMO|VP|Head|Lead|Senior|Junior|Associate|Architect|Administrator|Supervisor|Technician)[\w\s]*/i;
+      const jobMatch = allCellText.match(jobTitlePattern);
+      if (jobMatch && jobMatch[0]) {
+        data.jobTitle = jobMatch[0].trim();
+        console.log(`[DataExtractor] Extracted job title: ${data.jobTitle}`);
+      }
+
+      // Extract company size from all cells
+      const companySizePattern = /(1-10|11-50|51-200|201-500|501-1000|1000\+|\d+\s*-\s*\d+\s*(?:employees|people|staff))/i;
+      const sizeMatch = allCellText.match(companySizePattern);
+      if (sizeMatch && sizeMatch[0]) {
+        data.companySize = sizeMatch[0].trim();
+        console.log(`[DataExtractor] Extracted company size: ${data.companySize}`);
+      }
+
+      console.log(`[DataExtractor] Final extracted data:`, data);
       return data;
     } catch (error) {
       console.error(`[DataExtractor] Failed to extract lead data:`, error);
