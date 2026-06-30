@@ -202,35 +202,59 @@ class EnrichmentWatcher {
 
   async waitForEnrichmentComplete(leadRow: Locator, initialPhoneStatus: boolean): Promise<boolean> {
     const startTime = Date.now();
+    let lastLogTime = startTime;
 
     while (Date.now() - startTime < this.maxWaitTime) {
       try {
-        // Check 1: Phone number appeared
-        const phoneCell = leadRow.locator("[class*='phone'], [data-field='phone']").first();
-        const phoneText = await phoneCell.textContent();
-        const phoneAvailable = phoneText ? phoneText.trim() !== "" && phoneText.trim() !== "—" : false;
+        const elapsedMs = Date.now() - startTime;
 
-        if (!initialPhoneStatus && phoneAvailable) {
-          console.log(`[EnrichmentWatcher] Phone number detected - enrichment complete`);
-          return true;
-        }
-
-        // Check 2: Loading spinner disappeared
-        const spinner = leadRow.locator("[class*='spinner'], [class*='loading']").first();
-        const spinnerVisible = (await spinner.count()) > 0;
-
-        if (spinnerVisible) {
-          console.log(`[EnrichmentWatcher] Still loading...`);
+        // Strategy 1: Check for loading spinner
+        const spinner = leadRow.locator("[class*='spinner'], [class*='loading'], .spinner, .loader").first();
+        const spinnerCount = await spinner.count();
+        if (spinnerCount > 0) {
+          if (Date.now() - lastLogTime > 3000) {
+            console.log(`[EnrichmentWatcher] Still loading... (${elapsedMs}ms)`);
+            lastLogTime = Date.now();
+          }
           await leadRow.page()?.waitForTimeout(this.checkInterval);
           continue;
         }
 
-        // Check 3: Find button changed state (disabled or hidden)
-        const findButton = leadRow.locator("button:has-text('Find')").first();
-        const findButtonDisabled = await findButton.evaluate((el: any) => (el as HTMLButtonElement).disabled);
+        // Strategy 2: Check for phone number in any cell (more robust)
+        const cells = await leadRow.locator("td, div[role='cell'], [class*='cell']").all();
+        let phoneFound = false;
+        for (let i = 0; i < Math.min(cells.length, 10); i++) {
+          const cellText = await cells[i].textContent();
+          if (cellText && /^\+?1?\s*\(?\d{3}\)?[-.]?\d{3}[-.]?\d{4}/.test(cellText.trim())) {
+            console.log(`[EnrichmentWatcher] Phone detected in cell ${i}: ${cellText.trim()} (${elapsedMs}ms)`);
+            phoneFound = true;
+            break;
+          }
+        }
 
-        if (findButtonDisabled) {
-          console.log(`[EnrichmentWatcher] Find button disabled - enrichment complete`);
+        if (phoneFound && !initialPhoneStatus) {
+          console.log(`[EnrichmentWatcher] Phone number appeared - enrichment complete`);
+          return true;
+        }
+
+        // Strategy 3: Check if Find button is disabled
+        try {
+          const findButton = leadRow.locator("button:has-text('Find')").first();
+          const findButtonCount = await findButton.count();
+          if (findButtonCount > 0) {
+            const isDisabled = await findButton.evaluate((el: any) => (el as HTMLButtonElement).disabled);
+            if (isDisabled) {
+              console.log(`[EnrichmentWatcher] Find button disabled - enrichment complete`);
+              return true;
+            }
+          }
+        } catch (e) {
+          // Ignore button check errors
+        }
+
+        // Strategy 4: After 5 seconds, assume enrichment is done
+        if (elapsedMs > 5000) {
+          console.log(`[EnrichmentWatcher] Waited ${elapsedMs}ms, assuming enrichment complete`);
           return true;
         }
 
@@ -254,23 +278,67 @@ class EnrichmentWatcher {
 class DataExtractor {
   async extractLeadData(leadRow: Locator): Promise<EnrichedLeadData> {
     try {
-      const data: EnrichedLeadData = {
-        fullName: await this.extractText(leadRow, "[class*='name'], [data-field='name']"),
-        company: await this.extractText(leadRow, "[class*='company'], [data-field='company']"),
-        jobTitle: await this.extractText(leadRow, "[class*='title'], [data-field='title']"),
-        phoneNumber: await this.extractText(leadRow, "[class*='phone'], [data-field='phone']"),
-        phoneType: await this.detectPhoneType(leadRow),
-        companySize: await this.extractText(leadRow, "[class*='size'], [data-field='size']"),
-        industry: await this.extractText(leadRow, "[class*='industry'], [data-field='industry']"),
-        linkedinUrl: await this.extractLink(leadRow, "a[href*='linkedin']"),
-        email: await this.extractText(leadRow, "[class*='email'], [data-field='email']"),
-        website: await this.extractLink(leadRow, "a[href*='http'][href*='www']"),
-      };
+      console.log("[DataExtractor] Starting data extraction...");
+      
+      // Get all cells/columns in the row
+      const cells = await leadRow.locator("td, div[role='cell'], [class*='cell']").all();
+      console.log(`[DataExtractor] Found ${cells.length} cells in row`);
 
+      const data: EnrichedLeadData = {};
+
+      // Extract data from cells - try multiple strategies
+      if (cells.length > 0) {
+        // Strategy 1: Extract by position (assuming standard table layout)
+        for (let i = 0; i < Math.min(cells.length, 10); i++) {
+          const cellText = await cells[i].textContent();
+          console.log(`[DataExtractor] Cell ${i}: ${cellText?.substring(0, 50)}`);
+        }
+
+        // Map cells to fields based on content
+        data.fullName = await this.extractFromCells(cells, 0, "name");
+        data.company = await this.extractFromCells(cells, 1, "company");
+        data.email = await this.extractFromCells(cells, 2, "email");
+        data.phoneNumber = await this.extractFromCells(cells, 3, "phone");
+        data.jobTitle = await this.extractFromCells(cells, 4, "title");
+        data.companySize = await this.extractFromCells(cells, 5, "size");
+        data.industry = await this.extractFromCells(cells, 6, "industry");
+      }
+
+      // Fallback: Try class-based selectors
+      if (!data.phoneNumber) {
+        data.phoneNumber = await this.extractText(leadRow, "[class*='phone'], [data-field='phone']");
+      }
+      if (!data.jobTitle) {
+        data.jobTitle = await this.extractText(leadRow, "[class*='title'], [data-field='title']");
+      }
+      if (!data.companySize) {
+        data.companySize = await this.extractText(leadRow, "[class*='size'], [data-field='size']");
+      }
+
+      // Extract links
+      data.linkedinUrl = await this.extractLink(leadRow, "a[href*='linkedin']");
+      data.website = await this.extractLink(leadRow, "a[href*='http'][href*='www']");
+
+      console.log(`[DataExtractor] Extracted data:`, data);
       return data;
     } catch (error) {
       console.error(`[DataExtractor] Failed to extract lead data:`, error);
       throw error;
+    }
+  }
+
+  private async extractFromCells(cells: Locator[], index: number, fieldName: string): Promise<string | undefined> {
+    try {
+      if (index >= cells.length) return undefined;
+      const text = await cells[index].textContent();
+      const trimmed = text ? text.trim() : undefined;
+      if (trimmed) {
+        console.log(`[DataExtractor] Cell ${index} (${fieldName}): ${trimmed.substring(0, 50)}`);
+      }
+      return trimmed;
+    } catch (error) {
+      console.error(`[DataExtractor] Error extracting cell ${index}:`, error);
+      return undefined;
     }
   }
 
