@@ -994,10 +994,10 @@
 ## Feature — Selective Lead Enrichment Optimization
 
 - [x] Add lead selection checkboxes to Leads table
-- [ ] Add "Select All" and "Deselect All" buttons
+- [x] Add "Select All" and "Deselect All" buttons
 - [x] Change "Auto-Enrich All Leads" to "Auto-Enrich Selected Leads"
 - [x] Update enrichment procedure to accept selected lead IDs only
 - [x] Optimize Seamless.AI polling timeouts for faster enrichment
-- [ ] Reduce delays between lead enrichment actions
+- [x] Reduce delays between lead enrichment actions
 - [ ] Test enrichment of 25-30 leads and measure time
 - [ ] Verify all data is extracted correctly for selected leads
