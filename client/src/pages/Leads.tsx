@@ -59,6 +59,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
   const enrichFromSeamlessMutation = trpc.leads.enrichFromSeamless.useMutation();
   const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
+  const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -71,7 +72,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
   const [filterIndustry, setFilterIndustry] = useState<string>("all");
-
   // Support URL param ?setId=123 to pre-filter by lead set
   useEffect(() => {
     const params = new URLSearchParams(searchString);
@@ -84,6 +84,27 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setDeleteAllDialogOpen(true);
     }
   }, [searchString]);
+
+  // Handle lead selection
+  const toggleLeadSelection = (leadId: number) => {
+    const newSelection = new Set(selectedLeadIds);
+    if (newSelection.has(leadId)) {
+      newSelection.delete(leadId);
+    } else {
+      newSelection.add(leadId);
+    }
+    setSelectedLeadIds(newSelection);
+  };
+
+  const selectAllLeads = () => {
+    if (leadsQuery.data) {
+      setSelectedLeadIds(new Set(leadsQuery.data.map(l => l.id)));
+    }
+  };
+
+  const deselectAllLeads = () => {
+    setSelectedLeadIds(new Set());
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteListDialogOpen, setDeleteListDialogOpen] = useState(false);
   const [deleteTagDialogOpen, setDeleteTagDialogOpen] = useState(false);
@@ -1905,23 +1926,28 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 variant="outline"
                 size="sm"
                 onClick={async () => {
+                  if (selectedLeadIds.size === 0) {
+                    toast.info("Please select 25-30 leads to enrich");
+                    return;
+                  }
                   try {
-                    toast.loading("Starting auto-enrichment... This may take several minutes for 250+ leads.");
-                    await autoEnrichMutation.mutateAsync({
+                    toast.loading(`Starting auto-enrichment for ${selectedLeadIds.size} leads...`);
+                    await autoEnrichSelectedMutation.mutateAsync({
                       seamlessAIUrl: "https://app.seamless.ai",
-                      maxLeadsToProcess: 250,
+                      leadIds: Array.from(selectedLeadIds),
                     });
-                    toast.success("Auto-enrichment completed! Check your leads for updated phone numbers and company details.");
+                    toast.success(`Auto-enrichment completed for ${selectedLeadIds.size} leads!`);
+                    setSelectedLeadIds(new Set());
                     leadsQuery.refetch();
                   } catch (error) {
                     toast.error(`Auto-enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
                   }
                 }}
-                disabled={autoEnrichMutation.isPending}
+                disabled={autoEnrichSelectedMutation.isPending || selectedLeadIds.size === 0}
                 className="gap-1.5"
               >
-                {autoEnrichMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                Auto-Enrich All Leads
+                {autoEnrichSelectedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                Auto-Enrich Selected ({selectedLeadIds.size})
               </Button>
               <Button
                 variant="outline"

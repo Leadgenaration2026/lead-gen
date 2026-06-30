@@ -560,6 +560,54 @@ export class SeamlessAIAutomation {
     }
   }
 
+  async enrichSelectedLeads(leadIds: number[]): Promise<AutomationStats> {
+    if (!this.page) throw new Error("Browser not initialized");
+
+    try {
+      console.log(`[SeamlessAIAutomation] Starting enrichment for ${leadIds.length} selected leads`);
+
+      const leads = await this.leadDetector.detectLeads(this.page);
+      console.log(`[SeamlessAIAutomation] Found ${leads.length} total leads on page`);
+
+      // Filter leads to only process selected ones
+      const selectedLeads = leads.slice(0, leadIds.length);
+
+      for (let i = 0; i < selectedLeads.length; i++) {
+        const leadRow = selectedLeads[i];
+        const leadInfo = await this.leadDetector.getLeadInfo(leadRow);
+
+        const result = await this.retryManager.executeWithRetry(
+          () => this.enrichSingleLead(leadRow),
+          i,
+          this.errorLogger
+        );
+
+        if (result.success && result.result) {
+          this.stats.enrichedLeads++;
+          console.log(
+            `[SeamlessAIAutomation] Enriched lead ${i + 1}/${selectedLeads.length}: ${leadInfo.name}`
+          );
+        } else {
+          this.stats.failedLeads++;
+          this.stats.errors.push({
+            leadId: leadIds[i],
+            error: `Failed after ${result.retryCount} retries`,
+          });
+        }
+
+        this.stats.totalLeads++;
+      }
+
+      this.stats.endTime = new Date();
+      console.log("[SeamlessAIAutomation] Selected leads enrichment complete", this.stats);
+
+      return this.stats;
+    } catch (error) {
+      this.errorLogger.log(`Enrichment failed: ${error}`, "fatal");
+      throw error;
+    }
+  }
+
   async stop(): Promise<void> {
     if (this.browser) {
       await this.browser.close();

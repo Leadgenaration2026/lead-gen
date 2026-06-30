@@ -989,3 +989,15 @@
 - [x] Add CAPTCHA detection and account warning handling
 - [ ] Test with 250+ leads and validate data accuracy
 - [ ] Add monitoring dashboard for enrichment status
+
+
+## Feature — Selective Lead Enrichment Optimization
+
+- [ ] Add lead selection checkboxes to Leads table
+- [ ] Add "Select All" and "Deselect All" buttons
+- [ ] Change "Auto-Enrich All Leads" to "Auto-Enrich Selected Leads"
+- [ ] Update enrichment procedure to accept selected lead IDs only
+- [ ] Optimize Seamless.AI polling timeouts for faster enrichment
+- [ ] Reduce delays between lead enrichment actions
+- [ ] Test enrichment of 25-30 leads and measure time
+- [ ] Verify all data is extracted correctly for selected leads

@@ -84,6 +84,51 @@ export const seamlessAIAutomationRouter = router({
   }),
 
   /**
+   * Start auto-enrichment for selected leads only
+   */
+  startAutoEnrichmentSelected: protectedProcedure
+    .input(
+      z.object({
+        seamlessAIUrl: z.string().url(),
+        leadIds: z.array(z.number().int().positive()),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        console.log(
+          `[SeamlessAIAutomationRouter] Starting auto-enrichment for ${input.leadIds.length} selected leads`
+        );
+
+        const automation = new SeamlessAIAutomation();
+        await automation.start(input.seamlessAIUrl);
+        const stats = await automation.enrichSelectedLeads(input.leadIds);
+        await automation.stop();
+
+        console.log(
+          `[SeamlessAIAutomationRouter] Enrichment complete:`,
+          stats
+        );
+
+        await notifyOwner({
+          title: "Lead Enrichment Complete",
+          content: `Enriched ${stats.enrichedLeads} leads. Failed: ${stats.failedLeads}. Skipped: ${stats.skippedLeads}.`,
+        });
+
+        return {
+          success: true,
+          stats,
+        };
+      } catch (error) {
+        console.error(`[SeamlessAIAutomationRouter] Enrichment failed:`, error);
+        await notifyOwner({
+          title: "Lead Enrichment Failed",
+          content: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+        throw error;
+      }
+    }),
+
+  /**
    * Cancel ongoing enrichment
    * Stops the browser automation if running
    */
