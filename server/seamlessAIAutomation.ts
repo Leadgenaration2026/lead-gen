@@ -376,31 +376,92 @@ class DataExtractor {
   private async extractFromPopup(popup: Locator): Promise<EnrichedLeadData> {
     try {
       const data: EnrichedLeadData = {};
-      const popupText = await popup.textContent();
-      console.log(`[DataExtractor] Popup text: ${popupText?.substring(0, 300)}`);
-
-      // Extract phone number using label-based approach (same as job title)
-      const phoneMatch = popupText?.match(/(?:Phone|Mobile|Cell|Office Phone|Work Phone):\s*([^\n,]+)/i);
-      if (phoneMatch) {
-        data.phoneNumber = phoneMatch[1].trim();
-        console.log(`[DataExtractor] Found phone: ${data.phoneNumber}`);
+      const popupText = await popup.textContent() || "";
+      
+      console.log("[DataExtractor] Extracting from popup...");
+      console.log("[DataExtractor] Popup text length:", popupText.length);
+      
+      // Split into lines for analysis
+      const lines = popupText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      console.log(`[DataExtractor] Found ${lines.length} non-empty lines`);
+      
+      // Strategy 1: Look for phone numbers using multiple patterns
+      const phonePatterns = [
+        /(\+?1?\s*)?(\()?([0-9]{3})(\))?[-.]?([0-9]{3})[-.]?([0-9]{4})/,  // (XXX) XXX-XXXX
+        /\b([0-9]{3})[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/,  // XXX-XXX-XXXX
+      ];
+      
+      for (const pattern of phonePatterns) {
+        const match = popupText.match(pattern);
+        if (match && match[0]) {
+          data.phoneNumber = match[0].trim();
+          console.log(`[DataExtractor] Found phone using pattern: ${data.phoneNumber}`);
+          break;
+        }
       }
-
-      // Extract job title using label-based approach
-      const jobMatch = popupText?.match(/(?:Title|Position|Job Title):\s*([^\n,]+)/i);
-      if (jobMatch) {
-        data.jobTitle = jobMatch[1].trim();
-        console.log(`[DataExtractor] Found job title: ${data.jobTitle}`);
+      
+      // Strategy 2: Look for job title in lines
+      // Try to find it after common keywords or as a standalone line
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Check if line contains title keywords
+        if (/title|position|role|job/i.test(line)) {
+          // If it's a label line, get the next line
+          if (/^(title|position|role|job)\s*:?\s*$/i.test(line) && i + 1 < lines.length) {
+            data.jobTitle = lines[i + 1];
+            console.log(`[DataExtractor] Found job title (next line): ${data.jobTitle}`);
+            break;
+          }
+          // If it contains the label and value, extract value
+          else if (/:\s*/.test(line)) {
+            const parts = line.split(/:\s*/);
+            if (parts.length > 1) {
+              data.jobTitle = parts[1].trim();
+              console.log(`[DataExtractor] Found job title (same line): ${data.jobTitle}`);
+              break;
+            }
+          }
+          // If it's just the title value
+          else if (!/^(title|position|role|job)\s*:?\s*$/i.test(line)) {
+            data.jobTitle = line;
+            console.log(`[DataExtractor] Found job title (direct): ${data.jobTitle}`);
+            break;
+          }
+        }
       }
-
-      // Extract company size using label-based approach (same as job title)
-      const sizeMatch = popupText?.match(/(?:Company Size|Size|Employees|Employee Count):\s*([^\n,]+)/i);
-      if (sizeMatch) {
-        data.companySize = sizeMatch[1].trim();
-        console.log(`[DataExtractor] Found company size: ${data.companySize}`);
+      
+      // Strategy 3: Look for company size in lines
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Check if line contains size keywords
+        if (/size|employees|employee|count|headcount|staff/i.test(line)) {
+          // If it's a label line, get the next line
+          if (/^(size|employees|employee|count|headcount|staff)\s*:?\s*$/i.test(line) && i + 1 < lines.length) {
+            data.companySize = lines[i + 1];
+            console.log(`[DataExtractor] Found company size (next line): ${data.companySize}`);
+            break;
+          }
+          // If it contains the label and value, extract value
+          else if (/:\s*/.test(line)) {
+            const parts = line.split(/:\s*/);
+            if (parts.length > 1) {
+              data.companySize = parts[1].trim();
+              console.log(`[DataExtractor] Found company size (same line): ${data.companySize}`);
+              break;
+            }
+          }
+          // If it's just the size value
+          else if (!/^(size|employees|employee|count|headcount|staff)\s*:?\s*$/i.test(line)) {
+            data.companySize = line;
+            console.log(`[DataExtractor] Found company size (direct): ${data.companySize}`);
+            break;
+          }
+        }
       }
-
-      console.log("[DataExtractor] Extracted from popup:", data);
+      
+      console.log("[DataExtractor] Final extracted data:", data);
       return data;
     } catch (error) {
       console.error("[DataExtractor] Error extracting from popup:", error);
