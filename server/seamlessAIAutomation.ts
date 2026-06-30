@@ -440,8 +440,9 @@ export class SeamlessAIAutomation {
           const leadRow = leads[i];
           const leadInfo = await this.leadDetector.getLeadInfo(leadRow);
 
+          // For enrichAllLeads, we don't have a specific leadId, so use 0 as placeholder
           const result = await this.retryManager.executeWithRetry(
-            () => this.enrichSingleLead(leadRow),
+            () => this.enrichSingleLead(leadRow, 0),
             i,
             this.errorLogger
           );
@@ -481,7 +482,7 @@ export class SeamlessAIAutomation {
     }
   }
 
-  private async enrichSingleLead(leadRow: Locator): Promise<EnrichedLeadData | null> {
+  private async enrichSingleLead(leadRow: Locator, leadId: number): Promise<EnrichedLeadData | null> {
     try {
       // Check if phone is already available
       const phoneAvailable = await this.findButtonController.isPhoneNumberAvailable(leadRow);
@@ -516,8 +517,8 @@ export class SeamlessAIAutomation {
       // Extract enriched data
       const enrichedData = await this.dataExtractor.extractLeadData(leadRow);
 
-      // Save to database
-      await this.saveEnrichedData(enrichedData);
+      // Save to database using leadId
+      await this.saveEnrichedData(leadId, enrichedData);
 
       return enrichedData;
     } catch (error) {
@@ -525,38 +526,36 @@ export class SeamlessAIAutomation {
     }
   }
 
-  private async saveEnrichedData(data: EnrichedLeadData): Promise<void> {
+  private async saveEnrichedData(leadId: number, data: EnrichedLeadData): Promise<void> {
     try {
-      // Find lead by email or name+company
       const db = await getDb();
       if (!db) {
         console.warn("[SeamlessAIAutomation] Database not available");
         return;
       }
 
-      const leadQuery = await db.select().from(leads).where(eq(leads.email, data.email || ""));
+      // Update lead by ID (not by email)
+      await db
+        .update(leads)
+        .set({
+          phoneNumber: data.phoneNumber || undefined,
+          phoneType: (data.phoneType || undefined) as any,
+          secondaryPhone: data.secondaryPhone || undefined,
+          secondaryPhoneType: (data.secondaryPhoneType || undefined) as any,
+          companySize: data.companySize || undefined,
+          jobTitle: data.jobTitle || undefined,
+          industry: data.industry || undefined,
+          linkedinUrl: data.linkedinUrl || undefined,
+          website: data.website || undefined,
+          personalEmail: data.personalEmail || undefined,
+          workEmail: data.workEmail || undefined,
+        })
+        .where(eq(leads.id, leadId));
 
-      if (leadQuery.length > 0) {
-        const lead = leadQuery[0];
-        // Update lead with enriched data
-        await db
-          .update(leads)
-          .set({
-            phoneNumber: data.phoneNumber || lead.phoneNumber,
-            phoneType: (data.phoneType || lead.phoneType) as any,
-            secondaryPhone: data.secondaryPhone || lead.secondaryPhone,
-            companySize: data.companySize || lead.companySize,
-            jobTitle: data.jobTitle || lead.jobTitle,
-            industry: data.industry || lead.industry,
-            linkedinUrl: data.linkedinUrl || lead.linkedinUrl,
-            website: data.website || lead.website,
-          })
-          .where(eq(leads.id, lead.id));
-
-        console.log(`[SeamlessAIAutomation] Saved enriched data for lead ${lead.id}`);
-      }
+      console.log(`[SeamlessAIAutomation] Saved enriched data for lead ${leadId}`);
     } catch (error) {
-      console.error(`[SeamlessAIAutomation] Failed to save enriched data:`, error);
+      console.error(`[SeamlessAIAutomation] Failed to save enriched data for lead ${leadId}:`, error);
+      throw error;
     }
   }
 
@@ -566,26 +565,58 @@ export class SeamlessAIAutomation {
     try {
       console.log(`[SeamlessAIAutomation] Starting enrichment for ${leadIds.length} selected leads`);
 
-      const leads = await this.leadDetector.detectLeads(this.page);
-      console.log(`[SeamlessAIAutomation] Found ${leads.length} total leads on page`);
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
 
-      // Filter leads to only process selected ones
-      const selectedLeads = leads.slice(0, leadIds.length);
+      const allDomLeads = await this.leadDetector.detectLeads(this.page);
+      console.log(`[SeamlessAIAutomation] Found ${allDomLeads.length} total leads on page`);
+
+      // Map requested leadIds to DOM rows
+      const selectedLeads: Array<{ domRow: Locator; leadId: number }> = [];
+      for (const leadId of leadIds) {
+        try {
+          const dbLead = await getDb().then(d => d ? d.select().from(leads).where(eq(leads.id, leadId)).limit(1) : null).then(r => r?.[0]);
+          if (!dbLead) {
+            console.warn(`[SeamlessAIAutomation] Lead ${leadId} not found in database`);
+            continue;
+          }
+
+          // Find matching DOM row by email
+          let matchedRow: Locator | null = null;
+          for (const domRow of allDomLeads) {
+            const leadInfo = await this.leadDetector.getLeadInfo(domRow);
+            if (leadInfo.email === dbLead.email) {
+              matchedRow = domRow;
+              break;
+            }
+          }
+
+          if (matchedRow) {
+            selectedLeads.push({ domRow: matchedRow, leadId });
+            console.log(`[SeamlessAIAutomation] Mapped leadId ${leadId} to DOM row`);
+          } else {
+            console.warn(`[SeamlessAIAutomation] Could not find DOM row for lead ${leadId}`);
+          }
+        } catch (error) {
+          console.error(`[SeamlessAIAutomation] Error mapping lead ${leadId}:`, error);
+        }
+      }
+
+      console.log(`[SeamlessAIAutomation] Successfully mapped ${selectedLeads.length}/${leadIds.length} leads`);
 
       for (let i = 0; i < selectedLeads.length; i++) {
-        const leadRow = selectedLeads[i];
-        const leadInfo = await this.leadDetector.getLeadInfo(leadRow);
+        const { domRow: leadRow, leadId } = selectedLeads[i];
 
         const result = await this.retryManager.executeWithRetry(
-          () => this.enrichSingleLead(leadRow),
-          i,
+          () => this.enrichSingleLead(leadRow, leadId),
+          leadId,
           this.errorLogger
         );
 
         if (result.success && result.result) {
           this.stats.enrichedLeads++;
           console.log(
-            `[SeamlessAIAutomation] Enriched lead ${i + 1}/${selectedLeads.length}: ${leadInfo.name}`
+            `[SeamlessAIAutomation] Enriched lead ${i + 1}/${selectedLeads.length}`
           );
         } else {
           this.stats.failedLeads++;
