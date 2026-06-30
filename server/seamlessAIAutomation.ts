@@ -272,29 +272,40 @@ class EnrichmentWatcher {
 }
 
 // ============================================================================
-// DATA EXTRACTOR MODULE
+// DATA EXTRACTOR MODULE - POPUP AWARE
 // ============================================================================
 
 class DataExtractor {
   async extractLeadData(leadRow: Locator): Promise<EnrichedLeadData> {
     try {
       console.log("[DataExtractor] Starting data extraction...");
-      
+
+      // CRITICAL: Look for hidden popup with enriched data
+      console.log("[DataExtractor] Looking for enrichment popup...");
+      const popup = await this.findEnrichmentPopup(leadRow);
+
+      if (popup) {
+        console.log("[DataExtractor] Found enrichment popup! Extracting from popup...");
+        const popupData = await this.extractFromPopup(popup);
+        if (Object.keys(popupData).length > 0) {
+          console.log("[DataExtractor] Successfully extracted from popup:", popupData);
+          return popupData;
+        }
+      }
+
       // Get all cells/columns in the row
       const cells = await leadRow.locator("td, div[role='cell'], [class*='cell']").all();
       console.log(`[DataExtractor] Found ${cells.length} cells in row`);
 
       const data: EnrichedLeadData = {};
 
-      // Extract data from cells - try multiple strategies
+      // Extract data from cells
       if (cells.length > 0) {
-        // Strategy 1: Extract by position (assuming standard table layout)
         for (let i = 0; i < Math.min(cells.length, 10); i++) {
           const cellText = await cells[i].textContent();
           console.log(`[DataExtractor] Cell ${i}: ${cellText?.substring(0, 50)}`);
         }
 
-        // Map cells to fields based on content
         data.fullName = await this.extractFromCells(cells, 0, "name");
         data.company = await this.extractFromCells(cells, 1, "company");
         data.email = await this.extractFromCells(cells, 2, "email");
@@ -304,26 +315,96 @@ class DataExtractor {
         data.industry = await this.extractFromCells(cells, 6, "industry");
       }
 
-      // Fallback: Try class-based selectors
-      if (!data.phoneNumber) {
-        data.phoneNumber = await this.extractText(leadRow, "[class*='phone'], [data-field='phone']");
-      }
-      if (!data.jobTitle) {
-        data.jobTitle = await this.extractText(leadRow, "[class*='title'], [data-field='title']");
-      }
-      if (!data.companySize) {
-        data.companySize = await this.extractText(leadRow, "[class*='size'], [data-field='size']");
-      }
-
-      // Extract links
-      data.linkedinUrl = await this.extractLink(leadRow, "a[href*='linkedin']");
-      data.website = await this.extractLink(leadRow, "a[href*='http'][href*='www']");
-
       console.log(`[DataExtractor] Extracted data:`, data);
       return data;
     } catch (error) {
       console.error(`[DataExtractor] Failed to extract lead data:`, error);
       throw error;
+    }
+  }
+
+  private async findEnrichmentPopup(leadRow: Locator): Promise<Locator | null> {
+    try {
+      const page = leadRow.page();
+      if (!page) return null;
+
+      const popupSelectors = [
+        "[role='dialog']",
+        "[role='tooltip']",
+        ".popup",
+        ".modal",
+        ".drawer",
+        "[class*='popup']",
+        "[class*='modal']",
+        "[class*='drawer']",
+        "[class*='enrichment']",
+        "[class*='detail']",
+        "[class*='popover']",
+        "[class*='overlay']",
+      ];
+
+      for (const selector of popupSelectors) {
+        try {
+          const elements = page.locator(selector);
+          const count = await elements.count();
+          if (count > 0) {
+            for (let i = 0; i < count; i++) {
+              const element = elements.nth(i);
+              try {
+                const isVisible = await element.isVisible().catch(() => false);
+                const hasHeight = await element.evaluate((el: any) => el.offsetHeight > 0).catch(() => false);
+                if (isVisible || hasHeight) {
+                  console.log(`[DataExtractor] Found popup with selector: ${selector}`);
+                  return element;
+                }
+              } catch (e) {
+                // Continue
+              }
+            }
+          }
+        } catch (e) {
+          // Continue
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("[DataExtractor] Error finding popup:", error);
+      return null;
+    }
+  }
+
+  private async extractFromPopup(popup: Locator): Promise<EnrichedLeadData> {
+    try {
+      const data: EnrichedLeadData = {};
+      const popupText = await popup.textContent();
+      console.log(`[DataExtractor] Popup text: ${popupText?.substring(0, 300)}`);
+
+      // Extract phone
+      const phoneMatch = popupText?.match(/(\+?1?\s*)?(\()?(\ d{3})(\))?[-.]?(\d{3})[-.]?(\d{4})/);
+      if (phoneMatch) {
+        data.phoneNumber = phoneMatch[0].trim();
+        console.log(`[DataExtractor] Found phone: ${data.phoneNumber}`);
+      }
+
+      // Extract job title
+      const jobMatch = popupText?.match(/(?:Title|Position):\s*([^\n,]+)/i);
+      if (jobMatch) {
+        data.jobTitle = jobMatch[1].trim();
+        console.log(`[DataExtractor] Found job title: ${data.jobTitle}`);
+      }
+
+      // Extract company size
+      const sizeMatch = popupText?.match(/(?:Company Size|Size):\s*([^\n,]+)/i);
+      if (sizeMatch) {
+        data.companySize = sizeMatch[1].trim();
+        console.log(`[DataExtractor] Found company size: ${data.companySize}`);
+      }
+
+      console.log("[DataExtractor] Extracted from popup:", data);
+      return data;
+    } catch (error) {
+      console.error("[DataExtractor] Error extracting from popup:", error);
+      return {};
     }
   }
 
@@ -338,43 +419,6 @@ class DataExtractor {
       return trimmed;
     } catch (error) {
       console.error(`[DataExtractor] Error extracting cell ${index}:`, error);
-      return undefined;
-    }
-  }
-
-  private async extractText(element: Locator, selector: string): Promise<string | undefined> {
-    try {
-      const text = await element.locator(selector).first().textContent();
-      return text ? text.trim() : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  private async extractLink(element: Locator, selector: string): Promise<string | undefined> {
-    try {
-      const href = await element.locator(selector).first().getAttribute("href");
-      return href || undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  private async detectPhoneType(leadRow: Locator): Promise<"cell" | "office" | "unknown" | undefined> {
-    try {
-      const phoneCell = leadRow.locator("[class*='phone'], [data-field='phone']").first();
-      const phoneText = await phoneCell.textContent();
-
-      if (!phoneText) return undefined;
-
-      // Simple heuristic: if phone has extension or specific patterns, it's office
-      if (phoneText.includes("ext") || phoneText.includes("x") || phoneText.includes("(")) {
-        return "office";
-      }
-
-      // Default to cell for mobile-looking numbers
-      return "cell";
-    } catch {
       return undefined;
     }
   }
