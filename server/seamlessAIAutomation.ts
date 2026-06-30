@@ -379,22 +379,22 @@ class DataExtractor {
       const popupText = await popup.textContent();
       console.log(`[DataExtractor] Popup text: ${popupText?.substring(0, 300)}`);
 
-      // Extract phone
-      const phoneMatch = popupText?.match(/(\+?1?\s*)?(\()?(\ d{3})(\))?[-.]?(\d{3})[-.]?(\d{4})/);
+      // Extract phone number using label-based approach (same as job title)
+      const phoneMatch = popupText?.match(/(?:Phone|Mobile|Cell|Office Phone|Work Phone):\s*([^\n,]+)/i);
       if (phoneMatch) {
-        data.phoneNumber = phoneMatch[0].trim();
+        data.phoneNumber = phoneMatch[1].trim();
         console.log(`[DataExtractor] Found phone: ${data.phoneNumber}`);
       }
 
-      // Extract job title
-      const jobMatch = popupText?.match(/(?:Title|Position):\s*([^\n,]+)/i);
+      // Extract job title using label-based approach
+      const jobMatch = popupText?.match(/(?:Title|Position|Job Title):\s*([^\n,]+)/i);
       if (jobMatch) {
         data.jobTitle = jobMatch[1].trim();
         console.log(`[DataExtractor] Found job title: ${data.jobTitle}`);
       }
 
-      // Extract company size
-      const sizeMatch = popupText?.match(/(?:Company Size|Size):\s*([^\n,]+)/i);
+      // Extract company size using label-based approach (same as job title)
+      const sizeMatch = popupText?.match(/(?:Company Size|Size|Employees|Employee Count):\s*([^\n,]+)/i);
       if (sizeMatch) {
         data.companySize = sizeMatch[1].trim();
         console.log(`[DataExtractor] Found company size: ${data.companySize}`);
