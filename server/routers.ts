@@ -12,6 +12,7 @@ import nodemailer from "nodemailer";
 import { plainTextToHtml } from "@shared/emailFormat";
 import { getSignatureHtml, normalizePhoneNumber } from "./_core/followUpScheduler";
 import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PLAIN, getUnsubscribeLinkHtml } from "@shared/signature";
+import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -4214,5 +4215,8 @@ Use the website data to:
         };
       }),
   }),
+
+  // Seamless.AI Automation router
+  seamlessAIAutomation: seamlessAIAutomationRouter,
 });
 export type AppRouter = typeof appRouter;

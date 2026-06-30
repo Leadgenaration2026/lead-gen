@@ -58,6 +58,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const deleteListMutation = trpc.leadSets.delete.useMutation();
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
   const enrichFromSeamlessMutation = trpc.leads.enrichFromSeamless.useMutation();
+  const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -1899,6 +1900,28 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               >
                 {enrichFromSeamlessMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
                 Find Details
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    toast.loading("Starting auto-enrichment... This may take several minutes for 250+ leads.");
+                    await autoEnrichMutation.mutateAsync({
+                      seamlessAIUrl: "https://app.seamless.ai",
+                      maxLeadsToProcess: 250,
+                    });
+                    toast.success("Auto-enrichment completed! Check your leads for updated phone numbers and company details.");
+                    leadsQuery.refetch();
+                  } catch (error) {
+                    toast.error(`Auto-enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+                  }
+                }}
+                disabled={autoEnrichMutation.isPending}
+                className="gap-1.5"
+              >
+                {autoEnrichMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                Auto-Enrich All Leads
               </Button>
               <Button
                 variant="outline"
