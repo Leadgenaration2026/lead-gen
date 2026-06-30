@@ -123,8 +123,8 @@ class LeadDetector {
 // ============================================================================
 
 class FindButtonController {
-  private readonly humanDelayMin = 500;
-  private readonly humanDelayMax = 2000;
+  private readonly humanDelayMin = 200;  // Reduced from 500 for faster processing
+  private readonly humanDelayMax = 800;  // Reduced from 2000 for faster processing
 
   private randomDelay(min: number = this.humanDelayMin, max: number = this.humanDelayMax) {
     return Math.random() * (max - min) + min;

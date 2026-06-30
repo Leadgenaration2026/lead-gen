@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, X } from "lucide-react";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, X, Check } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -1796,6 +1796,31 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                    <SelectItem value="name_asc">Name: A → Z</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newSelection = new Set(filteredLeads.map((l: any) => l.id));
+                  setSelectedLeadIds(newSelection);
+                  toast.success(`Selected ${newSelection.size} leads`);
+                }}
+                className="gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Select All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedLeadIds(new Set());
+                  toast.info("Deselected all leads");
+                }}
+                className="gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" />
+                Deselect All
+              </Button>
               {filterSourceListId !== "all" && (
                 <>
                   <Button
