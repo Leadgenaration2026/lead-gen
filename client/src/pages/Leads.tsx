@@ -1957,8 +1957,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   }
                   try {
                     toast.loading(`Starting auto-enrichment for ${selectedLeadIds.size} leads...`);
-                    await autoEnrichSelectedMutation.mutateAsync({
-                      seamlessAIUrl: "https://app.seamless.ai",
+                    await enrichFromSeamlessMutation.mutateAsync({
                       leadIds: Array.from(selectedLeadIds),
                     });
                     toast.success(`Auto-enrichment completed for ${selectedLeadIds.size} leads!`);
@@ -1968,10 +1967,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     toast.error(`Auto-enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
                   }
                 }}
-                disabled={autoEnrichSelectedMutation.isPending || selectedLeadIds.size === 0}
+                disabled={enrichFromSeamlessMutation.isPending || selectedLeadIds.size === 0}
                 className="gap-1.5"
               >
-                {autoEnrichSelectedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                {enrichFromSeamlessMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                 Auto-Enrich Selected ({selectedLeadIds.size})
               </Button>
               <Button
