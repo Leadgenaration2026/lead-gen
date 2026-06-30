@@ -978,14 +978,14 @@
 
 ## Feature — Seamless.AI Browser Automation for Lead Enrichment
 
-- [ ] Create modular Playwright automation system with LeadDetector, FindButtonController, EnrichmentWatcher, DataExtractor, PaginationManager, RetryManager, ErrorLogger
-- [ ] Implement lead detection and enrichment watcher with human-like delays
-- [ ] Add data extraction for phone, job title, company size, industry, LinkedIn, email, website, location
-- [ ] Implement pagination support and automatic page navigation
-- [ ] Add retry logic (up to 2 retries) and comprehensive error handling
-- [ ] Create tRPC endpoint for auto-enrichment trigger
-- [ ] Add "Auto-Enrich All Leads" button to Leads UI
+- [x] Create modular Playwright automation system with LeadDetector, FindButtonController, EnrichmentWatcher, DataExtractor, PaginationManager, RetryManager, ErrorLogger
+- [x] Implement lead detection and enrichment watcher with human-like delays
+- [x] Add data extraction for phone, job title, company size, industry, LinkedIn, email, website, location
+- [x] Implement pagination support and automatic page navigation
+- [x] Add retry logic (up to 2 retries) and comprehensive error handling
+- [x] Create tRPC endpoint for auto-enrichment trigger
+- [x] Add "Auto-Enrich All Leads" button to Leads UI
 - [ ] Implement real-time progress tracking and completion notifications
-- [ ] Add CAPTCHA detection and account warning handling
+- [x] Add CAPTCHA detection and account warning handling
 - [ ] Test with 250+ leads and validate data accuracy
 - [ ] Add monitoring dashboard for enrichment status
