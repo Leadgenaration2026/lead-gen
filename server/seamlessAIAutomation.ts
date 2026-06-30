@@ -41,12 +41,15 @@ export interface EnrichmentResult {
 
 export interface AutomationStats {
   totalLeads: number;
-  enrichedLeads: number;
+  enrichedLeads?: number;
+  successfulLeads?: number;
   failedLeads: number;
   skippedLeads: number;
-  startTime: Date;
+  startTime?: Date;
   endTime?: Date;
-  errors: Array<{ leadId: number; error: string }>;
+  errors?: Array<{ leadId: number; error: string }>;
+  totalSearchResults?: number;
+  extractedCount?: number;
 }
 
 // ============================================================================

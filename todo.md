@@ -1001,3 +1001,13 @@
 - [x] Reduce delays between lead enrichment actions
 - [ ] Test enrichment of 25-30 leads and measure time
 - [ ] Verify all data is extracted correctly for selected leads
+
+
+## Batch XX — Seamless.AI Multi-Page Extraction Redesign
+- [x] Extract search result count from Seamless.AI UI (total leads found)
+- [x] Redesign enrichment loop to support multi-page extraction
+- [x] Implement pagination auto-advance logic (click Next Page when current page exhausted)
+- [x] Add extraction progress tracking (extracted/requested/remaining counters)
+- [x] Update UI to show independent search results and extraction progress counters
+- [x] Test multi-page extraction across 2+ pages
+- [x] Fix stale locator bug in enrichment workflow

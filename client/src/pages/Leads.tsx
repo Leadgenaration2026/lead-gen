@@ -69,6 +69,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [filterSourceListId, setFilterSourceListId] = useState<string>("all"); // For imported lists
   const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [enrichmentProgress, setEnrichmentProgress] = useState<{ totalSearchResults: number; extracted: number; requested: number } | null>(null);
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
   const [filterIndustry, setFilterIndustry] = useState<string>("all");
@@ -1952,27 +1953,48 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 size="sm"
                 onClick={async () => {
                   if (selectedLeadIds.size === 0) {
-                    toast.info("Please select 25-30 leads to enrich");
+                    toast.info("Please select leads to enrich");
                     return;
                   }
                   try {
-                    toast.loading(`Starting auto-enrichment for ${selectedLeadIds.size} leads...`);
-                    await enrichFromSeamlessMutation.mutateAsync({
+                    const requestedExtraction = selectedLeadIds.size;
+                    setEnrichmentProgress({ totalSearchResults: 0, extracted: 0, requested: requestedExtraction });
+                    toast.loading(`Starting auto-enrichment for ${requestedExtraction} leads...`);
+                    
+                    const result = await autoEnrichSelectedMutation.mutateAsync({
                       leadIds: Array.from(selectedLeadIds),
+                      requestedExtraction: requestedExtraction,
                     });
-                    toast.success(`Auto-enrichment completed for ${selectedLeadIds.size} leads!`);
+                    
+                    setEnrichmentProgress({
+                      totalSearchResults: result.totalSearchResults || 0,
+                      extracted: result.extractedCount || result.successfulLeads || 0,
+                      requested: requestedExtraction,
+                    });
+                    
+                    toast.success(`Auto-enrichment completed: ${result.successfulLeads} successful, ${result.failedLeads} failed`);
                     setSelectedLeadIds(new Set());
+                    setEnrichmentProgress(null);
                     leadsQuery.refetch();
                   } catch (error) {
                     toast.error(`Auto-enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+                    setEnrichmentProgress(null);
                   }
                 }}
-                disabled={enrichFromSeamlessMutation.isPending || selectedLeadIds.size === 0}
+                disabled={autoEnrichSelectedMutation.isPending || selectedLeadIds.size === 0}
                 className="gap-1.5"
               >
-                {enrichFromSeamlessMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                {autoEnrichSelectedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                 Auto-Enrich Selected ({selectedLeadIds.size})
               </Button>
+              {enrichmentProgress && (
+                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
+                  <div>Total Leads Found: <strong>{enrichmentProgress.totalSearchResults.toLocaleString()}</strong></div>
+                  <div>Requested: <strong>{enrichmentProgress.requested}</strong></div>
+                  <div>Extracted: <strong>{enrichmentProgress.extracted}/{enrichmentProgress.requested}</strong></div>
+                  <div>Remaining: <strong>{Math.max(0, enrichmentProgress.requested - enrichmentProgress.extracted)}</strong></div>
+                </div>
+              )}
               <Button
                 variant="outline"
                 size="sm"

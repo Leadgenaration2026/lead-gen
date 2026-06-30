@@ -91,17 +91,19 @@ export const seamlessAIAutomationRouter = router({
       z.object({
         seamlessAIUrl: z.string().url(),
         leadIds: z.array(z.number().int().positive()),
+        requestedExtraction: z.number().int().positive().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       try {
+        const requestedExtraction = input.requestedExtraction || input.leadIds.length;
         console.log(
-          `[SeamlessAIAutomationRouter] Starting auto-enrichment for ${input.leadIds.length} selected leads`
+          `[SeamlessAIAutomationRouter] Starting auto-enrichment for ${input.leadIds.length} selected leads (requested: ${requestedExtraction})`
         );
 
         const automation = new SeamlessAIAutomation();
         await automation.start(input.seamlessAIUrl);
-        const stats = await automation.enrichSelectedLeads(input.leadIds);
+        const stats = await automation.enrichAllLeads(automation.page!, input.leadIds, requestedExtraction);
         await automation.stop();
 
         console.log(
@@ -111,12 +113,17 @@ export const seamlessAIAutomationRouter = router({
 
         await notifyOwner({
           title: "Lead Enrichment Complete",
-          content: `Enriched ${stats.enrichedLeads} leads. Failed: ${stats.failedLeads}. Skipped: ${stats.skippedLeads}.`,
+          content: `Enriched ${stats.successfulLeads} leads. Failed: ${stats.failedLeads}. Skipped: ${stats.skippedLeads}. Total found: ${stats.totalSearchResults}.`,
         });
 
         return {
           success: true,
           stats,
+          successfulLeads: stats.successfulLeads,
+          failedLeads: stats.failedLeads,
+          skippedLeads: stats.skippedLeads,
+          totalSearchResults: stats.totalSearchResults,
+          extractedCount: stats.extractedCount,
         };
       } catch (error) {
         console.error(`[SeamlessAIAutomationRouter] Enrichment failed:`, error);
