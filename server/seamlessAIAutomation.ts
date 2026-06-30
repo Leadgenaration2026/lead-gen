@@ -552,27 +552,37 @@ export class SeamlessAIAutomation {
 
   private async enrichSingleLead(leadRow: Locator, leadId: number): Promise<EnrichedLeadData | null> {
     try {
+      console.log(`[SeamlessAIAutomation] Starting enrichment for lead ${leadId}`);
+
+      // STEP 1: Capture BEFORE state
+      console.log(`[SeamlessAIAutomation] Capturing BEFORE state...`);
+      const beforeData = await this.dataExtractor.extractLeadData(leadRow);
+      console.log(`[SeamlessAIAutomation] BEFORE:`, beforeData);
+
       // Check if phone is already available
-      const phoneAvailable = await this.findButtonController.isPhoneNumberAvailable(leadRow);
+      const phoneAvailable = beforeData.phoneNumber ? true : false;
 
       if (phoneAvailable) {
         console.log(`[SeamlessAIAutomation] Phone already available, skipping Find button`);
         this.stats.skippedLeads++;
-        return await this.dataExtractor.extractLeadData(leadRow);
+        return beforeData;
       }
 
-      // Find and click the Find button
+      // STEP 2: Find and click the Find button
+      console.log(`[SeamlessAIAutomation] Finding Find button...`);
       const findButton = await this.findButtonController.findFindButton(leadRow);
       if (!findButton) {
         throw new Error("Find button not found");
       }
 
+      console.log(`[SeamlessAIAutomation] Clicking Find button...`);
       const clicked = await this.findButtonController.clickFindButton(findButton, leadRow);
       if (!clicked) {
         throw new Error("Failed to click Find button");
       }
 
-      // Wait for enrichment to complete
+      // STEP 3: Wait for enrichment to complete
+      console.log(`[SeamlessAIAutomation] Waiting for enrichment to complete...`);
       const enrichmentComplete = await this.enrichmentWatcher.waitForEnrichmentComplete(
         leadRow,
         phoneAvailable
@@ -582,16 +592,54 @@ export class SeamlessAIAutomation {
         throw new Error("Enrichment timeout");
       }
 
-      // Extract enriched data
-      const enrichedData = await this.dataExtractor.extractLeadData(leadRow);
+      // STEP 4: Capture AFTER state
+      console.log(`[SeamlessAIAutomation] Capturing AFTER state...`);
+      const afterData = await this.dataExtractor.extractLeadData(leadRow);
+      console.log(`[SeamlessAIAutomation] AFTER:`, afterData);
 
-      // Save to database using leadId
-      await this.saveEnrichedData(leadId, enrichedData);
+      // STEP 5: Verify that enrichment actually happened
+      const enrichmentHappened = this.verifyEnrichmentHappened(beforeData, afterData);
+      if (!enrichmentHappened) {
+        console.error(`[SeamlessAIAutomation] ENRICHMENT FAILED: No fields changed for lead ${leadId}`);
+        console.error(`[SeamlessAIAutomation] BEFORE:`, beforeData);
+        console.error(`[SeamlessAIAutomation] AFTER:`, afterData);
+        throw new Error("Enrichment failed: No fields changed");
+      }
 
-      return enrichedData;
+      console.log(`[SeamlessAIAutomation] Enrichment successful for lead ${leadId}`);
+
+      // STEP 6: Save to database using leadId
+      await this.saveEnrichedData(leadId, afterData);
+
+      return afterData;
     } catch (error) {
       throw error;
     }
+  }
+
+  private verifyEnrichmentHappened(beforeData: EnrichedLeadData, afterData: EnrichedLeadData): boolean {
+    // Check if any of the critical enrichment fields changed
+    const criticalFields: (keyof EnrichedLeadData)[] = ["phoneNumber", "jobTitle", "companySize"];
+
+    for (const field of criticalFields) {
+      const before = beforeData[field];
+      const after = afterData[field];
+
+      // Check if field went from empty to populated
+      const beforeEmpty = !before || before === "" || before === "—";
+      const afterPopulated = after && after !== "" && after !== "—";
+
+      if (beforeEmpty && afterPopulated) {
+        console.log(`[SeamlessAIAutomation] Enrichment detected: ${field} changed from "${before}" to "${after}"`);
+        return true;
+      }
+    }
+
+    console.error(`[SeamlessAIAutomation] No enrichment detected. Critical fields unchanged:`);
+    console.error(`  phoneNumber: "${beforeData.phoneNumber}" -> "${afterData.phoneNumber}"`);
+    console.error(`  jobTitle: "${beforeData.jobTitle}" -> "${afterData.jobTitle}"`);
+    console.error(`  companySize: "${beforeData.companySize}" -> "${afterData.companySize}"`);
+    return false;
   }
 
   private async saveEnrichedData(leadId: number, data: EnrichedLeadData): Promise<void> {
