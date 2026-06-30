@@ -203,6 +203,8 @@ class EnrichmentWatcher {
   async waitForEnrichmentComplete(leadRow: Locator, initialPhoneStatus: boolean): Promise<boolean> {
     const startTime = Date.now();
     let lastLogTime = startTime;
+    const page = leadRow.page();
+    if (!page) return false;
 
     while (Date.now() - startTime < this.maxWaitTime) {
       try {
@@ -216,11 +218,13 @@ class EnrichmentWatcher {
             console.log(`[EnrichmentWatcher] Still loading... (${elapsedMs}ms)`);
             lastLogTime = Date.now();
           }
-          await leadRow.page()?.waitForTimeout(this.checkInterval);
+          await page.waitForTimeout(this.checkInterval);
           continue;
         }
 
         // Strategy 2: Check for phone number in any cell (more robust)
+        // NOTE: This uses the leadRow locator which may become stale after React re-render
+        // The main enrichSingleLead method handles re-locating after enrichment completes
         const cells = await leadRow.locator("td, div[role='cell'], [class*='cell']").all();
         let phoneFound = false;
         for (let i = 0; i < Math.min(cells.length, 10); i++) {
@@ -259,10 +263,10 @@ class EnrichmentWatcher {
         }
 
         // Wait before next check
-        await leadRow.page()?.waitForTimeout(this.checkInterval);
+        await page.waitForTimeout(this.checkInterval);
       } catch (error) {
         console.error(`[EnrichmentWatcher] Error during enrichment check:`, error);
-        await leadRow.page()?.waitForTimeout(this.checkInterval);
+        await page.waitForTimeout(this.checkInterval);
       }
     }
 
@@ -692,13 +696,24 @@ export class SeamlessAIAutomation {
   }
 
   private async enrichSingleLead(leadRow: Locator, leadId: number): Promise<EnrichedLeadData | null> {
+    let leadName: string | null = null;
+    let page: Page | null = null;
+
     try {
       console.log(`[SeamlessAIAutomation] Starting enrichment for lead ${leadId}`);
 
-      // STEP 1: Capture BEFORE state
+      // Get the page reference for later re-querying
+      page = leadRow.page();
+      if (!page) {
+        throw new Error("Cannot get page reference from leadRow");
+      }
+
+      // STEP 1: Capture BEFORE state and extract lead name as unique identifier
       console.log(`[SeamlessAIAutomation] Capturing BEFORE state...`);
       const beforeData = await this.dataExtractor.extractLeadData(leadRow);
+      leadName = beforeData.fullName || null;
       console.log(`[SeamlessAIAutomation] BEFORE:`, beforeData);
+      console.log(`[SeamlessAIAutomation] Lead name (unique ID): "${leadName}"`);
 
       // Check if phone is already available
       const phoneAvailable = beforeData.phoneNumber ? true : false;
@@ -733,12 +748,29 @@ export class SeamlessAIAutomation {
         throw new Error("Enrichment timeout");
       }
 
-      // STEP 4: Capture AFTER state
-      console.log(`[SeamlessAIAutomation] Capturing AFTER state...`);
-      const afterData = await this.dataExtractor.extractLeadData(leadRow);
+      // STEP 4: CRITICAL FIX - Discard old locator and re-query DOM
+      // After React re-renders, the old leadRow locator is stale
+      console.log(`[SeamlessAIAutomation] OLD LOCATOR IS NOW STALE - Re-querying DOM from page root...`);
+      console.log(`[SeamlessAIAutomation] Looking for lead by name: "${leadName}"`);
+
+      if (!leadName) {
+        throw new Error("Cannot re-locate lead: name is null");
+      }
+
+      // Re-query the table from the page root
+      const freshLeadRow = await this.relocateLeadByName(page, leadName);
+      if (!freshLeadRow) {
+        throw new Error(`Could not re-locate lead by name: "${leadName}"`);
+      }
+
+      console.log(`[SeamlessAIAutomation] Successfully re-located lead by name: "${leadName}"`);
+
+      // STEP 5: Capture AFTER state from FRESH DOM
+      console.log(`[SeamlessAIAutomation] Capturing AFTER state from fresh DOM...`);
+      const afterData = await this.dataExtractor.extractLeadData(freshLeadRow);
       console.log(`[SeamlessAIAutomation] AFTER:`, afterData);
 
-      // STEP 5: Verify that enrichment actually happened
+      // STEP 6: Verify that enrichment actually happened
       const enrichmentHappened = this.verifyEnrichmentHappened(beforeData, afterData);
       if (!enrichmentHappened) {
         console.error(`[SeamlessAIAutomation] ENRICHMENT FAILED: No fields changed for lead ${leadId}`);
@@ -749,14 +781,48 @@ export class SeamlessAIAutomation {
 
       console.log(`[SeamlessAIAutomation] Enrichment successful for lead ${leadId}`);
 
-      // STEP 6: Save to database using leadId
+      // STEP 7: Save to database using leadId
       await this.saveEnrichedData(leadId, afterData);
 
       return afterData;
     } catch (error) {
+      console.error(`[SeamlessAIAutomation] Error enriching lead ${leadId}:`, error);
       throw error;
     }
   }
+
+  private async relocateLeadByName(page: Page, leadName: string): Promise<Locator | null> {
+    try {
+      console.log(`[SeamlessAIAutomation] Re-locating lead by name: "${leadName}"`);
+
+      // Wait for table to stabilize
+      await page.waitForTimeout(500);
+
+      // Get all lead rows from the page root
+      const rows = await page.locator("tr, [class*='row']").all();
+      console.log(`[SeamlessAIAutomation] Found ${rows.length} rows in table`);
+
+      // Search through rows to find the one with matching name
+      for (let i = 0; i < rows.length; i++) {
+        try {
+          const rowText = await rows[i].textContent();
+          if (rowText && rowText.includes(leadName)) {
+            console.log(`[SeamlessAIAutomation] Found matching row at index ${i}`);
+            return rows[i];
+          }
+        } catch (e) {
+          // Continue to next row
+        }
+      }
+
+      console.error(`[SeamlessAIAutomation] Could not find row with name: "${leadName}"`);
+      return null;
+    } catch (error) {
+      console.error(`[SeamlessAIAutomation] Error relocating lead:`, error);
+      return null;
+    }
+  }
+
 
   private verifyEnrichmentHappened(beforeData: EnrichedLeadData, afterData: EnrichedLeadData): boolean {
     // Check if any of the critical enrichment fields changed
