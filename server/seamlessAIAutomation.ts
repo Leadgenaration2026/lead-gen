@@ -631,6 +631,37 @@ export class SeamlessAIAutomation {
       console.log("[SeamlessAIAutomation] Starting browser automation...");
       this.browser = await chromium.launch({ headless: false });
       this.page = await this.browser.newPage();
+
+      // Intercept all network responses to log raw JSON
+      await this.page.on('response', async (response) => {
+        try {
+          const url = response.url();
+          const status = response.status();
+          
+          // Log all API responses
+          if (url.includes('api') || url.includes('seamless')) {
+            console.log(`\n[NETWORK] ${status} ${url}`);
+            
+            try {
+              const responseText = await response.text();
+              console.log(`[NETWORK] Raw Response Body:`);
+              console.log(responseText);
+              
+              // Save to file
+              const fs = require('fs');
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const filename = `/tmp/seamless_response_${timestamp}.json`;
+              fs.writeFileSync(filename, responseText, 'utf-8');
+              console.log(`[NETWORK] Saved to: ${filename}`);
+            } catch (e) {
+              console.log(`[NETWORK] Could not read response body`);
+            }
+          }
+        } catch (e) {
+          // Silently ignore errors in response logging
+        }
+      });
+
       await this.page.goto(seamlessAIUrl, { waitUntil: "networkidle" });
       console.log("[SeamlessAIAutomation] Browser ready");
     } catch (error) {
