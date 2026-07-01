@@ -151,10 +151,33 @@ async function seamlessRequest(
 
   const response = await fetch(url, options);
   const responseText = await response.text();
+  const contentType = response.headers.get('content-type');
   
   console.log(`[Seamless.AI] Response status: ${response.status}`);
+  console.log(`[Seamless.AI] Content-Type: ${contentType}`);
   if (responseText) {
-    console.log(`[Seamless.AI] Response body:`, responseText);
+    console.log(`[Seamless.AI] Response body (first 500 chars):`, responseText.substring(0, 500));
+  }
+
+  // Validate response is JSON before parsing
+  if (!contentType?.includes('application/json')) {
+    const errorDetails = {
+      step: (path.includes('/search/') ? 'Search' : path.includes('/research') ? 'Research' : path.includes('/poll') ? 'Poll' : 'Unknown') as 'Search' | 'Research' | 'Poll' | 'Unknown',
+      endpoint: path,
+      method,
+      statusCode: response.status,
+      contentType: contentType || 'unknown',
+      requestBody: body ? { ...body, apiKey: '[REDACTED]' } : undefined,
+      responseBody: responseText.substring(0, 500),
+      timestamp: new Date().toISOString(),
+    };
+    
+    logSeamlessError(errorDetails);
+    
+    throw createSeamlessError({
+      ...errorDetails,
+      error: `Expected JSON response but got ${contentType || 'unknown'} (Status: ${response.status}). This usually means: authentication expired, rate limited, or wrong endpoint.`,
+    });
   }
 
   if (!response.ok) {
