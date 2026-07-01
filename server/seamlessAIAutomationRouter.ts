@@ -30,7 +30,8 @@ export const seamlessAIAutomationRouter = router({
         const automation = new SeamlessAIAutomation();
 
         // Start browser and navigate to Seamless.AI
-        await automation.start(input.seamlessAIUrl);
+        // URL will be obtained directly from the browser
+        await automation.start();
 
         // Enrich all leads
         const stats = await automation.enrichAllLeads();
