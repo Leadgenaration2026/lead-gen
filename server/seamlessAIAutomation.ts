@@ -628,7 +628,7 @@ export class SeamlessAIAutomation {
     };
   }
 
-  async start(seamlessAIUrl: string): Promise<void> {
+  async start(): Promise<void> {
     try {
       console.log("[SeamlessAIAutomation] Starting browser automation...");
       this.browser = await chromium.launch({ headless: false });
@@ -673,8 +673,15 @@ export class SeamlessAIAutomation {
         }
       });
 
-      await this.page.goto(seamlessAIUrl, { waitUntil: "networkidle" });
-      console.log("[SeamlessAIAutomation] Browser ready");
+      // Navigate to Seamless.AI search page
+      const seamlessAIUrl = "https://login.seamless.ai/search";
+      console.log(`[SeamlessAIAutomation] Navigating to: ${seamlessAIUrl}`);
+      await this.page.goto(seamlessAIUrl, { waitUntil: "networkidle", timeout: 60000 });
+      
+      // Get the actual URL from the page (may redirect)
+      const actualUrl = this.page.url();
+      console.log(`[SeamlessAIAutomation] Current page URL: ${actualUrl}`);
+      console.log(`[SeamlessAIAutomation] Browser ready`);
     } catch (error) {
       this.errorLogger.log(`Failed to start browser: ${error}`, "fatal");
       throw error;
@@ -745,13 +752,20 @@ export class SeamlessAIAutomation {
     let page: Page | null = null;
 
     try {
+      console.log(`\n${'='.repeat(80)}`);
       console.log(`[SeamlessAIAutomation] Starting enrichment for lead ${leadId}`);
+      console.log(`[SeamlessAIAutomation] Timestamp: ${new Date().toISOString()}`);
+      console.log(`${'='.repeat(80)}\n`);
 
       // Get the page reference for later re-querying
       page = leadRow.page();
       if (!page) {
         throw new Error("Cannot get page reference from leadRow");
       }
+      
+      // Log current page URL
+      const currentUrl = page.url();
+      console.log(`[SeamlessAIAutomation] Current page URL: ${currentUrl}`);
 
       // STEP 1: Capture BEFORE state and extract lead name as unique identifier
       console.log(`[SeamlessAIAutomation] Capturing BEFORE state...`);

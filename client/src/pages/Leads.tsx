@@ -1964,7 +1964,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     const result = await autoEnrichSelectedMutation.mutateAsync({
                       leadIds: Array.from(selectedLeadIds),
                       requestedExtraction: requestedExtraction,
-                      seamlessAIUrl: "https://login.seamless.ai/search",
                     });
                     
                     setEnrichmentProgress({

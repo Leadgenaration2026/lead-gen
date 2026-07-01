@@ -89,7 +89,6 @@ export const seamlessAIAutomationRouter = router({
   startAutoEnrichmentSelected: protectedProcedure
     .input(
       z.object({
-        seamlessAIUrl: z.string().url(),
         leadIds: z.array(z.number().int().positive()),
         requestedExtraction: z.number().int().positive().optional(),
       })
@@ -102,7 +101,8 @@ export const seamlessAIAutomationRouter = router({
         );
 
         const automation = new SeamlessAIAutomation();
-        await automation.start(input.seamlessAIUrl);
+        // URL will be obtained directly from the browser
+        await automation.start();
         const stats = await automation.enrichSelectedLeads(input.leadIds);
         await automation.stop();
 
