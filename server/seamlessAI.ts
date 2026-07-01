@@ -52,6 +52,53 @@ interface SeamlessContact {
   companySize?: string;
   employeeCount?: string | number;
   employees?: string | number;
+  // Phone fields from API response
+  contactPhone1?: string;
+  contactPhone1TotalAI?: number;
+  contactPhone1IsDnc?: boolean;
+  contactPhone2?: string;
+  contactPhone2IsDnc?: boolean;
+  contactPhone3?: string;
+  contactPhone3IsDnc?: boolean;
+  companyPhone1?: string;
+  companyPhone1TotalAI?: number;
+  companyPhone1IsDnc?: boolean;
+  // Company fields from API response
+  companyStaffCount?: number;
+  companyStaffCountRange?: string;
+  companyAnnualRevenue?: string;
+  companyDomain?: string;
+  companyRevenueRange?: string;
+  companyLinkedInId?: string;
+  // Additional contact fields
+  contactId?: string;
+  username?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  middleName?: string;
+  fullName?: string;
+  name?: string;
+  nameOriginal?: string;
+  email1?: string;
+  email2?: string;
+  email3?: string;
+  department?: string;
+  seniority?: string;
+  lISalesNavUrl?: string;
+  lIRecruiterUrl?: string;
+  companyLocation?: string;
+  companyOriginal?: string;
+  companyDescription?: string;
+  companyFounded?: string;
+  companyType?: string;
+  formerCompany?: string;
+  formerTitle?: string;
+  formerStartedAt?: string;
+  formerEndedAt?: string;
+  titleStartedAt?: string;
+  startedAtCurrentCompany?: string;
+  timeAtRole?: string;
+  timeAtCompany?: string;
 }
 
 interface SeamlessSearchResponse {

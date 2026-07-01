@@ -713,19 +713,19 @@ export class SeamlessAIAutomation {
           );
 
           if (result.success && result.result) {
-            if (this.stats) { this.stats.enrichedLeads++; }
+            if (this.stats) this.stats!.enrichedLeads++;
             console.log(
               `[SeamlessAIAutomation] Enriched lead ${i + 1}/${leads.length}: ${leadInfo?.name || 'Unknown'}`
             );
           } else {
-            if (this.stats) { this.stats.failedLeads++; }
+            if (this.stats) this.stats!.failedLeads++;
             if (this.stats && this.stats.errors) this.stats.errors.push({
               leadId: i,
               error: `Failed after ${result.retryCount ?? 0} retries`,
             });
           }
 
-          if (this.stats) { this.stats.totalLeads++; }
+          if (this.stats) this.stats.totalLeads++;
         }
 
         // Check for next page
@@ -1015,19 +1015,19 @@ export class SeamlessAIAutomation {
         );
 
         if (result.success && result.result) {
-          if (this.stats) { this.stats.enrichedLeads++; }
+          if (this.stats) this.stats!.enrichedLeads++;
           console.log(
             `[SeamlessAIAutomation] Enriched lead ${i + 1}/${selectedLeads.length}`
           );
         } else {
-          if (this.stats) { this.stats.failedLeads++; }
+          if (this.stats) this.stats!.failedLeads++;
           if (this.stats && this.stats.errors) this.stats.errors.push({
             leadId: leadIds[i],
             error: `Failed after ${result.retryCount ?? 0} retries`,
           });
         }
 
-        if (this.stats) { this.stats.totalLeads++; }
+        if (this.stats) this.stats.totalLeads++;
       }
 
       this.stats.endTime = new Date();

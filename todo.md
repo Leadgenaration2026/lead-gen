@@ -1011,3 +1011,14 @@
 - [x] Update UI to show independent search results and extraction progress counters
 - [x] Test multi-page extraction across 2+ pages
 - [x] Fix stale locator bug in enrichment workflow
+
+
+## Batch XX — API-First Refactoring (Remove Browser Automation)
+- [ ] Capture actual JSON response from /contacts/research/poll endpoint
+- [ ] Verify exact field names (phone, title, companySize, email, linkedin)
+- [ ] Refactor enrichment to use REST API instead of browser automation
+- [ ] Remove Playwright browser automation for enrichment
+- [ ] Implement proper Search → Research → Poll workflow
+- [ ] Update UI to show totalResults from API
+- [ ] Test end-to-end enrichment using REST API only
+- [ ] Remove all DOM scraping code
