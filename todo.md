@@ -1014,11 +1014,14 @@
 
 
 ## Batch XX — API-First Refactoring (Remove Browser Automation)
-- [ ] Capture actual JSON response from /contacts/research/poll endpoint
-- [ ] Verify exact field names (phone, title, companySize, email, linkedin)
-- [ ] Refactor enrichment to use REST API instead of browser automation
-- [ ] Remove Playwright browser automation for enrichment
-- [ ] Implement proper Search → Research → Poll workflow
-- [ ] Update UI to show totalResults from API
-- [ ] Test end-to-end enrichment using REST API only
-- [ ] Remove all DOM scraping code
+- [x] Capture actual JSON response from /contacts/research/poll endpoint
+- [x] Verify exact field names (phone, title, companySize, email, linkedin)
+- [x] Refactor enrichment to use REST API instead of browser automation
+- [x] Remove Playwright browser automation for enrichment
+- [x] Implement proper Search → Research → Poll workflow
+- [x] Update UI to show totalResults from API
+- [x] Test end-to-end enrichment using REST API only
+- [x] Remove all DOM scraping code
+- [x] Disable seamlessAIAutomationRouter from main router
+- [x] Disable old browser automation mutations from UI
+- [x] Verify build compiles without browser automation

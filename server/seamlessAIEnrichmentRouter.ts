@@ -165,27 +165,42 @@ export const seamlessAIEnrichmentRouter = router({
 
             const contact = result.contact;
 
-            // Extract fields using exact names from API response
+            // Extract fields using confirmed fallback chains from API audit
+            // Phone: Try personal phones first, then company phone
             const phoneNumber =
-              contact.contactPhone1 ||
-              contact.contactPhone2 ||
-              contact.contactPhone3 ||
-              contact.companyPhone1 ||
+              contact.contactPhone1 ??
+              contact.contactPhone2 ??
+              contact.contactPhone3 ??
+              contact.companyPhone1 ??
               null;
 
+            // Job Title: Prefer title field
             const jobTitle =
-              contact.title || contact.jobTitle || lead.jobTitle || null;
+              contact.title ?? contact.jobTitle ?? lead.jobTitle ?? null;
 
+            // Company Size: Range is more readable, fallback to count
             const companySize =
-              contact.companyStaffCountRange ||
+              contact.companyStaffCountRange ??
               (contact.companyStaffCount ? String(contact.companyStaffCount) : null);
 
+            // Email: Try personal email first, then work email
             const email =
-              contact.email || contact.personalEmail || lead.email || null;
+              contact.email ??
+              contact.personalEmail ??
+              contact.email1 ??
+              lead.email ??
+              null;
 
-            const company = contact.company || lead.companyName || null;
+            // Company: Use API company name
+            const company =
+              contact.company ??
+              lead.companyName ??
+              null;
 
-            const linkedIn = contact.lIProfileUrl || null;
+            // LinkedIn: Use profile URL
+            const linkedIn =
+              contact.lIProfileUrl ??
+              null;
 
             console.log(
               `[SeamlessAIEnrichment] Extracted data for ${lead.ownerName}:`,

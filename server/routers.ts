@@ -12,7 +12,8 @@ import nodemailer from "nodemailer";
 import { plainTextToHtml } from "@shared/emailFormat";
 import { getSignatureHtml, normalizePhoneNumber } from "./_core/followUpScheduler";
 import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PLAIN, getUnsubscribeLinkHtml } from "@shared/signature";
-import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
+// DISABLED: Browser automation for enrichment - using REST API instead
+// import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
 import { seamlessAIEnrichmentRouter } from "./seamlessAIEnrichmentRouter";
 
 // Validation schemas
@@ -4217,8 +4218,8 @@ Use the website data to:
       }),
   }),
 
-  // Seamless.AI Automation router
-  seamlessAIAutomation: seamlessAIAutomationRouter,
+  // DISABLED: Browser automation router - using seamlessAIEnrichment (REST API) instead
+  // seamlessAIAutomation: seamlessAIAutomationRouter,
   // Seamless.AI Enrichment router (API-first approach)
   seamlessAIEnrichment: seamlessAIEnrichmentRouter,
 });

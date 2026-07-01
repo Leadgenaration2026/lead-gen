@@ -58,8 +58,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const deleteListMutation = trpc.leadSets.delete.useMutation();
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
   const enrichFromSeamlessMutation = trpc.leads.enrichFromSeamless.useMutation();
-  const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
-  const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
+  // DISABLED: Browser automation mutations - using REST API instead
+  // const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
+  // const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
+  const apiFirstEnrichMutation = trpc.seamlessAIEnrichment.enrichSelectedLeads.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -1958,34 +1960,37 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   }
                   try {
                     const requestedExtraction = selectedLeadIds.size;
+                    // Initialize progress with API-first approach
                     setEnrichmentProgress({ totalSearchResults: 0, extracted: 0, requested: requestedExtraction });
-                    toast.loading(`Starting auto-enrichment for ${requestedExtraction} leads...`);
+                    toast.loading(`Starting REST API enrichment for ${requestedExtraction} leads...`);
                     
-                    const result = await autoEnrichSelectedMutation.mutateAsync({
+                    // Call the new REST API-first enrichment service
+                    const result = await apiFirstEnrichMutation.mutateAsync({
                       leadIds: Array.from(selectedLeadIds),
                       requestedExtraction: requestedExtraction,
                     });
                     
+                    // Update progress with actual results from API
                     setEnrichmentProgress({
-                      totalSearchResults: result.totalSearchResults || 0,
-                      extracted: result.extractedCount || result.successfulLeads || 0,
+                      totalSearchResults: result.stats.totalFound || 0,
+                      extracted: result.stats.extracted || 0,
                       requested: requestedExtraction,
                     });
                     
-                    toast.success(`Auto-enrichment completed: ${result.successfulLeads} successful, ${result.failedLeads} failed`);
+                    toast.success(`REST API enrichment completed: ${result.stats.enrichedLeads} successful, ${result.stats.failedLeads} failed`);
                     setSelectedLeadIds(new Set());
                     setEnrichmentProgress(null);
                     leadsQuery.refetch();
                   } catch (error) {
-                    toast.error(`Auto-enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+                    toast.error(`REST API enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
                     setEnrichmentProgress(null);
                   }
                 }}
-                disabled={autoEnrichSelectedMutation.isPending || selectedLeadIds.size === 0}
+                disabled={apiFirstEnrichMutation.isPending || selectedLeadIds.size === 0}
                 className="gap-1.5"
               >
-                {autoEnrichSelectedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-                Auto-Enrich Selected ({selectedLeadIds.size})
+                {apiFirstEnrichMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                Enrich via REST API ({selectedLeadIds.size})
               </Button>
               {enrichmentProgress && (
                 <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
