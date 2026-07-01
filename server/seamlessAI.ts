@@ -363,9 +363,38 @@ export async function pollContactResults(
         `/contacts/research/poll?requestIds=${encodeURIComponent(idsParam)}`,
       );
 
-      const results: SeamlessPollResult[] = Array.isArray(response) 
-        ? response 
-        : (response.data || [response]);
+      // Parse response - handle multiple formats
+      // API can return: Array, {contacts: []}, {data: []}, or single object
+      let results: SeamlessPollResult[] = [];
+      
+      if (!response) {
+        console.warn(`[Seamless.AI] Null/undefined poll response`);
+        results = [];
+      } else if (Array.isArray(response)) {
+        results = response;
+      } else if (response.contacts && Array.isArray(response.contacts)) {
+        // Format: {contacts: [{...}, {...}]}
+        results = response.contacts;
+      } else if (response.data && Array.isArray(response.data)) {
+        // Format: {data: [{...}, {...}]}
+        results = response.data;
+      } else if (response.requestId || response.status) {
+        // Single contact object
+        results = [response];
+      } else {
+        console.warn(`[Seamless.AI] Unexpected poll response format:`, JSON.stringify(response).substring(0, 200));
+        results = [];
+      }
+      
+      // Validation logging
+      console.log(`[Seamless.AI] Poll batch parsed: ${results.length} contacts`);
+      if (results.length > 0) {
+        const first = results[0];
+        console.log(`[Seamless.AI] First contact: requestId=${first.requestId}, status=${first.status}`);
+        if (first.contact) {
+          console.log(`[Seamless.AI] Contact fields: email=${first.contact.email}, phone1=${first.contact.contactPhone1}, title=${first.contact.title}, companySize=${first.contact.companyStaffCountRange}`);
+        }
+      }
 
       for (const r of results) {
         if (r.status === "done" || r.status === "missing" || r.status === "error" || r.status === "duplicate") {
