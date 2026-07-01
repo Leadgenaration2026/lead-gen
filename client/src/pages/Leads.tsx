@@ -1960,8 +1960,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   }
                   try {
                     const requestedExtraction = selectedLeadIds.size;
-                    // Initialize progress with API-first approach
-                    setEnrichmentProgress({ totalSearchResults: 0, extracted: 0, requested: requestedExtraction });
+                    // Show initial progress with API-driven metrics (0 processed, awaiting totalResults from API)
+                    setEnrichmentProgress({ 
+                      totalSearchResults: 0, // Will be populated from API
+                      extracted: 0, 
+                      requested: requestedExtraction,
+                    });
                     toast.loading(`Starting REST API enrichment for ${requestedExtraction} leads...`);
                     
                     // Call the new REST API-first enrichment service
@@ -1972,7 +1976,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     
                     // Update progress with actual results from API
                     setEnrichmentProgress({
-                      totalSearchResults: result.stats.totalFound || 0,
+                      totalSearchResults: result.stats.totalSearchResults || 0, // API-driven total
                       extracted: result.stats.extracted || 0,
                       requested: requestedExtraction,
                     });

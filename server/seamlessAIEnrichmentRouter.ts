@@ -53,6 +53,7 @@ export const seamlessAIEnrichmentRouter = router({
         endTime: new Date(),
         totalFound: 0,
         extracted: 0,
+        totalSearchResults: 0, // API-driven total from first search
       };
 
       console.log(
@@ -71,6 +72,9 @@ export const seamlessAIEnrichmentRouter = router({
           `[SeamlessAIEnrichment] Found ${selectedLeads.length} leads to enrich`
         );
 
+        // Capture totalResults from first search for API-driven metrics
+        let firstSearchDone = false;
+
         // Process each lead
         for (const lead of selectedLeads) {
           try {
@@ -88,6 +92,15 @@ export const seamlessAIEnrichmentRouter = router({
               },
               1
             );
+
+            // Capture totalResults from first search (API-driven metric)
+            if (!firstSearchDone && searchResult.supplementalData?.totalResults) {
+              stats.totalSearchResults = searchResult.supplementalData.totalResults;
+              firstSearchDone = true;
+              console.log(
+                `[SeamlessAIEnrichment] API reports ${stats.totalSearchResults} total leads available`
+              );
+            }
 
             if (!searchResult.data || searchResult.data.length === 0) {
               console.log(
