@@ -1986,7 +1986,16 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     setEnrichmentProgress(null);
                     leadsQuery.refetch();
                   } catch (error) {
-                    toast.error(`REST API enrichment failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+                    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+                    console.error("Enrichment error:", error);
+                    
+                    // Display detailed error information
+                    if (errorMsg.includes("[SEAMLESS.AI ERROR")) {
+                      // Extract the detailed error info
+                      toast.error(errorMsg, { duration: 10000 });
+                    } else {
+                      toast.error(`Enrichment failed: ${errorMsg}`);
+                    }
                     setEnrichmentProgress(null);
                   }
                 }}

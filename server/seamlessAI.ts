@@ -10,6 +10,8 @@
  * - Rate limit: 60 requests/minute per endpoint
  */
 
+import { createSeamlessError, logSeamlessError } from "./seamlessAIErrorLogger";
+
 const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
 interface SeamlessSearchResult {
@@ -141,34 +143,55 @@ async function seamlessRequest(
   }
 
   console.log(`[Seamless.AI] ${method} ${url}`);
+  if (body) {
+    const redactedBody = { ...body };
+    if (redactedBody.apiKey) redactedBody.apiKey = "[REDACTED]";
+    console.log(`[Seamless.AI] Request body:`, JSON.stringify(redactedBody, null, 2));
+  }
 
   const response = await fetch(url, options);
+  const responseText = await response.text();
+  
+  console.log(`[Seamless.AI] Response status: ${response.status}`);
+  if (responseText) {
+    console.log(`[Seamless.AI] Response body:`, responseText);
+  }
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "Unknown error");
-    console.error(`[Seamless.AI] Error ${response.status}: ${errorText}`);
+    const stepName = path.includes("/search/") ? "Search" : path.includes("/research") ? "Research" : path.includes("/poll") ? "Poll" : "Unknown";
+    const errorDetails = {
+      step: stepName as "Search" | "Research" | "Poll" | "Unknown",
+      endpoint: path,
+      method,
+      statusCode: response.status,
+      requestBody: body ? { ...body, apiKey: "[REDACTED]" } : undefined,
+      responseBody: responseText,
+      timestamp: new Date().toISOString(),
+    };
+    
+    logSeamlessError(errorDetails);
     
     // Parse specific error codes from Seamless.AI
     try {
-      const errorData = JSON.parse(errorText);
+      const errorData = JSON.parse(responseText);
       if (errorData.code === "insufficientCredits" || errorData.msg?.includes("Insufficient credit")) {
-        throw new Error("SEAMLESS_CREDITS_EXHAUSTED: Your Seamless.AI account has run out of API credits. Please add more credits at seamless.ai/billing to continue generating leads.");
+        throw createSeamlessError({ ...errorDetails, error: "Insufficient credits" });
       }
       if (errorData.code === "unauthorized" || response.status === 401) {
-        throw new Error("SEAMLESS_AUTH_ERROR: Your Seamless.AI API key is invalid or expired. Please update it in Settings.");
+        throw createSeamlessError({ ...errorDetails, error: "Unauthorized - Invalid or expired API key" });
       }
       if (errorData.code === "rateLimited" || response.status === 429) {
-        throw new Error("SEAMLESS_RATE_LIMITED: Too many requests to Seamless.AI. Please wait a moment and try again.");
+        throw createSeamlessError({ ...errorDetails, error: "Rate limited - Too many requests" });
       }
     } catch (parseError: any) {
       // If it's our own thrown error, re-throw it
-      if (parseError.message?.startsWith("SEAMLESS_")) throw parseError;
+      if (parseError.message?.includes("[SEAMLESS.AI ERROR")) throw parseError;
     }
     
-    throw new Error(`Seamless.AI API error (${response.status}): ${errorText}`);
+    throw createSeamlessError({ ...errorDetails, error: `API error: ${responseText}` });
   }
 
-  return response.json();
+  return JSON.parse(responseText);
 }
 
 /**

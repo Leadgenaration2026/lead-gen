@@ -14,6 +14,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { updateLead, getLeadById } from "./db";
 import { searchContacts, researchContacts, pollContactResults } from "./seamlessAI";
+import { SeamlessErrorDetails } from "./seamlessAIErrorLogger";
 
 export const seamlessAIEnrichmentRouter = router({
   /**
@@ -48,7 +49,7 @@ export const seamlessAIEnrichmentRouter = router({
         totalLeads: leadIds.length,
         enrichedLeads: 0,
         failedLeads: 0,
-        errors: [] as Array<{ leadId: number; error: string }>,
+        errors: [] as Array<{ leadId: number; error: string; details?: SeamlessErrorDetails }>,
         startTime: new Date(),
         endTime: new Date(),
         totalFound: 0,
@@ -251,6 +252,7 @@ export const seamlessAIEnrichmentRouter = router({
             stats.errors.push({
               leadId: lead.id,
               error: error.message,
+              details: error.cause as SeamlessErrorDetails,
             });
           }
         }
