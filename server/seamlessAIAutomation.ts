@@ -2,6 +2,7 @@ import { chromium, Browser, Page, Locator } from "playwright";
 import { getDb } from "./db";
 import { leads } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { APIResponseParser, type EnrichmentAPIResponse } from "./apiResponseParser";
 
 /**
  * Seamless.AI Browser Automation System
@@ -614,6 +615,7 @@ export class SeamlessAIAutomation {
   private paginationManager = new PaginationManager();
   private errorLogger = new ErrorLogger();
   private stats: AutomationStats;
+  private lastEnrichmentResponse: EnrichmentAPIResponse | null = null;
 
   constructor() {
     this.stats = {
@@ -632,29 +634,38 @@ export class SeamlessAIAutomation {
       this.browser = await chromium.launch({ headless: false });
       this.page = await this.browser.newPage();
 
-      // Intercept all network responses to log raw JSON
+      // Intercept all network responses to capture enrichment data
       await this.page.on('response', async (response) => {
         try {
           const url = response.url();
           const status = response.status();
           
-          // Log all API responses
-          if (url.includes('api') || url.includes('seamless')) {
-            console.log(`\n[NETWORK] ${status} ${url}`);
-            
+          // Capture ALL responses
+          if (status === 200 || status === 201) {
             try {
               const responseText = await response.text();
-              console.log(`[NETWORK] Raw Response Body:`);
-              console.log(responseText);
+              console.log(`\n[NETWORK] ${status} ${url}`);
+              console.log(`[NETWORK] Response:`, responseText.substring(0, 500));
               
-              // Save to file
+              // Save to file for debugging
               const fs = require('fs');
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
               const filename = `/tmp/seamless_response_${timestamp}.json`;
               fs.writeFileSync(filename, responseText, 'utf-8');
               console.log(`[NETWORK] Saved to: ${filename}`);
+              
+              // Try to parse as enrichment data
+              const parsed = APIResponseParser.parseEnrichmentResponse(responseText);
+              if (parsed && APIResponseParser.hasEnrichmentData(parsed)) {
+                console.log(`[NETWORK] ✅ Enrichment data found:`, {
+                  phone: parsed.phone,
+                  title: parsed.title,
+                  companySize: parsed.companySize,
+                });
+                this.lastEnrichmentResponse = parsed;
+              }
             } catch (e) {
-              console.log(`[NETWORK] Could not read response body`);
+              // Continue on error
             }
           }
         } catch (e) {
@@ -799,9 +810,28 @@ export class SeamlessAIAutomation {
 
       console.log(`[SeamlessAIAutomation] Successfully re-located lead by name: "${leadName}"`);
 
-      // STEP 5: Capture AFTER state from FRESH DOM
-      console.log(`[SeamlessAIAutomation] Capturing AFTER state from fresh DOM...`);
-      const afterData = await this.dataExtractor.extractLeadData(freshLeadRow);
+      // STEP 5: Use API response data if available, otherwise extract from DOM
+      console.log(`[SeamlessAIAutomation] Checking for API response data...`);
+      let afterData: any;
+      
+      if (this.lastEnrichmentResponse && APIResponseParser.hasEnrichmentData(this.lastEnrichmentResponse)) {
+        console.log(`[SeamlessAIAutomation] ✅ Using API response data:`, this.lastEnrichmentResponse);
+        afterData = {
+          fullName: leadName,
+          phoneNumber: this.lastEnrichmentResponse.phone,
+          jobTitle: this.lastEnrichmentResponse.title,
+          companySize: this.lastEnrichmentResponse.companySize,
+          email: this.lastEnrichmentResponse.email,
+          company: this.lastEnrichmentResponse.company,
+          linkedinUrl: this.lastEnrichmentResponse.linkedinUrl,
+          industry: (this.lastEnrichmentResponse as any).industry,
+          website: (this.lastEnrichmentResponse as any).website,
+        };
+        this.lastEnrichmentResponse = null; // Clear for next lead
+      } else {
+        console.log(`[SeamlessAIAutomation] No API response, extracting from DOM...`);
+        afterData = await this.dataExtractor.extractLeadData(freshLeadRow);
+      }
       console.log(`[SeamlessAIAutomation] AFTER:`, afterData);
 
       // STEP 6: Verify that enrichment actually happened
