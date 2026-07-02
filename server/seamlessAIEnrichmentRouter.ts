@@ -16,6 +16,7 @@ import { TRPCError } from "@trpc/server";
 import { updateLead, getLeadById } from "./db";
 import { searchContacts, researchContacts, pollContactResults } from "./seamlessAI";
 import { SeamlessErrorDetails } from "./seamlessAIErrorLogger";
+import { generateEnrichmentReport, formatEnrichmentReport, type EnrichmentReportStats } from "./enrichmentReport";
 
 export const seamlessAIEnrichmentRouter = router({
   /**
@@ -265,9 +266,14 @@ export const seamlessAIEnrichmentRouter = router({
           stats
         );
 
+        // Generate and log enrichment report
+        const report = generateEnrichmentReport(stats as EnrichmentReportStats);
+        console.log(formatEnrichmentReport(report));
+        
         return {
           success: true,
           stats,
+          report,
         };
       } catch (error: any) {
         console.error(
@@ -275,6 +281,10 @@ export const seamlessAIEnrichmentRouter = router({
           error.message
         );
         stats.endTime = new Date();
+        
+        // Generate and log report even on error
+        const report = generateEnrichmentReport(stats as EnrichmentReportStats);
+        console.log(formatEnrichmentReport(report));
         
         // Throw as tRPC error with proper message
         const errorMessage = error.message || "Unknown enrichment error";

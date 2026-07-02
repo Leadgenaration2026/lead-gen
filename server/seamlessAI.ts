@@ -131,6 +131,7 @@ async function seamlessRequest(
   body?: Record<string, any>
 ): Promise<any> {
   const url = `${SEAMLESS_API_BASE}${path}`;
+  const startTime = Date.now();
   // Use "Token" header as primary auth (works with Seamless.AI API keys)
   const headers: Record<string, string> = {
     "Token": apiKey,
@@ -154,10 +155,12 @@ async function seamlessRequest(
   const contentType = response.headers.get('content-type');
   
   console.log(`[Seamless.AI] Response status: ${response.status}`);
+  const elapsedTime = Date.now() - startTime;
   console.log(`[Seamless.AI] Content-Type: ${contentType}`);
   if (responseText) {
     console.log(`[Seamless.AI] Response body (first 500 chars):`, responseText.substring(0, 500));
   }
+  console.log(`[Seamless.AI] Elapsed Time: ${elapsedTime}ms`);
 
   // Validate response is JSON before parsing
   if (!contentType?.includes('application/json')) {
