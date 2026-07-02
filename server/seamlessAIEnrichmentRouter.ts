@@ -1,70 +1,129 @@
-/**
- * Seamless.AI Enrichment Router - API-First Approach
- * 
- * This replaces browser automation with direct REST API calls:
- * 1. Search for contacts
- * 2. Submit for research (enrichment)
- * 3. Poll for results
- * 4. Extract and save to database
- * 
- * No browser automation, no DOM scraping, no Playwright.
- */
-
-import { protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { updateLead, getLeadById } from "./db";
-import { searchContacts, researchContacts, pollContactResults } from "./seamlessAI";
-import { SeamlessErrorDetails } from "./seamlessAIErrorLogger";
-import { generateEnrichmentReport, formatEnrichmentReport, type EnrichmentReportStats } from "./enrichmentReport";
+import { getLeadById, updateLead } from "./db";
+import { searchContacts, researchContact, SeamlessSearchResult, SeamlessResearchResponse } from "./seamlessAI";
+import { leads } from "../drizzle/schema";
+
+interface EnrichmentReport {
+  leadId: number;
+  status: "success" | "failed" | "needs_review" | "skipped";
+  message: string;
+  confidenceScore?: number;
+  seamlessSearchResultId?: string;
+}
+
+class SeamlessAIAutomationStats {
+  searchesPerformed: number = 0;
+  resultsReturned: number = 0;
+  bestMatchesSelected: number = 0;
+  researchRequestsSubmitted: number = 0;
+  enrichedLeads: number = 0;
+  skippedLeads: number = 0;
+  failedEnrichments: number = 0;
+  needsReviewLeads: number = 0;
+
+  increment(key: keyof SeamlessAIAutomationStats) {
+    (this[key] as number)++;
+  }
+}
+
+const formatEnrichmentReport = (report: EnrichmentReport) => {
+  return `[SeamlessAIEnrichment] Lead ${report.leadId}: Status: ${report.status}, Message: ${report.message}${report.confidenceScore ? `, Confidence: ${report.confidenceScore}` : ""}${report.seamlessSearchResultId ? `, Search Result ID: ${report.seamlessSearchResultId}` : ""}`;
+};
+
+const scoreSearchResult = (lead: typeof leads.$inferSelect, result: SeamlessSearchResult): number => {
+  let score = 0;
+  const leadFirstName = lead.ownerName.split(" ")[0]?.toLowerCase();
+  const leadLastName = lead.ownerName.split(" ").slice(1).join(" ")?.toLowerCase();
+
+  console.log(`[SeamlessAIEnrichment] Scoring result for lead ${lead.id} (${lead.ownerName}) against result ${result.id} (${result.name})`);
+  console.log(`Lead First Name: ${leadFirstName}, Last Name: ${leadLastName}`);
+  console.log(`Result First Name: ${result.firstName?.toLowerCase()}, Last Name: ${result.lastName?.toLowerCase()}`);
+
+  // Exact full name match
+  if (lead.ownerName.toLowerCase() === result.name?.toLowerCase()) {
+    score += 50;
+    console.log(`  +50 for exact full name match`);
+  } else {
+    // Partial name matches
+    if (leadFirstName && result.firstName?.toLowerCase() === leadFirstName) {
+      score += 20;
+      console.log(`  +20 for exact first name match`);
+    }
+    if (leadLastName && result.lastName?.toLowerCase() === leadLastName) {
+      score += 20;
+      console.log(`  +20 for exact last name match`);
+    }
+  }
+
+  // Exact company match
+  if (lead.companyName.toLowerCase() === result.companyName?.toLowerCase()) {
+    score += 40;
+    console.log(`  +40 for exact company match`);
+  }
+
+  // Exact job title match
+  if (lead.jobTitle && lead.jobTitle.toLowerCase() === result.jobTitle?.toLowerCase()) {
+    score += 20;
+    console.log(`  +20 for exact job title match`);
+  }
+
+  // Exact email domain match
+  const leadEmailDomain = lead.email.split("@")[1]?.toLowerCase();
+  const resultEmailDomain = result.email?.split("@")[1]?.toLowerCase();
+  if (leadEmailDomain && resultEmailDomain && leadEmailDomain === resultEmailDomain) {
+    score += 30;
+    console.log(`  +30 for exact email domain match`);
+  }
+
+  // Exact LinkedIn URL match
+  if (lead.linkedinUrl && lead.linkedinUrl.toLowerCase() === result.linkedinUrl?.toLowerCase()) {
+    score += 100;
+    console.log(`  +100 for exact LinkedIn URL match`);
+  }
+
+  // Exact city match
+  if (lead.city && lead.city.toLowerCase() === result.contactLocation?.city?.toLowerCase()) {
+    score += 20;
+    console.log(`  +20 for exact city match`);
+  }
+
+  // Exact state match
+  if (lead.state && lead.state.toLowerCase() === result.contactLocation?.state?.toLowerCase()) {
+    score += 20;
+    console.log(`  +20 for exact state match`);
+  }
+
+  // Exact country match (assuming lead.country is available)
+  if (lead.country && lead.country.toLowerCase() === result.contactLocation?.country?.toLowerCase()) {
+    score += 10;
+    console.log(`  +10 for exact country match`);
+  }
+
+  console.log(`  Final score: ${score}`);
+  return score;
+};
 
 export const seamlessAIEnrichmentRouter = router({
-  /**
-   * Enrich selected leads using Seamless.AI REST API
-   * 
-   * Flow:
-   * 1. Get selected lead IDs and names
-   * 2. Search Seamless.AI for each lead
-   * 3. Submit for research
-   * 4. Poll until complete
-   * 5. Extract phone, title, company size, email
-   * 6. Save to database
-   */
-  enrichSelectedLeads: protectedProcedure
-    .input(
-      z.object({
-        leadIds: z.array(z.number()),
-        requestedExtraction: z.number().optional().default(20),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const { leadIds, requestedExtraction } = input;
-      const apiKey = process.env.SEAMLESS_AI_API_KEY;
+  enrichLeads: protectedProcedure
+    .input(z.object({
+      leadIds: z.array(z.number()),
+      confidenceThreshold: z.number().min(0).max(100).default(80),
+      maxResearchSubmissions: z.number().min(1).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { leadIds, confidenceThreshold, maxResearchSubmissions } = input;
+      const stats = new SeamlessAIAutomationStats();
+      const reports: EnrichmentReport[] = [];
 
-      if (!apiKey) {
-        throw new Error(
-          "SEAMLESS_AI_API_KEY not configured. Please add it in Settings."
-        );
+      if (!ctx.user) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Please login to enrich leads." });
       }
 
-      const stats = {
-        totalLeads: leadIds.length,
-        enrichedLeads: 0,
-        failedLeads: 0,
-        errors: [] as Array<{ leadId: number; error: string; details?: SeamlessErrorDetails }>,
-        startTime: new Date(),
-        endTime: new Date(),
-        totalFound: 0,
-        extracted: 0,
-        totalSearchResults: 0, // API-driven total from first search
-      };
-
-      console.log(
-        `[SeamlessAIEnrichment] Starting enrichment for ${leadIds.length} leads`
-      );
+      const userId = ctx.user.id;
 
       try {
-        // Get lead details from database
         const selectedLeads = [];
         for (const leadId of leadIds) {
           const lead = await getLeadById(leadId);
@@ -75,231 +134,124 @@ export const seamlessAIEnrichmentRouter = router({
           `[SeamlessAIEnrichment] Found ${selectedLeads.length} leads to enrich`
         );
 
-        // Capture totalResults from first search for API-driven metrics
-        let firstSearchDone = false;
-
-        // Process each lead
         for (const lead of selectedLeads) {
-          try {
-            console.log(
-              `[SeamlessAIEnrichment] Processing lead: ${lead.ownerName}`
-            );
-
-            // Step 1: Search for the contact
-            const searchResult = await searchContacts(
-              apiKey,
-              {
-                // Search by name and company if available
-                jobTitle: lead.jobTitle ? [lead.jobTitle] : undefined,
-                limit: 1,
-              },
-              1
-            );
-
-            // Capture totalResults from first search (API-driven metric)
-            if (!firstSearchDone && searchResult.supplementalData?.totalResults) {
-              stats.totalSearchResults = searchResult.supplementalData.totalResults;
-              firstSearchDone = true;
-              console.log(
-                `[SeamlessAIEnrichment] API reports ${stats.totalSearchResults} total leads available`
-              );
-            }
-
-            if (!searchResult.data || searchResult.data.length === 0) {
-              console.log(
-                `[SeamlessAIEnrichment] No search results for ${lead.ownerName}`
-              );
-              stats.failedLeads++;
-              stats.errors.push({
-                leadId: lead.id,
-                error: "No search results found",
-              });
-              continue;
-            }
-
-            stats.totalFound += searchResult.data.length;
-            const searchResultIds = searchResult.data.map(
-              (r) => r.searchResultId
-            );
-
-            console.log(
-              `[SeamlessAIEnrichment] Found ${searchResultIds.length} search result(s)`
-            );
-
-            // Step 2: Submit for research
-            const researchResult = await researchContacts(apiKey, searchResultIds);
-
-            if (!researchResult.requestIds || researchResult.requestIds.length === 0) {
-              console.log(
-                `[SeamlessAIEnrichment] Research submission failed for ${lead.ownerName}`
-              );
-              stats.failedLeads++;
-              stats.errors.push({
-                leadId: lead.id,
-                error: "Research submission failed",
-              });
-              continue;
-            }
-
-            console.log(
-              `[SeamlessAIEnrichment] Submitted ${researchResult.requestIds.length} request(s) for research`
-            );
-
-            // Step 3: Poll for results
-            const pollResults = await pollContactResults(
-              apiKey,
-              researchResult.requestIds,
-              120, // max attempts
-              2000 // poll interval
-            );
-
-            if (!pollResults || pollResults.length === 0) {
-              console.log(
-                `[SeamlessAIEnrichment] No poll results for ${lead.ownerName}`
-              );
-              stats.failedLeads++;
-              stats.errors.push({
-                leadId: lead.id,
-                error: "Polling timed out",
-              });
-              continue;
-            }
-
-            // Step 4: Extract data from first result
-            const result = pollResults[0];
-            if (!result.contact) {
-              console.log(
-                `[SeamlessAIEnrichment] No contact data in result for ${lead.ownerName}`
-              );
-              stats.failedLeads++;
-              stats.errors.push({
-                leadId: lead.id,
-                error: "No contact data returned",
-              });
-              continue;
-            }
-
-            const contact = result.contact;
-
-            // Extract fields using confirmed fallback chains from API audit
-            // Phone: Try personal phones first, then company phone
-            const phoneNumber =
-              contact.contactPhone1 ??
-              contact.contactPhone2 ??
-              contact.contactPhone3 ??
-              contact.companyPhone1 ??
-              null;
-
-            // Job Title: Prefer title field
-            const jobTitle =
-              contact.title ?? contact.jobTitle ?? lead.jobTitle ?? null;
-
-            // Company Size: Range is more readable, fallback to count
-            const companySize =
-              contact.companyStaffCountRange ??
-              (contact.companyStaffCount ? String(contact.companyStaffCount) : null);
-
-            // Email: Try personal email first, then work email
-            const email =
-              contact.email ??
-              contact.personalEmail ??
-              contact.email1 ??
-              lead.email ??
-              null;
-
-            // Company: Use API company name
-            const company =
-              contact.company ??
-              lead.companyName ??
-              null;
-
-            // LinkedIn: Use profile URL
-            const linkedIn =
-              contact.lIProfileUrl ??
-              null;
-
-            console.log(
-              `[SeamlessAIEnrichment] Extracted data for ${lead.ownerName}:`,
-              {
-                phoneNumber,
-                jobTitle,
-                companySize,
-                email,
-                company,
-                linkedIn,
-              }
-            );
-
-            // Step 5: Update database
-            await updateLead(lead.id, {
-              phoneNumber: phoneNumber || lead.phoneNumber,
-              jobTitle,
-              companySize,
-              email: email || lead.email,
-              linkedinUrl: linkedIn || lead.linkedinUrl,
-            });
-
-            stats.enrichedLeads++;
-            stats.extracted++;
-
-            console.log(
-              `[SeamlessAIEnrichment] ✅ Successfully enriched ${lead.ownerName}`
-            );
-          } catch (error: any) {
-            console.error(
-              `[SeamlessAIEnrichment] Error enriching ${lead.ownerName}:`,
-              error.message
-            );
-            stats.failedLeads++;
-            stats.errors.push({
+          if (stats.researchRequestsSubmitted >= (maxResearchSubmissions || Number.MAX_SAFE_INTEGER)) {
+            reports.push({
               leadId: lead.id,
-              error: error.message,
-              details: error.cause as SeamlessErrorDetails,
+              status: "skipped",
+              message: `Skipped due to global research submission limit (${maxResearchSubmissions})`,
             });
+            stats.increment("skippedLeads");
+            continue;
+          }
+
+          stats.increment("searchesPerformed");
+          console.log(`[SeamlessAIEnrichment] Searching Seamless.AI for lead ${lead.id} (${lead.ownerName}, ${lead.companyName})`);
+
+          const searchFilters = {
+            firstName: lead.ownerName.split(" ")[0],
+            lastName: lead.ownerName.split(" ").slice(1).join(" "),
+            companyName: [lead.companyName],
+            jobTitle: lead.jobTitle ? [lead.jobTitle] : undefined,
+            email: lead.email || undefined,
+            city: lead.city || undefined,
+            state: lead.state || undefined,
+            country: lead.country || undefined,
+            linkedinUrl: lead.linkedinUrl || undefined,
+          };
+
+          const searchResults = await searchContacts(ctx.user.seamlessApiKey, searchFilters);
+          stats.increment("resultsReturned");
+
+          if (!searchResults || searchResults.data.length === 0) {
+            reports.push({
+              leadId: lead.id,
+              status: "needs_review",
+              message: "No search results found on Seamless.AI",
+            });
+            stats.increment("needsReviewLeads");
+            continue;
+          }
+
+          let bestMatch: { result: SeamlessSearchResult; score: number } | null = null;
+          for (const result of searchResults.data) {
+            const score = scoreSearchResult(lead, result);
+            if (!bestMatch || score > bestMatch.score) {
+              bestMatch = { result, score };
+            }
+          }
+
+          if (!bestMatch || bestMatch.score < confidenceThreshold) {
+            reports.push({
+              leadId: lead.id,
+              status: "needs_review",
+              message: `Best match confidence (${bestMatch?.score || 0}) below threshold (${confidenceThreshold})`,
+              confidenceScore: bestMatch?.score,
+              seamlessSearchResultId: bestMatch?.result.id,
+            });
+            stats.increment("needsReviewLeads");
+            continue;
+          }
+
+          // Safety guard: ensure only one result is selected for research
+          if (bestMatch.result.id) {
+            console.log(`[SeamlessAIEnrichment] Lead: ${lead.ownerName}`);
+            console.log(`[SeamlessAIEnrichment] Search Results Returned: ${searchResults.data.length}`);
+            console.log(`[SeamlessAIEnrichment] Selected Best Match: 1`);
+            console.log(`[SeamlessAIEnrichment] Research IDs Submitted: 1`);
+            console.log(`[SeamlessAIEnrichment] Expected Credits: 1`);
+
+            stats.increment("researchRequestsSubmitted");
+            const researchResult: SeamlessResearchResponse = await researchContact(ctx.user.seamlessApiKey, [bestMatch.result.id]);
+
+            if (researchResult) {
+              await updateLead(lead.id, {
+                email: researchResult.email || lead.email,
+                phoneNumber: researchResult.phoneNumber || lead.phoneNumber,
+                jobTitle: researchResult.jobTitle || lead.jobTitle,
+                linkedinUrl: researchResult.linkedinUrl || lead.linkedinUrl,
+                companyName: researchResult.companyName || lead.companyName,
+                website: researchResult.website || lead.website,
+                industry: researchResult.industry || lead.industry,
+                city: researchResult.contactLocation?.city || lead.city,
+                state: researchResult.contactLocation?.state || lead.state,
+                country: researchResult.contactLocation?.country || lead.country,
+                companySize: researchResult.companySize || lead.companySize,
+                personalEmail: researchResult.personalEmail || lead.personalEmail,
+                workEmail: researchResult.workEmail || lead.workEmail,
+                allEmails: researchResult.allEmails || lead.allEmails,
+              });
+              reports.push({
+                leadId: lead.id,
+                status: "success",
+                message: "Lead enriched successfully",
+                confidenceScore: bestMatch.score,
+                seamlessSearchResultId: bestMatch.result.id,
+              });
+              stats.increment("enrichedLeads");
+            } else {
+              reports.push({
+                leadId: lead.id,
+                status: "failed",
+                message: "Failed to research contact on Seamless.AI",
+                confidenceScore: bestMatch.score,
+                seamlessSearchResultId: bestMatch.result.id,
+              });
+              stats.increment("failedEnrichments");
+            }
           }
         }
-
-        stats.endTime = new Date();
-
-        console.log(
-          `[SeamlessAIEnrichment] Enrichment complete:`,
-          stats
-        );
-
-        // Generate and log enrichment report
-        const report = generateEnrichmentReport(stats as EnrichmentReportStats);
-        console.log(formatEnrichmentReport(report));
-        
-        return {
-          success: true,
-          stats,
-          report,
-        };
-      } catch (error: any) {
-        console.error(
-          "[SeamlessAIEnrichment] Fatal error:",
-          error.message
-        );
-        stats.endTime = new Date();
-        
-        // Generate and log report even on error
-        const report = generateEnrichmentReport(stats as EnrichmentReportStats);
-        console.log(formatEnrichmentReport(report));
-        
-        // Throw as tRPC error with proper message
-        const errorMessage = error.message || "Unknown enrichment error";
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: errorMessage,
-          cause: error,
-        });
-        
-        // This line is unreachable but kept for reference
-        return {
-          success: false,
-          error: errorMessage,
-          stats,
-        };
+      } catch (error) {
+        console.error("[SeamlessAIEnrichment] Error during enrichment:", error);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to enrich leads" });
+      } finally {
+        console.log("[SeamlessAIEnrichment] Enrichment process completed. Stats:", stats);
+        for (const report of reports) {
+          console.log(formatEnrichmentReport(report));
+        }
       }
+
+      return { success: true, stats };
     }),
 });
+

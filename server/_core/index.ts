@@ -241,8 +241,8 @@ async function startServer() {
           });
 
           await db.updateCampaignLead(campaignLead.id, {
-            emailSent: true,
-            emailSentAt: new Date(),
+            emailSent: 1 as any,
+            emailSentAt: new Date().toISOString(),
             senderEmail: senderEmail || null,
             messageId: sendResult.messageId || null,
             threadId: sendResult.messageId || null,
@@ -253,7 +253,7 @@ async function startServer() {
         }
       }
 
-      await db.updateCampaign(campaign.id, { status: "active", launchedAt: new Date(), sentCount });
+      await db.updateCampaign(campaign.id, { status: "active", launchedAt: new Date().toISOString(), sentCount });
 
       // Delete the cron job since it's a one-time launch
       try {
@@ -424,8 +424,8 @@ async function startServer() {
           });
 
           await db.updateCampaignLead(campaignLead.id, {
-            emailSent: true,
-            emailSentAt: new Date(),
+            emailSent: 1 as any,
+            emailSentAt: new Date().toISOString(),
             senderEmail: senderEmail || null,
             messageId: sendResult.messageId || null,
             threadId: sendResult.messageId || null,

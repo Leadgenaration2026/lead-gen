@@ -9,17 +9,6 @@ export interface EnrichmentFailure {
   reason: string;
 }
 
-export interface EnrichmentReportStats {
-  requested: number;
-  successfullyEnriched: number;
-  failed: number;
-  creditsUsed: number;
-  totalProcessingTime: number; // milliseconds
-  startTime: Date;
-  endTime: Date;
-  failures: EnrichmentFailure[];
-}
-
 export interface EnrichmentReport {
   summary: {
     requested: number;
@@ -40,37 +29,81 @@ export interface EnrichmentReport {
   timestamp: string;
 }
 
-export function generateEnrichmentReport(stats: EnrichmentReportStats): EnrichmentReport {
-  const successRate = stats.requested > 0 
-    ? ((stats.successfullyEnriched / stats.requested) * 100).toFixed(1)
-    : "0.0";
+// Map actual stats structure (from seamlessAIEnrichmentRouter) to report format
+function mapStatsToReport(stats: any) {
+  console.log("=== STATS OBJECT ===");
+  console.log(JSON.stringify(stats, null, 2));
+  console.log("typeof stats.failures:", typeof stats.failures);
+  console.log("Array.isArray(stats.failures):", Array.isArray(stats.failures));
+  console.log("typeof stats.errors:", typeof stats.errors);
+  console.log("Array.isArray(stats.errors):", Array.isArray(stats.errors));
 
-  const avgTimePerLead = stats.successfullyEnriched > 0
-    ? (stats.totalProcessingTime / stats.successfullyEnriched).toFixed(1)
-    : "0.0";
+  // Map errors array to failures array
+  const failures: EnrichmentFailure[] = [];
+  if (Array.isArray(stats.errors)) {
+    for (const error of stats.errors) {
+      failures.push({
+        leadId: error.leadId || 0,
+        leadName: `Lead ${error.leadId}`,
+        reason: error.error || "Unknown error",
+      });
+    }
+  }
 
-  // Group failures by reason
+  return {
+    requested: stats.totalLeads || 0,
+    successfullyEnriched: stats.enrichedLeads || 0,
+    failed: stats.failedLeads || 0,
+    creditsUsed: stats.creditsUsed || 0,
+    totalProcessingTime:
+      stats.endTime && stats.startTime
+        ? stats.endTime.getTime() - stats.startTime.getTime()
+        : 0,
+    startTime: stats.startTime,
+    endTime: stats.endTime,
+    failures,
+  };
+}
+
+export function generateEnrichmentReport(stats: any): EnrichmentReport {
+  // Map actual stats to report format
+  const mapped = mapStatsToReport(stats);
+
+  const successRate =
+    mapped.requested > 0
+      ? ((mapped.successfullyEnriched / mapped.requested) * 100).toFixed(1)
+      : "0.0";
+
+  const avgTimePerLead =
+    mapped.successfullyEnriched > 0
+      ? (mapped.totalProcessingTime / mapped.successfullyEnriched).toFixed(1)
+      : "0.0";
+
+  // Group failures by reason (defensive)
   const failuresByReason: Record<string, number> = {};
-  for (const failure of stats.failures) {
-    failuresByReason[failure.reason] = (failuresByReason[failure.reason] || 0) + 1;
+  if (Array.isArray(mapped.failures)) {
+    for (const failure of mapped.failures) {
+      const reason = failure.reason || "Unknown";
+      failuresByReason[reason] = (failuresByReason[reason] || 0) + 1;
+    }
   }
 
   return {
     summary: {
-      requested: stats.requested,
-      successfullyEnriched: stats.successfullyEnriched,
-      failed: stats.failed,
+      requested: mapped.requested,
+      successfullyEnriched: mapped.successfullyEnriched,
+      failed: mapped.failed,
       successRate: `${successRate}%`,
     },
     performance: {
-      creditsUsed: stats.creditsUsed,
-      totalProcessingTime: formatDuration(stats.totalProcessingTime),
+      creditsUsed: mapped.creditsUsed,
+      totalProcessingTime: formatDuration(mapped.totalProcessingTime),
       averageTimePerLead: `${avgTimePerLead}ms`,
     },
     failures: {
-      count: stats.failures.length,
+      count: Array.isArray(mapped.failures) ? mapped.failures.length : 0,
       byReason: failuresByReason,
-      details: stats.failures,
+      details: Array.isArray(mapped.failures) ? mapped.failures : [],
     },
     timestamp: new Date().toISOString(),
   };
@@ -100,17 +133,24 @@ export function formatEnrichmentReport(report: EnrichmentReport): string {
     output += `Total Failed:            ${report.failures.count}\n\n`;
 
     output += "Failure Breakdown:\n";
-    for (const [reason, count] of Object.entries(report.failures.byReason)) {
-      output += `  - ${reason}: ${count}\n`;
+    const reasonEntries = Object.entries(report.failures.byReason);
+    if (Array.isArray(reasonEntries)) {
+      for (const [reason, count] of reasonEntries) {
+        output += `  - ${reason}: ${count}\n`;
+      }
     }
 
-    if (report.failures.details.length > 0) {
+    const failureDetails = Array.isArray(report.failures.details)
+      ? report.failures.details
+      : [];
+    if (failureDetails.length > 0) {
       output += "\nFailed Leads:\n";
-      for (const failure of report.failures.details.slice(0, 10)) {
+      const failureSlice = failureDetails.slice(0, 10);
+      for (const failure of failureSlice) {
         output += `  - ${failure.leadName} (ID: ${failure.leadId}): ${failure.reason}\n`;
       }
-      if (report.failures.details.length > 10) {
-        output += `  ... and ${report.failures.details.length - 10} more\n`;
+      if (failureDetails.length > 10) {
+        output += `  ... and ${failureDetails.length - 10} more\n`;
       }
     }
   }

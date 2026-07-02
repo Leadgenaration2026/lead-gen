@@ -211,6 +211,62 @@
       "when": 1782758258139,
       "tag": "0029_talented_firedrake",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1783007034254,
+      "tag": "0030_romantic_hardball",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1783007619568,
+      "tag": "0031_light_siren",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1783009150910,
+      "tag": "0032_wooden_loners",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1783009865335,
+      "tag": "0033_tricky_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1783010749491,
+      "tag": "0034_many_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1783014836874,
+      "tag": "0035_cloudy_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1783014877161,
+      "tag": "0036_colorful_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "5",
+      "when": 1783016795727,
+      "tag": "0037_long_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

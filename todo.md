@@ -1025,3 +1025,29 @@
 - [x] Disable seamlessAIAutomationRouter from main router
 - [x] Disable old browser automation mutations from UI
 - [x] Verify build compiles without browser automation
+
+## Seamless.AI Enrichment Redesign
+- [x] Implement specific search criteria for Seamless.AI (First Name, Last Name, Company, Job Title, Email domain, City, State, Country, LinkedIn URL)
+- [x] Implement scoring mechanism for search results to select the best match
+- [x] Add confidence score calculation based on exact matches
+- [x] Implement hard safety guard: `searchResultIds.length` must be 1
+- [x] Implement credit protection mode: Log expected credits and abort if submitted IDs > 1
+- [ ] Implement global limit: Maximum research submissions per run = number of selected leads
+- [ ] Integrate city, state, and country into scoring if available in Lead schema
+- [ ] Refine error handling and logging for enrichment process
+- [ ] Create a user interface for lead enrichment
+- [ ] Implement a mechanism to mark leads as 'Needs Review' if confidence is too low
+
+
+## Batch 21 — Database Schema & Timestamp Fixes
+
+- [x] Fix timestamp definitions in drizzle/schema.ts (changed from `mode: 'date'` with `onUpdateFn` to `defaultNow().onUpdateNow()`)
+- [x] Generate migration for timestamp fixes
+- [ ] Apply pending migration for city and state columns in leads table
+- [ ] Verify all timestamp columns are properly configured in production
+
+## Known Issues to Fix
+
+- [ ] Missing `getSeamlessLeads` function in seamlessAI module
+- [ ] Missing `parseInstructionToFilters` function in seamlessAI module
+- [ ] Type error in replyDetection.ts (line 528: Type 'true' is not assignable to type 'number | SQL<unknown> | undefined')

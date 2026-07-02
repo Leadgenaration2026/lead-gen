@@ -1,5 +1,6 @@
 import { eq, and, desc, inArray, lte, count, sql, gte, notInArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import * as schema from "../drizzle/schema";
 import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -9,7 +10,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _db = drizzle(process.env.DATABASE_URL, { schema, mode: 'default' });
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -127,7 +128,7 @@ export async function getLeadById(id: number) {
 export async function updateLead(id: number, data: Partial<InsertLead>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.update(leads).set({ ...data, updatedAt: new Date() }).where(eq(leads.id, id));
+  return db.update(leads).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(leads.id, id));
 }
 
 export async function deleteLead(id: number) {
@@ -139,7 +140,7 @@ export async function deleteLead(id: number) {
 export async function updateLeadEngagement(id: number, score: number, metrics: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.update(leads).set({ engagementScore: score, engagementData: metrics, updatedAt: new Date() }).where(eq(leads.id, id));
+  return db.update(leads).set(convertToDbFormat({ engagementScore: score, engagementData: metrics, updatedAt: new Date() })).where(eq(leads.id, id));
 }
 
 // Campaign queries
@@ -163,10 +164,22 @@ export async function getCampaignById(id: number) {
   return result[0];
 }
 
+function convertToDbFormat(data: any): any {
+  const result = { ...data };
+  for (const key in result) {
+    if (result[key] instanceof Date) {
+      result[key] = result[key].toISOString();
+    } else if (typeof result[key] === 'boolean') {
+      result[key] = result[key] ? 1 : 0;
+    }
+  }
+  return result;
+}
+
 export async function updateCampaign(id: number, data: Partial<InsertCampaign>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.update(campaigns).set({ ...data, updatedAt: new Date() }).where(eq(campaigns.id, id));
+  return db.update(campaigns).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(campaigns.id, id));
 }
 
 export async function deleteCampaign(id: number) {
@@ -219,7 +232,7 @@ export async function getCampaignLeadById(id: number) {
 export async function updateCampaignLead(id: number, data: Partial<InsertCampaignLead>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.update(campaignLeads).set({ ...data, updatedAt: new Date() }).where(eq(campaignLeads.id, id));
+  return db.update(campaignLeads).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(campaignLeads.id, id));
 }
 
 // Email tracking queries
@@ -259,7 +272,7 @@ export async function getCallLogByRetellId(retellCallId: string) {
 export async function updateCallLog(id: number, data: Partial<InsertCallLog>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.update(callLogs).set({ ...data, updatedAt: new Date() }).where(eq(callLogs.id, id));
+  return db.update(callLogs).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(callLogs.id, id));
 }
 
 export async function getCallLogsByCampaignLead(campaignLeadId: number) {
@@ -283,7 +296,7 @@ export async function upsertUserSettings(data: InsertUserSettings) {
   
   const existing = await getUserSettings(data.userId);
   if (existing) {
-    return db.update(userSettings).set({ ...data, updatedAt: new Date() }).where(eq(userSettings.userId, data.userId));
+    return db.update(userSettings).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(userSettings.userId, data.userId));
   }
   return db.insert(userSettings).values(data);
 }
@@ -305,7 +318,7 @@ export async function upsertEmailSignature(userId: number, signatureHtml: string
   
   const existing = await getEmailSignature(userId);
   if (existing) {
-    return db.update(emailSignatures).set({ signatureHtml, signaturePlainText, updatedAt: new Date() }).where(eq(emailSignatures.userId, userId));
+    return db.update(emailSignatures).set(convertToDbFormat({ signatureHtml, signaturePlainText, updatedAt: new Date() })).where(eq(emailSignatures.userId, userId));
   }
   return db.insert(emailSignatures).values({ userId, signatureHtml, signaturePlainText });
 }
@@ -329,7 +342,7 @@ export async function updateFollowUpEmail(id: number, data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const { followUpEmails } = await import("../drizzle/schema");
-  return db.update(followUpEmails).set({ ...data, updatedAt: new Date() }).where(eq(followUpEmails.id, id));
+  return db.update(followUpEmails).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(followUpEmails.id, id));
 }
 
 // Follow-up calls queries
@@ -351,7 +364,7 @@ export async function updateFollowUpCall(id: number, data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const { followUpCalls } = await import("../drizzle/schema");
-  return db.update(followUpCalls).set({ ...data, updatedAt: new Date() }).where(eq(followUpCalls.id, id));
+  return db.update(followUpCalls).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(followUpCalls.id, id));
 }
 
 // Lead weak points queries
@@ -370,7 +383,7 @@ export async function upsertLeadWeakPoints(leadId: number, weakPoints: any, anal
   
   const existing = await getLeadWeakPoints(leadId);
   if (existing) {
-    return db.update(leadWeakPoints).set({ weakPoints, analysis, suggestedEmailTypes, updatedAt: new Date() }).where(eq(leadWeakPoints.leadId, leadId));
+    return db.update(leadWeakPoints).set(convertToDbFormat({ weakPoints, analysis, suggestedEmailTypes, updatedAt: new Date() })).where(eq(leadWeakPoints.leadId, leadId));
   }
   return db.insert(leadWeakPoints).values({ leadId, weakPoints, analysis, suggestedEmailTypes });
 }
@@ -394,7 +407,7 @@ export async function updateEmailTemplate(id: number, data: any) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const { emailTemplates } = await import("../drizzle/schema");
-  return db.update(emailTemplates).set({ ...data, updatedAt: new Date() }).where(eq(emailTemplates.id, id));
+  return db.update(emailTemplates).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(emailTemplates.id, id));
 }
 
 export async function deleteEmailTemplate(id: number) {
@@ -420,7 +433,7 @@ export async function upsertFollowUpSchedule(data: any) {
   
   const existing = await getFollowUpSchedule(data.userId);
   if (existing) {
-    return db.update(followUpSchedules).set({ ...data, updatedAt: new Date() }).where(eq(followUpSchedules.userId, data.userId));
+    return db.update(followUpSchedules).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(followUpSchedules.userId, data.userId));
   }
   return db.insert(followUpSchedules).values(data);
 }
@@ -588,7 +601,7 @@ export async function upsertLeadByEmail(data: InsertLead) {
       website: data.website,
       industry: data.industry,
       customData: data.customData,
-      updatedAt: new Date(),
+      updatedAt: new Date().toISOString(),
     }).where(eq(leads.id, existing[0].id));
     return existing[0].id;
   }
@@ -788,10 +801,10 @@ export async function getWebhookEvents(userId: number, limit: number = 100, star
   if (!db) return [];
   const conditions: any[] = [eq(webhookEvents.userId, userId)];
   if (startDate) {
-    conditions.push(gte(webhookEvents.createdAt, new Date(startDate)));
+    conditions.push(gte(webhookEvents.createdAt, startDate));
   }
   if (endDate) {
-    conditions.push(lte(webhookEvents.createdAt, new Date(endDate)));
+    conditions.push(lte(webhookEvents.createdAt, endDate));
   }
   return db.select().from(webhookEvents)
     .where(and(...conditions))
@@ -804,10 +817,10 @@ export async function clearWebhookEvents(userId: number, startDate?: string, end
   if (!db) return;
   const conditions: any[] = [eq(webhookEvents.userId, userId)];
   if (startDate) {
-    conditions.push(gte(webhookEvents.createdAt, new Date(startDate)));
+    conditions.push(gte(webhookEvents.createdAt, startDate));
   }
   if (endDate) {
-    conditions.push(lte(webhookEvents.createdAt, new Date(endDate)));
+    conditions.push(lte(webhookEvents.createdAt, endDate));
   }
   await db.delete(webhookEvents).where(and(...conditions));
 }

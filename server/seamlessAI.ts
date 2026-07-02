@@ -14,8 +14,8 @@ import { createSeamlessError, logSeamlessError } from "./seamlessAIErrorLogger";
 
 const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
-interface SeamlessSearchResult {
-  searchResultId: string;
+export interface SeamlessSearchResult {
+  id: string;
   name?: string;
   company?: string;
   title?: string;
@@ -23,23 +23,36 @@ interface SeamlessSearchResult {
   country?: string;
   city?: string;
   state?: string;
+  firstName?: string;
+  lastName?: string;
+  jobTitle?: string;
+  email?: string;
+  linkedinUrl?: string;
+  companyName?: string;
+  website?: string;
+  industry?: string;
+  contactLocation?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
 }
 
-interface SeamlessContact {
+export interface SeamlessContact {
   firstName?: string;
   lastName?: string;
   email?: string;
   phone?: string;
   personalEmail?: string;
-  company?: string;
+  workEmail?: string;
+  allEmails?: string[];
   title?: string;
   contactLocation?: {
     city?: string;
     state?: string;
     country?: string;
   };
-  lIProfileUrl?: string;
-  // Additional fields that may be in the API response
+  linkedinUrl?: string;
   jobTitle?: string;
   position?: string;
   phoneNumber?: string;
@@ -54,7 +67,6 @@ interface SeamlessContact {
   companySize?: string;
   employeeCount?: string | number;
   employees?: string | number;
-  // Phone fields from API response
   contactPhone1?: string;
   contactPhone1TotalAI?: number;
   contactPhone1IsDnc?: boolean;
@@ -65,14 +77,12 @@ interface SeamlessContact {
   companyPhone1?: string;
   companyPhone1TotalAI?: number;
   companyPhone1IsDnc?: boolean;
-  // Company fields from API response
   companyStaffCount?: number;
   companyStaffCountRange?: string;
   companyAnnualRevenue?: string;
   companyDomain?: string;
   companyRevenueRange?: string;
   companyLinkedInId?: string;
-  // Additional contact fields
   contactId?: string;
   username?: string;
   createdAt?: string;
@@ -111,9 +121,25 @@ interface SeamlessSearchResponse {
   };
 }
 
-interface SeamlessResearchResponse {
+export interface SeamlessResearchResponse {
   success: boolean;
   requestIds: string[];
+  email?: string;
+  phoneNumber?: string;
+  jobTitle?: string;
+  linkedinUrl?: string;
+  companyName?: string;
+  website?: string;
+  industry?: string;
+  contactLocation?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+  companySize?: string;
+  personalEmail?: string;
+  workEmail?: string;
+  allEmails?: string[];
 }
 
 interface SeamlessPollResult {
@@ -152,7 +178,7 @@ async function seamlessRequest(
 
   const response = await fetch(url, options);
   const responseText = await response.text();
-  const contentType = response.headers.get('content-type');
+  const contentType = response.headers.get("content-type");
   
   console.log(`[Seamless.AI] Response status: ${response.status}`);
   const elapsedTime = Date.now() - startTime;
@@ -163,14 +189,14 @@ async function seamlessRequest(
   console.log(`[Seamless.AI] Elapsed Time: ${elapsedTime}ms`);
 
   // Validate response is JSON before parsing
-  if (!contentType?.includes('application/json')) {
+  if (!contentType?.includes("application/json")) {
     const errorDetails = {
-      step: (path.includes('/search/') ? 'Search' : path.includes('/research') ? 'Research' : path.includes('/poll') ? 'Poll' : 'Unknown') as 'Search' | 'Research' | 'Poll' | 'Unknown',
+      step: (path.includes("/search/") ? "Search" : path.includes("/research") ? "Research" : path.includes("/poll") ? "Poll" : "Unknown") as "Search" | "Research" | "Poll" | "Unknown",
       endpoint: path,
       method,
       statusCode: response.status,
-      contentType: contentType || 'unknown',
-      requestBody: body ? { ...body, apiKey: '[REDACTED]' } : undefined,
+      contentType: contentType || "unknown",
+      requestBody: body ? { ...body, apiKey: "[REDACTED]" } : undefined,
       responseBody: responseText.substring(0, 500),
       timestamp: new Date().toISOString(),
     };
@@ -179,7 +205,7 @@ async function seamlessRequest(
     
     throw createSeamlessError({
       ...errorDetails,
-      error: `Expected JSON response but got ${contentType || 'unknown'} (Status: ${response.status}). This usually means: authentication expired, rate limited, or wrong endpoint.`,
+      error: `Expected JSON response but got ${contentType || "unknown"} (Status: ${response.status}). This usually means: authentication expired, rate limited, or wrong endpoint.`,
     });
   }
 
@@ -228,6 +254,13 @@ async function seamlessRequest(
 export async function searchContacts(
   apiKey: string,
   filters: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    linkedinUrl?: string;
     companyName?: string[];
     jobTitle?: string[];
     department?: string[];
@@ -248,8 +281,14 @@ export async function searchContacts(
   if (filters.department?.length) body.department = filters.department;
   if (filters.seniority?.length) body.seniority = filters.seniority;
   if (filters.industry?.length) body.industry = filters.industry;
+  if (filters.email) body.email = filters.email;
+  if (filters.city) body.city = filters.city;
+  if (filters.state) body.state = filters.state;
+  if (filters.country) body.country = filters.country;
   if (filters.contactCountry?.length) body.contactCountry = filters.contactCountry;
   if (filters.contactState?.length) body.contactState = filters.contactState;
+  if (filters.firstName) body.firstName = filters.firstName;
+  if (filters.lastName) body.lastName = filters.lastName;
   body.limit = pageSize;
 
   const allResults: SeamlessSearchResult[] = [];
@@ -320,7 +359,7 @@ export async function searchContacts(
  * Step 2: Submit searchResultIds for research (enrichment).
  * Handles batching — API allows max 100 IDs per request.
  */
-export async function researchContacts(
+export async function researchContact(
   apiKey: string,
   searchResultIds: string[]
 ): Promise<SeamlessResearchResponse> {
@@ -408,445 +447,33 @@ export async function pollContactResults(
         // Single contact object
         results = [response];
       } else {
-        console.warn(`[Seamless.AI] Unexpected poll response format:`, JSON.stringify(response).substring(0, 200));
+        console.warn(`[Seamless.AI] Unexpected poll response format:`, JSON.stringify(response));
         results = [];
       }
-      
-      // Validation logging
-      console.log(`[Seamless.AI] Poll batch parsed: ${results.length} contacts`);
-      if (results.length > 0) {
-        const first = results[0];
-        console.log(`[Seamless.AI] First contact: requestId=${first.requestId}, status=${first.status}`);
-        if (first.contact) {
-          console.log(`[Seamless.AI] Contact fields: email=${first.contact.email}, phone1=${first.contact.contactPhone1}, title=${first.contact.title}, companySize=${first.contact.companyStaffCountRange}`);
-        }
-      }
 
-      for (const r of results) {
-        if (r.status === "done" || r.status === "missing" || r.status === "error" || r.status === "duplicate") {
-          completedResults.push(r);
+      for (const result of results) {
+        if (result.status === "done" || result.status === "error" || result.status === "duplicate" || result.status === "missing") {
+          completedResults.push(result);
         } else {
-          // Still researching — keep polling
-          newPending.push(r.requestId);
+          newPending.push(result.requestId);
         }
-      }
-      
-      // Small delay between poll batches
-      if (i + POLL_BATCH_SIZE < pendingIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
-    
+
     pendingIds = newPending;
-    
+
     if (pendingIds.length === 0) {
-      console.log(`[Seamless.AI] All ${completedResults.length} results completed after ${attempt + 1} poll attempts`);
+      console.log(`[Seamless.AI] All research results are done.`);
       break;
     }
-    
-    console.log(`[Seamless.AI] Poll attempt ${attempt + 1}: ${completedResults.length} done, ${pendingIds.length} still researching`);
 
-    // Wait before next poll cycle
+    console.log(`[Seamless.AI] Still polling for ${pendingIds.length} results. Attempt ${attempt + 1}/${maxAttempts}`);
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
-  
+
   if (pendingIds.length > 0) {
-    console.warn(`[Seamless.AI] Polling timed out with ${pendingIds.length} still pending. Returning ${completedResults.length} completed results.`);
+    console.warn(`[Seamless.AI] Polling timed out. ${pendingIds.length} results still pending.`);
   }
 
   return completedResults;
-}
-
-/**
- * Generate related/broader job titles for fallback search.
- * If the initial search returns too few results, we expand the search with related titles.
- */
-function getRelatedJobTitles(jobTitles: string[]): string[] {
-  const relatedTitleMap: Record<string, string[]> = {
-    "motivational speaker": ["keynote speaker", "public speaker", "inspirational speaker", "life coach", "executive coach", "leadership speaker", "corporate trainer"],
-    "keynote speaker": ["motivational speaker", "public speaker", "conference speaker", "thought leader", "corporate speaker"],
-    "public speaker": ["motivational speaker", "keynote speaker", "presenter", "trainer", "facilitator"],
-    "life coach": ["executive coach", "business coach", "career coach", "wellness coach", "personal development coach", "motivational speaker"],
-    "executive coach": ["leadership coach", "business coach", "life coach", "performance coach"],
-    "business coach": ["executive coach", "startup advisor", "business consultant", "mentor"],
-    "real estate agent": ["realtor", "real estate broker", "property manager", "real estate consultant", "real estate advisor"],
-    "realtor": ["real estate agent", "real estate broker", "property consultant"],
-    "financial advisor": ["financial planner", "wealth manager", "investment advisor", "financial consultant"],
-    "marketing director": ["marketing manager", "head of marketing", "vp marketing", "chief marketing officer", "digital marketing director"],
-    "sales director": ["sales manager", "head of sales", "vp sales", "chief revenue officer"],
-    "ceo": ["founder", "president", "managing director", "chief executive", "owner"],
-    "founder": ["ceo", "co-founder", "entrepreneur", "startup founder", "owner"],
-    "consultant": ["advisor", "strategist", "specialist", "expert"],
-    "personal trainer": ["fitness coach", "strength coach", "wellness coach", "health coach"],
-    "therapist": ["counselor", "psychologist", "mental health professional", "clinical therapist"],
-    "attorney": ["lawyer", "legal counsel", "solicitor", "legal advisor"],
-    "lawyer": ["attorney", "legal counsel", "solicitor", "legal advisor"],
-    "dentist": ["dental surgeon", "orthodontist", "dental practitioner"],
-    "chiropractor": ["chiropractic physician", "wellness practitioner", "spine specialist"],
-    "photographer": ["videographer", "creative director", "visual artist", "content creator"],
-  };
-
-  const related: string[] = [];
-  for (const title of jobTitles) {
-    const titleLower = title.toLowerCase().trim();
-    // Check exact match
-    if (relatedTitleMap[titleLower]) {
-      related.push(...relatedTitleMap[titleLower]);
-    } else {
-      // Check partial match (e.g., "motivational speakers" matches "motivational speaker")
-      for (const [key, values] of Object.entries(relatedTitleMap)) {
-        if (titleLower.includes(key) || key.includes(titleLower)) {
-          related.push(...values);
-          break;
-        }
-      }
-    }
-  }
-
-  // Remove duplicates and original titles
-  const originalLower = new Set(jobTitles.map(t => t.toLowerCase().trim()));
-  return Array.from(new Set(related)).filter(t => !originalLower.has(t.toLowerCase()));
-}
-
-/**
- * Full flow: Search → Research → Poll → Return enriched contacts.
- * Fetches ALL available results up to the requested count using pagination.
- * If initial results are too few, automatically retries with related/broader job titles.
- */
-export async function getSeamlessLeads(
-  apiKey: string,
-  filters: {
-    companyName?: string[];
-    jobTitle?: string[];
-    department?: string[];
-    seniority?: string[];
-    industry?: string[];
-    contactCountry?: string[];
-    contactState?: string[];
-  },
-  count: number
-): Promise<{
-  contacts: Array<{
-    companyName: string;
-    ownerName: string;
-    jobTitle?: string;
-    email: string;
-    phoneNumber: string;
-    phoneType?: "cell" | "office" | "unknown";
-    secondaryPhone?: string;
-    secondaryPhoneType?: "cell" | "office" | "unknown";
-    personalEmail?: string;
-    workEmail?: string;
-    allEmails?: string[];
-    website?: string;
-    industry?: string;
-    companySize?: string;
-    linkedinUrl?: string;
-    timezone?: string;
-    country?: string;
-  }>;
-  totalSearchResults: number;
-}> {
-  // Step 1: Search — fetch ALL available results up to the requested count
-  // Pass the count as maxResults so pagination fetches enough pages
-  let searchResponse = await searchContacts(apiKey, filters, count);
-
-  // BROADER SEARCH FALLBACK: If initial results are fewer than requested,
-  // aggressively expand the search with related job titles and relaxed filters
-  if (
-    searchResponse.data.length < count &&
-    filters.jobTitle?.length
-  ) {
-    const relatedTitles = getRelatedJobTitles(filters.jobTitle);
-    const existingIds = new Set(searchResponse.data.map(r => r.searchResultId));
-    
-    if (relatedTitles.length > 0) {
-      console.log(`[Seamless.AI] Initial search returned only ${searchResponse.data.length} results (need ${count}). Trying broader search with related titles: ${relatedTitles.join(", ")}`);
-      
-      // Strategy 1: Search with ALL related titles combined (same location filters)
-      const expandedFilters = {
-        ...filters,
-        jobTitle: [...filters.jobTitle, ...relatedTitles],
-      };
-      
-      const expandedResponse = await searchContacts(apiKey, expandedFilters, count);
-      
-      if (expandedResponse.data.length > 0) {
-        const newResults = expandedResponse.data.filter(r => !existingIds.has(r.searchResultId));
-        searchResponse.data.push(...newResults);
-        newResults.forEach(r => existingIds.add(r.searchResultId));
-        console.log(`[Seamless.AI] Broader title search added ${newResults.length} results. Total: ${searchResponse.data.length}`);
-      }
-    }
-    
-    // Strategy 2: If still not enough and we have a state filter, try without state
-    // (search nationwide with original + related titles)
-    if (searchResponse.data.length < count && filters.contactState?.length) {
-      console.log(`[Seamless.AI] Still only ${searchResponse.data.length} results. Trying without state filter (nationwide)...`);
-      
-      const nationwideFilters = {
-        ...filters,
-        jobTitle: [...filters.jobTitle, ...relatedTitles],
-        contactState: undefined as string[] | undefined,
-      };
-      delete nationwideFilters.contactState;
-      
-      const nationwideResponse = await searchContacts(apiKey, nationwideFilters, count);
-      
-      if (nationwideResponse.data.length > 0) {
-        const newResults = nationwideResponse.data.filter(r => !existingIds.has(r.searchResultId));
-        searchResponse.data.push(...newResults);
-        newResults.forEach(r => existingIds.add(r.searchResultId));
-        console.log(`[Seamless.AI] Nationwide search added ${newResults.length} results. Total: ${searchResponse.data.length}`);
-      }
-    }
-    
-    // Update supplementalData
-    searchResponse.supplementalData = {
-      ...searchResponse.supplementalData,
-      totalResults: searchResponse.data.length,
-    };
-  }
-
-  if (!searchResponse.data || searchResponse.data.length === 0) {
-    throw new Error("No contacts found matching your criteria on Seamless.AI. Try broadening your search.");
-  }
-
-  console.log(`[Seamless.AI] Search returned ${searchResponse.data.length} total results for requested count of ${count}`);
-
-  // Build a map of searchResultId → country from search results for post-filtering
-  const searchCountryMap = new Map<string, string>();
-  for (const r of searchResponse.data) {
-    if (r.country) {
-      searchCountryMap.set(r.searchResultId, r.country);
-    }
-  }
-
-  // Take up to `count` search results for research
-  const searchResultIds = searchResponse.data
-    .slice(0, count)
-    .map((r) => r.searchResultId);
-
-  console.log(`[Seamless.AI] Submitting ${searchResultIds.length} contacts for research (of ${searchResponse.data.length} found)`);
-
-  // Step 2: Research (enrich) — batched automatically in groups of 100
-  const researchResponse = await researchContacts(apiKey, searchResultIds);
-
-  if (!researchResponse.success || !researchResponse.requestIds?.length) {
-    throw new Error("Seamless.AI research request failed. Check your API credits.");
-  }
-
-  console.log(`[Seamless.AI] Research submitted for ${researchResponse.requestIds.length} contacts`);
-
-  // Step 3: Poll for results — handles large sets with batched polling
-  const pollResults = await pollContactResults(apiKey, researchResponse.requestIds);
-
-  // Convert to our lead format — include ALL contacts
-  const contacts: Array<{
-    companyName: string;
-    ownerName: string;
-    jobTitle?: string;
-    email: string;
-    phoneNumber: string;
-    phoneType?: "cell" | "office" | "unknown";
-    secondaryPhone?: string;
-    secondaryPhoneType?: "cell" | "office" | "unknown";
-    personalEmail?: string;
-    workEmail?: string;
-    allEmails?: string[];
-    website?: string;
-    industry?: string;
-    companySize?: string;
-    linkedinUrl?: string;
-    timezone?: string;
-    country?: string;
-  }> = [];
-
-  let withEmail = 0;
-  let withoutEmail = 0;
-  let duplicateCount = 0;
-  let missingCount = 0;
-  let errorCount = 0;
-
-  for (const r of pollResults) {
-    if (r.status === "duplicate") { duplicateCount++; continue; }
-    if (r.status === "missing") { missingCount++; continue; }
-    if (r.status === "error") { errorCount++; continue; }
-    if (r.status !== "done" || !r.contact) continue;
-    
-    const c = r.contact;
-    const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "Unknown";
-    const email = c.email || c.personalEmail || "";
-    
-    // Detect phone type (cell vs office)
-    const detectPhoneType = (phone: string | undefined): "cell" | "office" | "unknown" => {
-      if (!phone) return "unknown";
-      // Cell phone patterns: starts with +1 or 1, or contains common cell indicators
-      // Office patterns: typically have extensions or are listed as "office"
-      // For now, we'll default to "unknown" since Seamless.AI doesn't clearly distinguish
-      // In production, you'd use a phone validation library
-      return "unknown";
-    };
-    
-    // Collect all available emails
-    const allEmails = [];
-    if (c.email) allEmails.push(c.email);
-    if (c.personalEmail && c.personalEmail !== c.email) allEmails.push(c.personalEmail);
-    if ((c as any).workEmail && (c as any).workEmail !== c.email && (c as any).workEmail !== c.personalEmail) allEmails.push((c as any).workEmail);
-    
-    // Debug: Log first contact to see available fields
-    if (contacts.length === 0) {
-      console.log("[Seamless.AI Debug] First contact keys:", Object.keys(c));
-      console.log("[Seamless.AI Debug] title:", (c as any).title);
-      console.log("[Seamless.AI Debug] phone:", c.phone);
-      console.log("[Seamless.AI Debug] companySize:", (c as any).companySize);
-    }
-    
-    const primaryPhone = c.phone || (c as any).phoneNumber || (c as any).workPhone || "";
-    const secondaryPhone = (c as any).personalPhone || (c as any).mobilePhone || "";
-    
-    const contact = {
-      companyName: c.company || "Unknown",
-      ownerName: fullName,
-      jobTitle: (c as any).title || (c as any).jobTitle || (c as any).position || undefined,
-      email,
-      phoneNumber: primaryPhone,
-      phoneType: detectPhoneType(primaryPhone),
-      secondaryPhone: secondaryPhone,
-      secondaryPhoneType: detectPhoneType(secondaryPhone),
-      personalEmail: c.personalEmail,
-      workEmail: (c as any).workEmail,
-      allEmails: allEmails.length > 0 ? allEmails : undefined,
-      linkedinUrl: c.lIProfileUrl || "",
-      industry: (c as any).industry || (c as any).companyIndustry || "",
-      website: (c as any).website || (c as any).companyWebsite || (c as any).companyUrl || "",
-      timezone: (c as any).timezone || (c as any).companyTimezone || "",
-      country: c.contactLocation?.country || searchCountryMap.get(r.searchResultId || "") || "",
-      companySize: (c as any).companySize || (c as any).employeeCount || (c as any).employees || undefined,
-    };
-    
-    contacts.push(contact);
-    if (email) withEmail++; else withoutEmail++;
-  }
-
-  console.log(`[Seamless.AI] Results: ${contacts.length} contacts (${withEmail} with email, ${withoutEmail} without email). Duplicates: ${duplicateCount}, Missing: ${missingCount}, Errors: ${errorCount}`);
-
-  return {
-    contacts,
-    totalSearchResults: searchResponse.supplementalData?.totalResults || searchResponse.data.length,
-  };
-}
-
-/**
- * Use LLM to parse user's natural language instruction into Seamless.AI search filters.
- */
-export async function parseInstructionToFilters(
-  instruction: string,
-  country?: string
-): Promise<{
-  companyName?: string[];
-  jobTitle?: string[];
-  department?: string[];
-  seniority?: string[];
-  industry?: string[];
-  contactCountry?: string[];
-  contactState?: string[];
-}> {
-  try {
-    const { invokeLLM } = await import("./_core/llm");
-
-    const response = await invokeLLM({
-      messages: [
-        {
-          role: "system",
-          content: `You are a B2B lead search filter parser. Convert the user's natural language instruction into Seamless.AI search filters.
-
-Return a JSON object with ONLY the relevant fields (omit fields that don't apply):
-- companyName: string[] (specific company names to search)
-- jobTitle: string[] (job titles like "CEO", "Marketing Director", "Motivational Speaker")
-- department: string[] (one of: Sales, Marketing, Engineering, Human Resources, Finance, IT, Operations, Support, Legal, Project Management, Other)
-- seniority: string[] (one of: C-Level, VP, Director, Manager, Senior, Entry Level, Mid-Level, Other)
-- industry: string[] (industry categories like "Professional Training & Coaching", "Financial Services")
-- contactCountry: string[] (countries like "United States", "India")
-- contactState: string[] (US states like "Alabama", "California")
-
-IMPORTANT: The jobTitle field is the most critical. Always extract the job title or role from the instruction.
-Return ONLY valid JSON, no markdown, no explanation.`,
-        },
-        {
-          role: "user",
-          content: `Parse this lead generation instruction into search filters: "${instruction}"${country ? ` (Country: ${country})` : ""}`,
-        },
-      ],
-    }) as any;
-
-    let content = response.choices[0]?.message?.content;
-    if (Array.isArray(content)) {
-      content = content.map((c: any) => typeof c === "string" ? c : c.text || "").join("");
-    }
-    if (!content) {
-      console.warn("[Seamless.AI] LLM returned empty content, using fallback");
-      return fallbackParseFilters(instruction, country);
-    }
-
-    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const parsed = JSON.parse(content);
-    
-    // Filter out empty arrays — only pass non-empty filters to the API
-    const filtered: Record<string, string[]> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (Array.isArray(value) && value.length > 0) {
-        filtered[key] = value as string[];
-      }
-    }
-    
-    // If LLM didn't extract a jobTitle, use the instruction as-is
-    if (!filtered.jobTitle || filtered.jobTitle.length === 0) {
-      const fallback = fallbackParseFilters(instruction, country);
-      if (fallback.jobTitle) filtered.jobTitle = fallback.jobTitle;
-    }
-    
-    console.log(`[Seamless.AI] Parsed filters:`, JSON.stringify(filtered));
-    return filtered;
-  } catch (error: any) {
-    console.warn(`[Seamless.AI] LLM filter parsing failed: ${error.message}. Using fallback.`);
-    return fallbackParseFilters(instruction, country);
-  }
-}
-
-/**
- * Fallback filter parser when LLM is unavailable or fails.
- * Extracts the instruction as a job title and applies country/state from explicit inputs.
- */
-function fallbackParseFilters(
-  instruction: string,
-  country?: string
-): {
-  companyName?: string[];
-  jobTitle?: string[];
-  department?: string[];
-  seniority?: string[];
-  industry?: string[];
-  contactCountry?: string[];
-  contactState?: string[];
-} {
-  // Remove common location words from instruction to extract the role
-  let jobTitle = instruction.trim();
-  
-  // Remove trailing location phrases like "in Alabama" or "in USA"
-  jobTitle = jobTitle.replace(/\s+(in|from|based in|located in)\s+.+$/i, "").trim();
-  
-  // Remove leading "find", "search", "get", "look for" etc.
-  jobTitle = jobTitle.replace(/^(find|search|get|look for|looking for|i need|i want)\s+/i, "").trim();
-  
-  const filters: Record<string, string[]> = {};
-  if (jobTitle) {
-    filters.jobTitle = [jobTitle];
-  }
-  if (country) {
-    filters.contactCountry = [country];
-  }
-  
-  console.log(`[Seamless.AI] Fallback filters:`, JSON.stringify(filters));
-  return filters;
 }

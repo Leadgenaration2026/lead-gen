@@ -1,148 +1,109 @@
-/**
- * Single Lead Enrichment Test
- * Tests Search → Research → Poll workflow with detailed logging
- * Fails fast on any API error
- */
+import { getDb, createLead, deleteLead } from "./server/db.js";
+import dotenv from "dotenv";
+dotenv.config(); // Load environment variables from .env file
+import { appRouter } from "./server/routers.js";
+import { createContext } from "./server/_core/context.js";
+import { sdk } from "./server/_core/sdk.js";
 
-import { getLeadById } from "./server/db";
-import { searchContacts, researchContacts, pollContactResults } from "./server/seamlessAI";
 
-async function testSingleEnrichment() {
-  const apiKey = process.env.SEAMLESS_AI_API_KEY;
-  
-  if (!apiKey) {
-    console.error("ERROR: SEAMLESS_AI_API_KEY not set");
-    process.exit(1);
-  }
 
-  console.log("\n" + "=".repeat(80));
-  console.log("SINGLE LEAD ENRICHMENT TEST");
-  console.log("=".repeat(80) + "\n");
+async function runSingleLeadEnrichmentTest() {
+  let leadId: number | undefined;
+  let createdLeadId: number | undefined;
+  const requestedCount = 1;
+
+  console.log("================================================================================");
+  console.log("SINGLE LEAD ENRICHMENT TEST - REDESIGNED WORKFLOW");
+  console.log("================================================================================");
 
   try {
-    // Get first lead from database (ID 1)
-    const lead = await getLeadById(1);
-    
-    if (!lead) {
-      console.error("ERROR: No lead found with ID 1");
-      process.exit(1);
+    const db = await getDb();
+
+    if (!db) {
+      console.error("Database connection not available. Ensure DATABASE_URL is set.");
+      return;
     }
+    // Create a new lead for testing
+    const newLead = await createLead({
+      ownerName: "John Smith",
+      companyName: "Google",
+      city: "Mountain View",
+      state: "California",
+      jobTitle: "Software Engineer",
+      email: "john.smith@example.com",
+      phoneNumber: "123-456-7890",
+      userId: 1,
+      status: "new",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    createdLeadId = newLead[0].insertId;
+    leadId = createdLeadId;
 
-    console.log(`Testing with lead: ${lead.ownerName} (ID: ${lead.id})\n`);
-
-    // === STEP 1: SEARCH ===
-    console.log("=".repeat(80));
-    console.log("STEP 1: SEARCH");
-    console.log("=".repeat(80));
-    console.log(`Searching for: ${lead.jobTitle || "any job title"}\n`);
-
-    let searchResult;
-    try {
-      searchResult = await searchContacts(
-        apiKey,
-        {
-          jobTitle: lead.jobTitle ? [lead.jobTitle] : undefined,
-          limit: 1,
-        },
-        1
-      );
-      console.log("Search Response:", JSON.stringify(searchResult, null, 2));
-    } catch (error: any) {
-      console.error("\n❌ SEARCH FAILED");
-      console.error("Error:", error.message);
-      if (error.cause) {
-        console.error("Details:", JSON.stringify(error.cause, null, 2));
-      }
-      process.exit(1);
-    }
-
-    if (!searchResult.data || searchResult.data.length === 0) {
-      console.error("\n❌ SEARCH FAILED: No results returned");
-      process.exit(1);
-    }
-
-    const searchResultIds = searchResult.data.map((r) => r.searchResultId);
-    console.log(`\n✅ Search succeeded. Found ${searchResultIds.length} result(s)\n`);
-
-    // === STEP 2: RESEARCH ===
-    console.log("=".repeat(80));
-    console.log("STEP 2: RESEARCH");
-    console.log("=".repeat(80));
-    console.log(`Submitting ${searchResultIds.length} result(s) for research\n`);
-
-    let researchResult;
-    try {
-      researchResult = await researchContacts(apiKey, searchResultIds);
-      console.log("Research Response:", JSON.stringify(researchResult, null, 2));
-    } catch (error: any) {
-      console.error("\n❌ RESEARCH FAILED");
-      console.error("Error:", error.message);
-      if (error.cause) {
-        console.error("Details:", JSON.stringify(error.cause, null, 2));
-      }
-      process.exit(1);
-    }
-
-    if (!researchResult.requestIds || researchResult.requestIds.length === 0) {
-      console.error("\n❌ RESEARCH FAILED: No request IDs returned");
-      process.exit(1);
-    }
-
-    console.log(`\n✅ Research succeeded. Got ${researchResult.requestIds.length} request ID(s)\n`);
-
-    // === STEP 3: POLL ===
-    console.log("=".repeat(80));
-    console.log("STEP 3: POLL");
-    console.log("=".repeat(80));
-    console.log(`Polling for results (max 120 attempts)\n`);
-
-    let pollResult;
-    try {
-      pollResult = await pollContactResults(apiKey, researchResult.requestIds, 120);
-      console.log("Poll Response:", JSON.stringify(pollResult, null, 2));
-    } catch (error: any) {
-      console.error("\n❌ POLL FAILED");
-      console.error("Error:", error.message);
-      if (error.cause) {
-        console.error("Details:", JSON.stringify(error.cause, null, 2));
-      }
-      process.exit(1);
-    }
-
-    if (!pollResult.data || pollResult.data.length === 0) {
-      console.error("\n❌ POLL FAILED: No contacts returned");
-      process.exit(1);
-    }
-
-    console.log(`\n✅ Poll succeeded. Got ${pollResult.data.length} contact(s)\n`);
-
-    // === SUMMARY ===
-    console.log("=".repeat(80));
-    console.log("SUCCESS: All steps completed");
-    console.log("=".repeat(80));
-    console.log("\nExtracted Data:");
-    const contact = pollResult.data[0];
-    console.log({
-      phone: contact.contactPhone1 || contact.contactPhone2 || contact.contactPhone3 || contact.companyPhone1 || null,
-      title: contact.jobTitle || contact.title || null,
-      companySize: contact.companyStaffCountRange || contact.companyStaffCount || null,
-      email: contact.email || null,
-      company: contact.company || null,
-      linkedin: contact.lIProfileUrl || null,
+    const lead = await db.query.leads.findFirst({
+      where: (leads, { eq }) => eq(leads.id, leadId!),
     });
 
-    process.exit(0);
-  } catch (error: any) {
-    console.error("\n" + "=".repeat(80));
-    console.error("FATAL ERROR");
-    console.error("=".repeat(80));
-    console.error(error.message);
-    if (error.stack) {
-      console.error("\nStack Trace:");
-      console.error(error.stack);
+    if (!lead) {
+      console.error(`Lead with ID ${leadId} not found.`);
+      return;
     }
-    process.exit(1);
+
+    console.log(`Testing with lead: ${lead.ownerName} (ID: ${lead.id})`);
+    console.log(`Requested enrichment for ${requestedCount} lead(s).`);
+
+    // Mock sdk.authenticateRequest to return a mock user
+    sdk.authenticateRequest = async (req: any) => {
+      return { id: 1, openId: "mock-user", name: "Mock User", email: "mock@example.com", role: "admin", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() };
+    };
+    const caller = appRouter.createCaller(await createContext({ req: {} as any, res: {} as any }));
+    const result = await caller.seamlessAIEnrichment.enrichSelectedLeads({
+      leadIds: [lead.id],
+      requestedExtraction: requestedCount,
+    });
+
+    console.log("\n================================================================================");
+    console.log("ENRICHMENT REPORT");
+    console.log("================================================================================");
+    console.log(JSON.stringify(result, null, 2));
+
+    // Verify database update
+    const updatedLead = await db.query.leads.findFirst({
+      where: (leads, { eq }) => eq(leads.id, leadId!),
+    });
+
+    console.log("\n================================================================================");
+    console.log("DATABASE VERIFICATION");
+    console.log("================================================================================");
+    console.log(`Lead ID: ${updatedLead?.id}`);
+    console.log(`Owner Name: ${updatedLead?.ownerName}`);
+    console.log(`Phone Number: ${updatedLead?.phoneNumber}`);
+    console.log(`Job Title: ${updatedLead?.jobTitle}`);
+    console.log(`Company Size: ${updatedLead?.companySize}`);
+    console.log(`Email: ${updatedLead?.email}`);
+    console.log(`Company: ${updatedLead?.companyName}`);
+    console.log(`City: ${updatedLead?.city}`);
+    console.log(`State: ${updatedLead?.state}`);
+    console.log(`LinkedIn: ${updatedLead?.linkedinUrl}`);
+
+  } catch (error: any) {
+    console.error("\n================================================================================");
+    console.error("ENRICHMENT TEST FAILED");
+    console.error("================================================================================");
+    console.error(error.message);
+    if (error.data) {
+      console.error("Error Data:", JSON.stringify(error.data, null, 2));
+    }
+    if (error.stack) {
+      console.error("Stack Trace:", error.stack);
+    }
+  } finally {
+    if (createdLeadId) {
+      console.log(`\nCleaning up: Deleting lead with ID ${createdLeadId}`);
+      await deleteLead(createdLeadId);
+      console.log(`Lead ${createdLeadId} deleted.`);
+    }
   }
 }
 
-testSingleEnrichment();
+runSingleLeadEnrichmentTest();

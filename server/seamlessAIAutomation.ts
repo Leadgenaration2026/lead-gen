@@ -713,7 +713,7 @@ export class SeamlessAIAutomation {
           );
 
           if (result.success && result.result) {
-            if (this.stats) this.stats!.enrichedLeads++;
+            if (this.stats) this.stats.enrichedLeads = (this.stats.enrichedLeads || 0) + 1;
             console.log(
               `[SeamlessAIAutomation] Enriched lead ${i + 1}/${leads.length}: ${leadInfo?.name || 'Unknown'}`
             );
@@ -1015,7 +1015,7 @@ export class SeamlessAIAutomation {
         );
 
         if (result.success && result.result) {
-          if (this.stats) this.stats!.enrichedLeads++;
+          if (this.stats) this.stats.enrichedLeads = (this.stats.enrichedLeads || 0) + 1;
           console.log(
             `[SeamlessAIAutomation] Enriched lead ${i + 1}/${selectedLeads.length}`
           );

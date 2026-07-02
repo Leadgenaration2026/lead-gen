@@ -47,10 +47,10 @@ export function registerEmailTrackingRoutes(app: Express) {
       if (campaignLead) {
         // Always update the open status (even if already opened, to track re-opens)
         if (!campaignLead.emailOpened) {
-          await db.updateCampaignLead(event.campaignLeadId, {
-            emailOpened: true,
-            emailOpenedAt: new Date(),
-          });
+            await db.updateCampaignLead(event.campaignLeadId, {
+              emailOpened: 1 as any,
+              emailOpenedAt: new Date().toISOString(),
+            });
           console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as opened`);
 
           // Update campaign open count
@@ -93,7 +93,7 @@ export function registerEmailTrackingRoutes(app: Express) {
               // Mark call as triggered (for tracking purposes)
               if (!campaignLead.callTriggered) {
                 await db.updateCampaignLead(event.campaignLeadId, {
-                  callTriggered: true,
+                  callTriggered: 1 as any,
                 });
               }
               console.log(`[EmailTracking] Retell.AI call triggered successfully for campaignLead ${event.campaignLeadId}`);
@@ -154,8 +154,8 @@ export function registerEmailTrackingRoutes(app: Express) {
         if (campaignLead) {
           if (!campaignLead.emailClicked) {
             await db.updateCampaignLead(event.campaignLeadId, {
-              emailClicked: true,
-              emailClickedAt: new Date(),
+              emailClicked: 1 as any,
+              emailClickedAt: new Date().toISOString(),
             });
             console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as clicked`);
 
@@ -193,9 +193,9 @@ export function registerEmailTrackingRoutes(app: Express) {
               
               if (result.success) {
                 if (!campaignLead.callTriggered) {
-                  await db.updateCampaignLead(event.campaignLeadId, {
-                    callTriggered: true,
-                  });
+                    await db.updateCampaignLead(event.campaignLeadId, {
+                      callTriggered: 1 as any,
+                    });
                 }
                 console.log(`[EmailTracking] Retell.AI call triggered on click for campaignLead ${event.campaignLeadId}`);
               }
@@ -445,8 +445,8 @@ export function registerEmailTrackingRoutes(app: Express) {
         const campaignLead = await db.getCampaignLeadById(campaignLeadId);
         if (campaignLead && !campaignLead.emailBounced) {
           await db.updateCampaignLead(campaignLeadId, {
-            emailBounced: true,
-            emailBouncedAt: new Date(),
+            emailBounced: 1 as any,
+            emailBouncedAt: new Date().toISOString(),
             bounceReason: bounceReason,
           });
           // Update campaign bounce count
@@ -469,8 +469,8 @@ export function registerEmailTrackingRoutes(app: Express) {
           const clFull = await db.getCampaignLeadById(cl.id);
           if (clFull && !clFull.emailBounced) {
             await db.updateCampaignLead(cl.id, {
-              emailBounced: true,
-              emailBouncedAt: new Date(),
+              emailBounced: 1 as any,
+              emailBouncedAt: new Date().toISOString(),
               bounceReason: bounceReason,
             });
             // Update campaign bounce count
