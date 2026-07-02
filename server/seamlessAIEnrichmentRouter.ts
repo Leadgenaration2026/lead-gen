@@ -12,6 +12,7 @@
 
 import { protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { updateLead, getLeadById } from "./db";
 import { searchContacts, researchContacts, pollContactResults } from "./seamlessAI";
 import { SeamlessErrorDetails } from "./seamlessAIErrorLogger";
@@ -274,9 +275,19 @@ export const seamlessAIEnrichmentRouter = router({
           error.message
         );
         stats.endTime = new Date();
+        
+        // Throw as tRPC error with proper message
+        const errorMessage = error.message || "Unknown enrichment error";
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: errorMessage,
+          cause: error,
+        });
+        
+        // This line is unreachable but kept for reference
         return {
           success: false,
-          error: error.message,
+          error: errorMessage,
           stats,
         };
       }
