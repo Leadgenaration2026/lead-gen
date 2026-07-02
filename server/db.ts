@@ -50,8 +50,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     textFields.forEach(assignNullable);
 
     if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
+      const lastSignedInStr = typeof user.lastSignedIn === 'string' ? user.lastSignedIn : (user.lastSignedIn as any)?.toISOString?.() || user.lastSignedIn;
+      values.lastSignedIn = lastSignedInStr;
+      updateSet.lastSignedIn = lastSignedInStr;
     }
     if (user.role !== undefined) {
       values.role = user.role;
@@ -62,11 +63,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     }
 
     if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
+      values.lastSignedIn = new Date().toISOString();
     }
 
     if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
+      updateSet.lastSignedIn = new Date().toISOString();
     }
 
     await db.insert(users).values(values).onDuplicateKeyUpdate({
@@ -482,7 +483,7 @@ export async function cancelRemainingFollowUpCalls(campaignLeadId: number) {
   const { followUpCalls } = await import("../drizzle/schema");
   const { and } = await import("drizzle-orm");
   return db.update(followUpCalls)
-    .set({ status: "failed", updatedAt: new Date() })
+    .set(convertToDbFormat({ status: "failed", updatedAt: new Date() }))
     .where(and(
       eq(followUpCalls.campaignLeadId, campaignLeadId),
       eq(followUpCalls.status, "scheduled")
@@ -634,7 +635,7 @@ export async function getLeadSetById(id: number) {
 export async function updateLeadSet(id: number, data: Partial<InsertLeadSet>) {
   const database = await getDb();
   if (!database) return;
-  await database.update(leadSets).set({ ...data, updatedAt: new Date() }).where(eq(leadSets.id, id));
+  await database.update(leadSets).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(leadSets.id, id));
 }
 
 export async function deleteLeadSet(id: number) {
@@ -684,7 +685,7 @@ export async function upsertRotationalEmail(data: Omit<InsertRotationalEmail, "i
     and(eq(rotationalEmails.userId, data.userId), eq(rotationalEmails.dayOfWeek, data.dayOfWeek))
   );
   if (existing.length > 0) {
-    await database.update(rotationalEmails).set({
+    await database.update(rotationalEmails).set(convertToDbFormat({
       email: data.email,
       smtpHost: data.smtpHost,
       smtpPort: data.smtpPort,
@@ -692,7 +693,7 @@ export async function upsertRotationalEmail(data: Omit<InsertRotationalEmail, "i
       smtpPassword: data.smtpPassword,
       senderName: data.senderName,
       isActive: data.isActive ?? true,
-    }).where(eq(rotationalEmails.id, existing[0].id));
+    })).where(eq(rotationalEmails.id, existing[0].id));
   } else {
     await database.insert(rotationalEmails).values(data as any);
   }
@@ -729,7 +730,7 @@ export async function isLeadUnsubscribed(campaignLeadId: number): Promise<boolea
   const database = await getDb();
   if (!database) return false;
   const result = await database.select().from(campaignLeads).where(eq(campaignLeads.id, campaignLeadId));
-  return result[0]?.unsubscribed === true;
+  return result[0]?.unsubscribed === 1;
 }
 
 // Cancel all pending follow-up emails and calls for a campaign lead (on reply/unsubscribe)

@@ -445,3 +445,33 @@ export type WebhookEvent = typeof webhookEvents.$inferSelect;
 
 export type InsertClaudeApiUsage = typeof claudeApiUsage.$inferInsert;
 export type ClaudeApiUsage = typeof claudeApiUsage.$inferSelect;
+
+export type InsertScheduledEmail = typeof scheduledEmails.$inferInsert;
+export type ScheduledEmail = typeof scheduledEmails.$inferSelect;
+
+export type InsertCampaignTemplate = typeof campaignTemplates.$inferInsert;
+export type CampaignTemplate = typeof campaignTemplates.$inferSelect;
+
+export type InsertFollowUpEmail = typeof followUpEmails.$inferInsert;
+export type FollowUpEmail = typeof followUpEmails.$inferSelect;
+
+export type InsertFollowUpCall = typeof followUpCalls.$inferInsert;
+export type FollowUpCall = typeof followUpCalls.$inferSelect;
+
+export type InsertEmailTemplate = typeof emailTemplates.$inferInsert;
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+
+export type InsertLeadWeakPoints = typeof leadWeakPoints.$inferInsert;
+export type LeadWeakPoints = typeof leadWeakPoints.$inferSelect;
+
+export type InsertFollowUpSchedule = typeof followUpSchedules.$inferInsert;
+export type FollowUpSchedule = typeof followUpSchedules.$inferSelect;
+
+export type InsertEmailSignature = typeof emailSignatures.$inferInsert;
+export type EmailSignature = typeof emailSignatures.$inferSelect;
+
+export type InsertEmailReply = typeof emailReplies.$inferInsert;
+export type EmailReply = typeof emailReplies.$inferSelect;
+
+export type InsertSocialOutreach = typeof socialOutreach.$inferInsert;
+export type SocialOutreach = typeof socialOutreach.$inferSelect;

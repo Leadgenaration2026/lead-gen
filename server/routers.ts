@@ -1445,7 +1445,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           templateId: input.templateId || null,
           status: input.scheduledAt ? "draft" : "draft",
           totalLeads: input.leadIds.length,
-          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt).toISOString() : null,
           dailySendLimit: input.dailySendLimit || null,
         });
 
@@ -1781,8 +1781,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
             // Update campaign lead status with sender info and message ID
             await db.updateCampaignLead(campaignLead.id, {
-              emailSent: true,
-              emailSentAt: new Date(),
+              emailSent: 1 as any,
+              emailSentAt: new Date().toISOString(),
               senderEmail: senderEmail || null,
               messageId: sendResult.messageId || null,
               threadId: sendResult.messageId || null,
@@ -1811,7 +1811,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         await db.updateCampaign(campaignId, {
           status: remaining > 0 ? "active" : "active",
-          launchedAt: new Date(),
+          launchedAt: new Date().toISOString(),
           sentCount: (campaign.sentCount || 0) + sentCount,
         });
 
@@ -2871,8 +2871,8 @@ Respond in this exact JSON format:
             const campaignLeadsList = await db.getCampaignLeads(campaignId);
             if (campaignLeadsList.length > 0) {
               await db.updateCampaignLead(campaignLeadsList[0].id, {
-                emailSent: true,
-                emailSentAt: new Date(),
+                emailSent: 1 as any,
+                emailSentAt: new Date().toISOString(),
                 senderEmail: fromEmail || null,
                 messageId: sendResult?.messageId || null,
                 threadId: sendResult?.messageId || null,
@@ -3129,7 +3129,7 @@ Respond in this exact JSON format:
           leadId: input.leadId,
           subject: input.subject,
           emailBody: input.emailBody,
-          scheduledFor: new Date(input.scheduledFor),
+          scheduledFor: new Date(input.scheduledFor).toISOString(),
           status: "pending",
         });
         return { success: true, id };
@@ -3281,7 +3281,7 @@ Respond in this exact JSON format:
           openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
           clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
           bounceRate: sent > 0 ? Math.round((bounced / sent) * 100) : 0,
-          createdAt: campaign.createdAt,
+          createdAt: campaign.createdAt ? new Date(campaign.createdAt) : new Date(),
         });
       }
 
@@ -3537,7 +3537,7 @@ Respond in this exact JSON format:
           smtpPassword: input.smtpPassword,
           senderName: input.senderName || null,
           dayOfWeek: input.dayOfWeek,
-          isActive: input.isActive,
+          isActive: input.isActive ? 1 : 0,
         });
         return { success: true };
       }),

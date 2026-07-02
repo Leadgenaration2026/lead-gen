@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { getLeadById, updateLead } from "./db";
+import { getLeadById, updateLead, getUserSettings } from "./db";
+import * as db from "./db";
 import { searchContacts, researchContact, SeamlessSearchResult, SeamlessResearchResponse } from "./seamlessAI";
 import { leads } from "../drizzle/schema";
 
@@ -160,7 +161,11 @@ export const seamlessAIEnrichmentRouter = router({
             linkedinUrl: lead.linkedinUrl || undefined,
           };
 
-          const searchResults = await searchContacts(ctx.user.seamlessApiKey, searchFilters);
+          const userSettings = await db.getUserSettings(ctx.user.id);
+          if (!userSettings?.seamlessApiKey) {
+            throw new Error('Seamless.AI API key not configured');
+          }
+          const searchResults = await searchContacts(userSettings.seamlessApiKey, searchFilters);
           stats.increment("resultsReturned");
 
           if (!searchResults || searchResults.data.length === 0) {
@@ -202,7 +207,7 @@ export const seamlessAIEnrichmentRouter = router({
             console.log(`[SeamlessAIEnrichment] Expected Credits: 1`);
 
             stats.increment("researchRequestsSubmitted");
-            const researchResult: SeamlessResearchResponse = await researchContact(ctx.user.seamlessApiKey, [bestMatch.result.id]);
+            const researchResult: SeamlessResearchResponse = await researchContact(userSettings.seamlessApiKey, [bestMatch.result.id]);
 
             if (researchResult) {
               await updateLead(lead.id, {

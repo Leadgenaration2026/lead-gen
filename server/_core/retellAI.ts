@@ -93,8 +93,8 @@ export async function triggerRetellCall(
     const campaignLead = await db.getCampaignLeadById(campaignLeadId);
     if (campaignLead) {
       await db.updateCampaignLead(campaignLeadId, {
-        callTriggered: true,
-        callTriggeredAt: new Date(),
+        callTriggered: 1 as any,
+        callTriggeredAt: new Date().toISOString(),
       });
 
       // Update campaign call count

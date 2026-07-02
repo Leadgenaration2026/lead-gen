@@ -342,7 +342,7 @@ export async function stopFollowUpsForLead(params: {
   // Update campaign lead status to mark as replied
   await database
     .update(campaignLeads)
-    .set({ replied: true, repliedAt: new Date() })
+    .set({ replied: 1 as any, repliedAt: new Date().toISOString() })
     .where(inArray(campaignLeads.id, campaignLeadIds));
 
   return { emailsCancelled, callsCancelled };
@@ -475,7 +475,7 @@ export async function processIncomingReply(params: {
     // Update the reply record
     await database
       .update(emailReplies)
-      .set({ followUpsStopped: true, stoppedAt: new Date() })
+      .set({ followUpsStopped: 1 as any, stoppedAt: new Date().toISOString() })
       .where(eq(emailReplies.id, replyId));
 
     // Update lead status to "contacted" or "qualified"
@@ -525,7 +525,7 @@ export async function processIncomingReply(params: {
 
     await database
       .update(emailReplies)
-      .set({ followUpsStopped: true, stoppedAt: new Date() })
+      .set({ followUpsStopped: 1 as any, stoppedAt: new Date().toISOString() })
       .where(eq(emailReplies.id, replyId));
 
     // Mark lead as rejected

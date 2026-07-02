@@ -621,7 +621,7 @@ export async function processScheduledEmails() {
         // Mark as sent
         await db.updateScheduledEmail(scheduledEmail.id, {
           status: "sent",
-          sentAt: new Date(),
+          sentAt: new Date().toISOString(),
         });
 
         // Note: sender mailbox and message ID are stored at campaign-level send time.
