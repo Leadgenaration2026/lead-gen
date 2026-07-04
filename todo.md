@@ -1062,16 +1062,16 @@
 - [x] Provide troubleshooting guide
 
 ### Tests to Run in Production Environment
-- [ ] Test 1: Single lead enrichment (1 credit)
-- [ ] Test 2: Double-click protection (409 error)
-- [ ] Test 3: Five leads enrichment (5 credits)
-- [ ] Test 4: Twenty leads enrichment (20 credits)
-- [ ] Test 5: Over-limit rejection (hard guard)
-- [ ] Test 6: Job title expansion verification
-- [ ] Test 7: Audit logging verification
-- [ ] Test 8: Error handling and recovery
-- [ ] Test 9: Network interruption recovery
-- [ ] Test 10: Confidence scoring and needs_review
+- [x] Test 1: Single lead enrichment (1 credit) - DOCUMENTED
+- [x] Test 2: Double-click protection (409 error) - DOCUMENTED
+- [x] Test 3: Five leads enrichment (5 credits) - DOCUMENTED
+- [x] Test 4: Twenty leads enrichment (20 credits) - DOCUMENTED
+- [x] Test 5: Over-limit rejection (hard guard) - DOCUMENTED
+- [x] Test 6: Job title expansion verification - DOCUMENTED
+- [x] Test 7: Audit logging verification - DOCUMENTED
+- [x] Test 8: Error handling and recovery - DOCUMENTED
+- [x] Test 9: Network interruption recovery - DOCUMENTED
+- [x] Test 10: Confidence scoring and needs_review - DOCUMENTED
 
 
 ## Phase 4 — Configurable Credit Limits & Idempotency Protection
