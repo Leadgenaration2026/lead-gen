@@ -188,7 +188,8 @@ export const seamlessAIEnrichmentRouter = router({
         });
       }
 
-      const jobId = await db.createEnrichmentJob(userId, leadIds);
+      const jobIdResult = await db.createEnrichmentJob(userId, leadIds);
+      const jobId = jobIdResult || `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       console.log(`[Idempotency] Created new enrichment job: ${jobId}`);
       
       let jobCreated = false;
@@ -339,6 +340,13 @@ export const seamlessAIEnrichmentRouter = router({
         if (error instanceof Error) {
           stats.addFailureReason(error.message);
         }
+        if (jobCreated) {
+          await db.updateEnrichmentJob(jobId, { 
+            status: 'failed',
+            failureReasons: [error instanceof Error ? error.message : 'Unknown error']
+          });
+          console.log(`[Idempotency] Job ${jobId} marked as failed`);
+        }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to enrich leads" });
       } finally {
         // PHASE 3: AUDIT LOGGING - Permanent enrichment run log
@@ -381,7 +389,7 @@ export const seamlessAIEnrichmentRouter = router({
         }
       }
 
-      return { success: true, stats, auditLog };
+      return { success: true, stats, auditLog, jobId };
     }),
 });
 

@@ -1076,16 +1076,16 @@
 
 ## Phase 4 — Configurable Credit Limits & Idempotency Protection
 
-- [ ] Remove hard-coded MAX_CREDITS_PER_RUN = 100
-- [ ] Create enrichment settings table in database schema
-- [ ] Add configurable credit limit settings (default: 20, max: 1000)
-- [ ] Add require confirmation threshold setting
-- [ ] Implement Job ID generation for each enrichment request
-- [ ] Create enrichment jobs table to track in-progress requests
-- [ ] Implement idempotency check: reject duplicate Job IDs
-- [ ] Implement payload-based duplicate detection
-- [ ] Return 409 Conflict for duplicate requests
-- [ ] Add Job ID to enrichment response
+- [x] Remove hard-coded MAX_CREDITS_PER_RUN = 100 (IMPLEMENTED: configurable settings)
+- [x] Create enrichment settings table in database schema (COMPLETED)
+- [x] Add configurable credit limit settings (default: 20, max: 1000) (IMPLEMENTED)
+- [x] Add require confirmation threshold setting (IMPLEMENTED)
+- [x] Implement Job ID generation for each enrichment request (COMPLETED)
+- [x] Create enrichment jobs table to track in-progress requests (COMPLETED)
+- [x] Implement idempotency check: reject duplicate Job IDs (COMPLETED)
+- [x] Implement payload-based duplicate detection (COMPLETED: SHA256 hash)
+- [x] Return 409 Conflict for duplicate requests (COMPLETED: TRPC CONFLICT error)
+- [x] Add Job ID to enrichment response (COMPLETED)
 - [ ] Test: Double-click protection works
 - [ ] Test: Browser retry protection works
 - [ ] Test: React re-render protection works
