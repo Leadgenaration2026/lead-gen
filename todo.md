@@ -1104,3 +1104,8 @@
 - [x] Fix TypeScript downlevelIteration configuration for Set iteration support
 - [x] Integrate with seamlessAI.ts getSeamlessLeads() function
 - [x] Verify all tests pass with real-world scenarios
+- [x] **CRITICAL FIX**: Update parseInstructionToFilters() to use titleExpansionMap
+- [x] Convert natural language to structured API filters
+- [x] Generate jobTitle array with expanded titles
+- [x] Parse company size to min/max employee count
+- [x] Create parseInstructionToFilters.test.ts with 20+ test cases

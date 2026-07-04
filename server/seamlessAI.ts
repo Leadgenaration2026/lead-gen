@@ -482,16 +482,49 @@ export async function pollContactResults(
 
 
 export function parseInstructionToFilters(instruction: string, country?: string) {
-  // Parse user instruction into Seamless.AI search filters
+  // Parse user instruction into Seamless.AI search filters using titleExpansionMap
+  // This converts natural language like "small business owners" into structured API filters
+  
+  const { parseSearchInstruction } = require('./titleExpansionMap');
+  
+  const parsed = parseSearchInstruction(instruction);
+  
   const filters: any = {};
   
-  if (instruction) {
-    filters.instruction = instruction;
+  // Add expanded job titles (critical for search quality)
+  if (parsed.titles && parsed.titles.length > 0) {
+    filters.jobTitle = parsed.titles;
+    console.log(`[Seamless.AI] Expanded job titles: ${JSON.stringify(parsed.titles)}`);
   }
   
-  if (country) {
-    filters.country = country;
+  // Add company size range if detected
+  if (parsed.companySize) {
+    if (parsed.companySize.min !== undefined) {
+      filters.companyEmployeeCountMin = parsed.companySize.min;
+    }
+    if (parsed.companySize.max !== undefined) {
+      filters.companyEmployeeCountMax = parsed.companySize.max;
+    }
   }
+  
+  // Add industries if detected
+  if (parsed.industries && parsed.industries.length > 0) {
+    filters.industry = parsed.industries;
+    console.log(`[Seamless.AI] Industries: ${JSON.stringify(parsed.industries)}`);
+  }
+  
+  // Add countries (use provided country or parsed countries)
+  if (country) {
+    filters.contactCountry = [country];
+  } else if (parsed.countries && parsed.countries.length > 0) {
+    filters.contactCountry = parsed.countries;
+    console.log(`[Seamless.AI] Countries: ${JSON.stringify(parsed.countries)}`);
+  } else {
+    // Default to United States if not specified
+    filters.contactCountry = ["United States"];
+  }
+  
+  console.log(`[Seamless.AI] Generated filters:`, JSON.stringify(filters, null, 2));
   
   return filters;
 }
