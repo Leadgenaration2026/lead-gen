@@ -15,6 +15,7 @@ import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PL
 // DISABLED: Browser automation for enrichment - using REST API instead
 // import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
 import { seamlessAIEnrichmentRouter } from "./seamlessAIEnrichmentRouter";
+import { searchPreviewRouter } from "./searchPreviewRouter";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -4222,5 +4223,7 @@ Use the website data to:
   // seamlessAIAutomation: seamlessAIAutomationRouter,
   // Seamless.AI Enrichment router (API-first approach)
   seamlessAIEnrichment: seamlessAIEnrichmentRouter,
+  // Search Preview router (Search → Preview → Import → Enrich workflow)
+  searchPreview: searchPreviewRouter,
 });
 export type AppRouter = typeof appRouter;
