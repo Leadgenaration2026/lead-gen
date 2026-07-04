@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, Clock, CalendarDays, MessageSquare, Trash2 } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, Clock, CalendarDays, MessageSquare, Trash2, Search } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -29,6 +29,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Search, label: "Search Leads", path: "/search-preview" },
   { icon: Users, label: "All Leads", path: "/all-leads" },
   { icon: FolderOpen, label: "Lead Sets", path: "/lead-sets" },
   { icon: Mail, label: "Email Composer", path: "/email-composer" },

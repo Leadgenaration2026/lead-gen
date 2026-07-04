@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle, MailWarning } from "lucide-react";
+import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle, MailWarning, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import LeadsPage from "./Leads";
 import SettingsPage from "./Settings";
@@ -241,6 +241,10 @@ function OverviewTab() {
           <CardDescription>Get started with your lead generation</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
+          <Button variant="outline" className="gap-2" onClick={() => window.location.href = '/search-preview'}>
+            <Search className="w-4 h-4" />
+            Search Leads
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => window.location.href = '/email-composer'}>
             <Mail className="w-4 h-4" />
             Compose Email

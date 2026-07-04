@@ -1173,7 +1173,7 @@
 ### Phase 8: Final Integration
 - [x] Integrate searchPreviewRouter into main routers.ts
 - [x] Add SearchPreview route to App.tsx
-- [ ] Update navigation sidebar to show Search Preview link
-- [ ] Update dashboard to show Search Preview CTA
-- [ ] Add documentation for new workflow
-- [ ] Create checkpoint
+- [x] Update navigation sidebar to show Search Preview link ("Search Leads" in sidebar)
+- [x] Update dashboard to show Search Preview CTA ("Search Leads" in Quick Actions)
+- [x] Add documentation for new workflow (SEARCH_PREVIEW_WORKFLOW.md)
+- [x] Create final checkpoint
