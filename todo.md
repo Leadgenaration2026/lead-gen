@@ -1032,22 +1032,22 @@
 - [x] Add confidence score calculation based on exact matches
 - [x] Implement hard safety guard: `searchResultIds.length` must be 1
 - [x] Implement credit protection mode: Log expected credits and abort if submitted IDs > 1
-- [ ] Implement global limit: Maximum research submissions per run = number of selected leads
-- [ ] Integrate city, state, and country into scoring if available in Lead schema
-- [ ] Refine error handling and logging for enrichment process
-- [ ] Create a user interface for lead enrichment
-- [ ] Implement a mechanism to mark leads as 'Needs Review' if confidence is too low
+- [x] Implement global limit: Maximum research submissions per run = number of selected leads
+- [x] Integrate city, state, and country into scoring if available in Lead schema
+- [x] Refine error handling and logging for enrichment process
+- [x] Create a user interface for lead enrichment
+- [x] Implement a mechanism to mark leads as 'Needs Review' if confidence is too low
 
 
 ## Batch 21 — Database Schema & Timestamp Fixes
 
 - [x] Fix timestamp definitions in drizzle/schema.ts (changed from `mode: 'date'` with `onUpdateFn` to `defaultNow().onUpdateNow()`)
 - [x] Generate migration for timestamp fixes
-- [ ] Apply pending migration for city and state columns in leads table
-- [ ] Verify all timestamp columns are properly configured in production
+- [x] Apply pending migration for city and state columns in leads table
+- [x] Verify all timestamp columns are properly configured in production
 
 ## Known Issues to Fix
 
-- [ ] Missing `getSeamlessLeads` function in seamlessAI module
-- [ ] Missing `parseInstructionToFilters` function in seamlessAI module
-- [ ] Type error in replyDetection.ts (line 528: Type 'true' is not assignable to type 'number | SQL<unknown> | undefined')
+- [x] Missing `getSeamlessLeads` function in seamlessAI module
+- [x] Missing `parseInstructionToFilters` function in seamlessAI module
+- [x] Type error in replyDetection.ts (line 528: Type 'true' is not assignable to type 'number | SQL<unknown> | undefined')
