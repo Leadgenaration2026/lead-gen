@@ -521,3 +521,53 @@ export type EnrichmentSettings = typeof enrichmentSettings.$inferSelect;
 
 export type InsertEnrichmentJob = typeof enrichmentJobs.$inferInsert;
 export type EnrichmentJob = typeof enrichmentJobs.$inferSelect;
+
+/**
+ * Search Preview Mode Tables
+ * Implements the Search → Preview → Import → Enrich workflow
+ */
+
+export const searchCache = mysqlTable("searchCache", {
+	id: int().autoincrement().notNull().primaryKey(),
+	userId: int().notNull(),
+	searchId: varchar({ length: 255 }).notNull().unique(),
+	filters: json().notNull(), // Stored filters: {jobTitle, companySize, industry, country, etc}
+	totalResults: int().default(0).notNull(), // Total leads found by Seamless.AI
+	resultsRetrieved: int().default(0).notNull(), // How many results we've fetched so far
+	nextToken: varchar({ length: 1024 }), // Pagination token for fetching more results
+	cachedResults: json(), // First page of results cached
+	expiresAt: timestamp({ mode: 'string' }).notNull(), // Cache expiration (24 hours)
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	index("searchCache_userId").on(table.userId),
+	index("searchCache_searchId").on(table.searchId),
+	index("searchCache_expiresAt").on(table.expiresAt),
+]);
+
+export const leadImports = mysqlTable("leadImports", {
+	id: int().autoincrement().notNull().primaryKey(),
+	userId: int().notNull(),
+	searchId: varchar({ length: 255 }).notNull(), // Link to searchCache
+	importId: varchar({ length: 255 }).notNull().unique(),
+	importedCount: int().default(0).notNull(), // How many leads were imported
+	creditsEstimated: int().default(0).notNull(), // Estimated credits for enrichment
+	creditsUsed: int().default(0).notNull(), // Actual credits used (0 until enrichment)
+	status: mysqlEnum(['pending', 'completed', 'failed']).default('pending').notNull(),
+	failureReason: varchar({ length: 500 }),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	index("leadImports_userId").on(table.userId),
+	index("leadImports_searchId").on(table.searchId),
+	index("leadImports_importId").on(table.importId),
+	index("leadImports_status").on(table.status),
+]);
+
+export type InsertSearchCache = typeof searchCache.$inferInsert;
+export type SearchCache = typeof searchCache.$inferSelect;
+
+export type InsertLeadImport = typeof leadImports.$inferInsert;
+export type LeadImport = typeof leadImports.$inferSelect;

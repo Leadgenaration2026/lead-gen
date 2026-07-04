@@ -1,7 +1,7 @@
 import { eq, and, desc, inArray, lte, count, sql, gte, notInArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import * as schema from "../drizzle/schema";
-import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage } from "../drizzle/schema";
+import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage, searchCache, leadImports, InsertSearchCache, SearchCache, InsertLeadImport, LeadImport } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -1114,4 +1114,175 @@ export async function getEnrichmentJobByJobId(jobId: string) {
   
   const result = await db.select().from(enrichmentJobs).where(eq(enrichmentJobs.jobId, jobId)).limit(1);
   return result[0] || null;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEARCH PREVIEW MODE - Database Helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { searchCache, leadImports, InsertSearchCache, SearchCache, InsertLeadImport, LeadImport } from "../drizzle/schema";
+import { eq, and } from "drizzle-orm";
+
+/**
+ * Save search results to cache
+ * Used to store Seamless.AI search results with pagination token
+ */
+export async function cacheSearchResults(
+  userId: number,
+  searchId: string,
+  filters: Record<string, any>,
+  totalResults: number,
+  nextToken?: string,
+  cachedResults?: any[]
+): Promise<SearchCache | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    
+    const result = await db.insert(searchCache).values({
+      userId,
+      searchId,
+      filters: filters as any,
+      totalResults,
+      resultsRetrieved: cachedResults?.length || 0,
+      nextToken,
+      cachedResults: cachedResults as any,
+      expiresAt: expiresAt.toISOString(),
+    }).onDuplicateKeyUpdate({
+      set: {
+        totalResults,
+        nextToken: nextToken || undefined,
+        cachedResults: cachedResults as any,
+        updatedAt: new Date().toISOString(),
+      }
+    });
+    
+    // Return the cached record
+    const cached = await db.select().from(searchCache).where(eq(searchCache.searchId, searchId)).limit(1);
+    return cached[0] || null;
+  } catch (error) {
+    console.error("[Database] Failed to cache search results:", error);
+    return null;
+  }
+}
+
+/**
+ * Get cached search results
+ * Returns null if cache has expired
+ */
+export async function getSearchCache(userId: number, searchId: string): Promise<SearchCache | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const now = new Date().toISOString();
+    const cached = await db.select()
+      .from(searchCache)
+      .where(and(
+        eq(searchCache.userId, userId),
+        eq(searchCache.searchId, searchId)
+      ))
+      .limit(1);
+    
+    if (!cached.length) return null;
+    
+    const record = cached[0];
+    // Check if cache has expired
+    if (new Date(record.expiresAt) < new Date(now)) {
+      return null; // Cache expired
+    }
+    
+    return record;
+  } catch (error) {
+    console.error("[Database] Failed to get search cache:", error);
+    return null;
+  }
+}
+
+/**
+ * Create a lead import record
+ * Tracks which leads were imported from which search
+ */
+export async function createLeadImport(
+  userId: number,
+  searchId: string,
+  importId: string,
+  importedCount: number,
+  creditsEstimated: number
+): Promise<LeadImport | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const result = await db.insert(leadImports).values({
+      userId,
+      searchId,
+      importId,
+      importedCount,
+      creditsEstimated,
+      creditsUsed: 0,
+      status: 'pending',
+    });
+    
+    const imported = await db.select().from(leadImports).where(eq(leadImports.importId, importId)).limit(1);
+    return imported[0] || null;
+  } catch (error) {
+    console.error("[Database] Failed to create lead import:", error);
+    return null;
+  }
+}
+
+/**
+ * Get lead import record
+ */
+export async function getLeadImport(userId: number, importId: string): Promise<LeadImport | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const imported = await db.select()
+      .from(leadImports)
+      .where(and(
+        eq(leadImports.userId, userId),
+        eq(leadImports.importId, importId)
+      ))
+      .limit(1);
+    
+    return imported[0] || null;
+  } catch (error) {
+    console.error("[Database] Failed to get lead import:", error);
+    return null;
+  }
+}
+
+/**
+ * Update lead import status after enrichment
+ */
+export async function updateLeadImportStatus(
+  importId: string,
+  status: 'pending' | 'completed' | 'failed',
+  creditsUsed?: number,
+  failureReason?: string
+): Promise<LeadImport | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const updateData: any = { status };
+    if (creditsUsed !== undefined) updateData.creditsUsed = creditsUsed;
+    if (failureReason) updateData.failureReason = failureReason;
+    
+    await db.update(leadImports)
+      .set(updateData)
+      .where(eq(leadImports.importId, importId));
+    
+    const updated = await db.select().from(leadImports).where(eq(leadImports.importId, importId)).limit(1);
+    return updated[0] || null;
+  } catch (error) {
+    console.error("[Database] Failed to update lead import status:", error);
+    return null;
+  }
 }

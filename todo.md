@@ -1114,24 +1114,24 @@
 ## Batch 32 — Search Preview Mode (Separate Search → Import → Enrich Workflow)
 
 ### Phase 1: Design & Architecture
-- [ ] Design database schema for search_cache table (searchId, filters, totalResults, nextToken, expiresAt)
-- [ ] Design database schema for lead_imports table (importId, searchId, importedCount, importedAt)
-- [ ] Create tRPC types for SearchPreview, SearchResult, ImportResult
-- [ ] Document API flow: Search → Preview → Import → Enrich → Outreach
+- [x] Design database schema for search_cache table (searchId, filters, totalResults, nextToken, expiresAt)
+- [x] Design database schema for lead_imports table (importId, searchId, importedCount, importedAt)
+- [x] Create tRPC types for SearchPreview, SearchResult, ImportResult
+- [x] Document API flow: Search → Preview → Import → Enrich → Outreach
 
 ### Phase 2: Backend Implementation
-- [ ] Create tRPC procedure: leads.search (POST /search/contacts only, no research)
-- [ ] Create tRPC procedure: leads.getSearchPreview (get cached results with pagination)
-- [ ] Create tRPC procedure: leads.importSearchResults (save to database, no enrichment)
-- [ ] Implement search result caching with TTL (24 hours)
-- [ ] Implement pagination using nextToken
-- [ ] Add credit estimation: importCount * 1 credit
+- [x] Create tRPC procedure: searchPreview.search (POST /search/contacts only, no research)
+- [x] Create tRPC procedure: searchPreview.getPreview (get cached results with pagination)
+- [x] Create tRPC procedure: searchPreview.importResults (save to database, no enrichment)
+- [x] Implement search result caching with TTL (24 hours)
+- [x] Implement pagination using nextToken
+- [x] Add credit estimation: importCount * 1 credit
 
 ### Phase 3: Database & Caching
-- [ ] Create search_cache table migration
-- [ ] Create lead_imports table migration
-- [ ] Implement cache invalidation when filters change
-- [ ] Store nextToken for pagination resumption
+- [x] Create search_cache table migration
+- [x] Create lead_imports table migration
+- [x] Implement cache invalidation when filters change
+- [x] Store nextToken for pagination resumption
 
 ### Phase 4: UI Components
 - [ ] Create SearchPreview component with:
