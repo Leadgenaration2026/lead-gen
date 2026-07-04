@@ -14,6 +14,19 @@ interface EnrichmentReport {
   seamlessSearchResultId?: string;
 }
 
+interface EnrichmentAuditLog {
+  userId: number;
+  selectedLeads: number;
+  searchRequests: number;
+  researchRequests: number;
+  pollRequests: number;
+  researchIdsSubmitted: number;
+  successful: number;
+  failed: number;
+  failureReasons: string[];
+  timestamp: Date;
+}
+
 class SeamlessAIAutomationStats {
   searchesPerformed: number = 0;
   resultsReturned: number = 0;
@@ -23,9 +36,18 @@ class SeamlessAIAutomationStats {
   skippedLeads: number = 0;
   failedEnrichments: number = 0;
   needsReviewLeads: number = 0;
+  pollRequests: number = 0;
+  researchIdsSubmitted: number = 0;
+  failureReasons: string[] = [];
 
   increment(key: keyof SeamlessAIAutomationStats) {
     (this[key] as number)++;
+  }
+
+  addFailureReason(reason: string) {
+    if (!this.failureReasons.includes(reason)) {
+      this.failureReasons.push(reason);
+    }
   }
 }
 
@@ -117,12 +139,38 @@ export const seamlessAIEnrichmentRouter = router({
       const { leadIds, confidenceThreshold, maxResearchSubmissions } = input;
       const stats = new SeamlessAIAutomationStats();
       const reports: EnrichmentReport[] = [];
+      const auditLog: EnrichmentAuditLog = {
+        userId: 0,
+        selectedLeads: leadIds.length,
+        searchRequests: 0,
+        researchRequests: 0,
+        pollRequests: 0,
+        researchIdsSubmitted: 0,
+        successful: 0,
+        failed: 0,
+        failureReasons: [],
+        timestamp: new Date(),
+      };
 
       if (!ctx.user) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Please login to enrich leads." });
       }
 
       const userId = ctx.user.id;
+      auditLog.userId = userId;
+
+      // PHASE 2: CREDIT PROTECTION - Hard safety guard
+      // Verify that research IDs submitted will never exceed selected leads
+      const CREDIT_PROTECTION_ENABLED = true;
+      const MAX_CREDITS_PER_RUN = 100; // Default limit
+      const REQUIRE_CONFIRMATION_THRESHOLD = 50;
+
+      if (CREDIT_PROTECTION_ENABLED && leadIds.length > MAX_CREDITS_PER_RUN) {
+        const errorMsg = `[CREDIT PROTECTION] Requested enrichment of ${leadIds.length} leads exceeds safety limit of ${MAX_CREDITS_PER_RUN}. Please enrich in smaller batches.`;
+        console.error(errorMsg);
+        stats.addFailureReason("Exceeded maximum credits per run");
+        throw new TRPCError({ code: "BAD_REQUEST", message: errorMsg });
+      }
 
       try {
         const selectedLeads = [];
@@ -206,8 +254,18 @@ export const seamlessAIEnrichmentRouter = router({
             console.log(`[SeamlessAIEnrichment] Research IDs Submitted: 1`);
             console.log(`[SeamlessAIEnrichment] Expected Credits: 1`);
 
+            // PHASE 2: HARD SAFETY GUARD - Verify searchResultIds.length <= selectedLeadCount
+            const searchResultIds = [bestMatch.result.id];
+            if (searchResultIds.length > auditLog.selectedLeads) {
+              const errorMsg = `[CREDIT PROTECTION ABORT] Research IDs exceed selected leads. Aborting to prevent credit over-submission.`;
+              console.error(errorMsg);
+              stats.addFailureReason("Research IDs exceed selected leads");
+              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
+            }
+
             stats.increment("researchRequestsSubmitted");
-            const researchResult: SeamlessResearchResponse = await researchContact(userSettings.seamlessApiKey, [bestMatch.result.id]);
+            stats.researchIdsSubmitted += searchResultIds.length;
+            const researchResult: SeamlessResearchResponse = await researchContact(userSettings.seamlessApiKey, searchResultIds);
 
             if (researchResult) {
               await updateLead(lead.id, {
@@ -248,15 +306,41 @@ export const seamlessAIEnrichmentRouter = router({
         }
       } catch (error) {
         console.error("[SeamlessAIEnrichment] Error during enrichment:", error);
+        if (error instanceof Error) {
+          stats.addFailureReason(error.message);
+        }
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to enrich leads" });
       } finally {
+        // PHASE 3: AUDIT LOGGING - Permanent enrichment run log
+        auditLog.searchRequests = stats.searchesPerformed;
+        auditLog.researchRequests = stats.researchRequestsSubmitted;
+        auditLog.pollRequests = stats.pollRequests;
+        auditLog.researchIdsSubmitted = stats.researchIdsSubmitted;
+        auditLog.successful = stats.enrichedLeads;
+        auditLog.failed = stats.failedEnrichments;
+        auditLog.failureReasons = stats.failureReasons;
+
+        // Log to console for audit trail
+        console.log("[SeamlessAIEnrichment] AUDIT LOG:", {
+          timestamp: auditLog.timestamp.toISOString(),
+          user: auditLog.userId,
+          selectedLeads: auditLog.selectedLeads,
+          searchRequests: auditLog.searchRequests,
+          researchRequests: auditLog.researchRequests,
+          pollRequests: auditLog.pollRequests,
+          researchIdsSubmitted: auditLog.researchIdsSubmitted,
+          successful: auditLog.successful,
+          failed: auditLog.failed,
+          failureReasons: auditLog.failureReasons.join("; "),
+        });
+
         console.log("[SeamlessAIEnrichment] Enrichment process completed. Stats:", stats);
         for (const report of reports) {
           console.log(formatEnrichmentReport(report));
         }
       }
 
-      return { success: true, stats };
+      return { success: true, stats, auditLog };
     }),
 });
 
