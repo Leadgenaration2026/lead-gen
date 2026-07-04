@@ -480,3 +480,27 @@ export async function pollContactResults(
 
 
 
+
+export function parseInstructionToFilters(instruction: string, country?: string) {
+  // Parse user instruction into Seamless.AI search filters
+  const filters: any = {};
+  
+  if (instruction) {
+    filters.instruction = instruction;
+  }
+  
+  if (country) {
+    filters.country = country;
+  }
+  
+  return filters;
+}
+
+export async function getSeamlessLeads(leadIds: number[]) {
+  // Return leads that need enrichment
+  if (!leadIds || leadIds.length === 0) return [];
+  
+  // This would typically query the database for the leads
+  // For now, return the IDs as a placeholder
+  return leadIds.map(id => ({ id }));
+}
