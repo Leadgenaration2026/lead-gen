@@ -496,11 +496,18 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   return filters;
 }
 
-export async function getSeamlessLeads(leadIds: number[]) {
-  // Return leads that need enrichment
-  if (!leadIds || leadIds.length === 0) return [];
-  
-  // This would typically query the database for the leads
-  // For now, return the IDs as a placeholder
-  return leadIds.map(id => ({ id }));
+export async function getSeamlessLeads(
+  apiKey: string,
+  filters: any,
+  count?: number
+) {
+  // Search for leads using Seamless.AI API with filters
+  // This is called from routers.ts for lead generation
+  try {
+    const response = await seamlessRequest(apiKey, "POST", "/contacts/search", filters);
+    return response || { contacts: [] };
+  } catch (error) {
+    console.error("[Seamless.AI] Error searching leads:", error);
+    return { contacts: [] };
+  }
 }
