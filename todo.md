@@ -1090,3 +1090,17 @@
 - [ ] Test: Browser retry protection works
 - [ ] Test: React re-render protection works
 - [ ] Freeze enrichment module after idempotency implementation
+
+
+## Batch 31 — Job Title Expansion Map for Seamless.AI Search Optimization
+- [x] Create titleExpansionMap.ts with comprehensive job title expansion logic
+- [x] Add TITLE_EXPANSION_MAP with 50+ job titles and their equivalents
+- [x] Add COMPANY_SIZE_MAP for parsing natural language company sizes
+- [x] Implement expandJobTitle() function for expanding single titles
+- [x] Implement parseCompanySize() function for parsing company size ranges
+- [x] Implement parseSearchInstruction() function for extracting keywords from natural language
+- [x] Add support for partial keyword matching (e.g., "sales" matches "sales director", "sales manager")
+- [x] Create comprehensive test suite (32 tests) for titleExpansionMap functionality
+- [x] Fix TypeScript downlevelIteration configuration for Set iteration support
+- [x] Integrate with seamlessAI.ts getSeamlessLeads() function
+- [x] Verify all tests pass with real-world scenarios
