@@ -1032,11 +1032,11 @@
 - [x] Add confidence score calculation based on exact matches
 - [x] Implement hard safety guard: `searchResultIds.length` must be 1
 - [x] Implement credit protection mode: Log expected credits and abort if submitted IDs > 1
-- [x] Implement global limit: Maximum research submissions per run = number of selected leads
-- [x] Integrate city, state, and country into scoring if available in Lead schema
-- [x] Refine error handling and logging for enrichment process
-- [x] Create a user interface for lead enrichment
-- [x] Implement a mechanism to mark leads as 'Needs Review' if confidence is too low
+- [ ] Implement global limit: Maximum research submissions per run = number of selected leads (VERIFIED: no hard-coded limit, defaults to unlimited)
+- [ ] Integrate city, state, and country into scoring if available in Lead schema (PENDING: real database validation)
+- [ ] Refine error handling and logging for enrichment process (PENDING: real database validation)
+- [ ] Create a user interface for lead enrichment (PENDING: real UI validation)
+- [ ] Implement a mechanism to mark leads as 'Needs Review' if confidence is too low (VERIFIED: confidence filter working)
 
 
 ## Batch 21 — Database Schema & Timestamp Fixes
@@ -1048,6 +1048,27 @@
 
 ## Known Issues to Fix
 
-- [x] Missing `getSeamlessLeads` function in seamlessAI module
-- [x] Missing `parseInstructionToFilters` function in seamlessAI module
-- [x] Type error in replyDetection.ts (line 528: Type 'true' is not assignable to type 'number | SQL<unknown> | undefined')
+- [ ] Missing `getSeamlessLeads` function in seamlessAI module (VERIFIED: function exists)
+- [ ] Missing `parseInstructionToFilters` function in seamlessAI module (VERIFIED: function exists)
+- [ ] Type error in replyDetection.ts (line 528: Type 'true' is not assignable to type 'number | SQL<unknown> | undefined') (VERIFIED: fixed)
+
+
+## CRITICAL: Production Validation Required (BLOCKING)
+
+- [ ] Start production database and connect application
+- [ ] Create real test lead in production database (John Smith, TechCorp Inc, CEO)
+- [ ] Click "Enrich Selected Leads" button in UI for single lead
+- [ ] Verify database row updated with enriched data:
+  - [ ] Phone number populated
+  - [ ] Job title populated
+  - [ ] Company size populated
+  - [ ] Email populated
+- [ ] Verify UI refresh shows all enriched fields
+- [ ] Capture console logs and verify:
+  - [ ] "Research IDs Submitted: 1" (exactly one)
+  - [ ] "Expected Credits: 1" (exactly one)
+  - [ ] No duplicate API calls
+- [ ] Verify Search API called exactly once
+- [ ] Verify Research API called exactly once
+- [ ] Verify poll completed successfully
+- [ ] Confirm no 613-credit over-submission bug can occur
