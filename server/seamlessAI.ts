@@ -477,3 +477,36 @@ export async function pollContactResults(
 
   return completedResults;
 }
+
+
+// Phase B & C Helper Functions for Enrichment
+
+export async function getSeamlessLeads(leadIds: number[], db: any) {
+  const { leads } = await import("../drizzle/schema");
+  const { eq, inArray } = await import("drizzle-orm");
+  
+  if (!db || leadIds.length === 0) return [];
+  return db.select().from(leads).where(inArray(leads.id, leadIds));
+}
+
+export function parseInstructionToFilters(instruction: string) {
+  // Parse user instruction into Seamless.AI search filters
+  // Example: "CEO of tech companies with 10-50 employees" 
+  // Returns: { title: 'CEO', industry: 'technology', companySize: '10-50' }
+  
+  const filters: any = {};
+  
+  // Extract job title
+  const titleMatch = instruction.match(/(?:CEO|CTO|CFO|VP|Director|Manager|Engineer|Developer|Sales|Marketing|Founder|President|COO|CMO)/i);
+  if (titleMatch) filters.title = titleMatch[0];
+  
+  // Extract company size
+  const sizeMatch = instruction.match(/(\d+)-(\d+)\s*(?:employees|people|staff)/i);
+  if (sizeMatch) filters.companySize = `${sizeMatch[1]}-${sizeMatch[2]}`;
+  
+  // Extract industry
+  const industryMatch = instruction.match(/(?:tech|technology|finance|healthcare|retail|manufacturing|software|saas|fintech)/i);
+  if (industryMatch) filters.industry = industryMatch[0];
+  
+  return filters;
+}

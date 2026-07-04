@@ -978,3 +978,140 @@ export async function getClaudeApiUsageThisMonth(userId: number) {
     totalOutputTokens: Number(results[0]?.totalOutputTokens) || 0,
   };
 }
+
+
+// ============================================================
+// ENRICHMENT JOBS & SETTINGS (PHASE B, C, D)
+// ============================================================
+
+import crypto from 'crypto';
+
+export async function getEnrichmentSettings(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentSettings } = await import("../drizzle/schema");
+  const result = await db.select().from(enrichmentSettings).where(eq(enrichmentSettings.userId, userId)).limit(1);
+  return result[0] || null;
+}
+
+export async function getOrCreateEnrichmentSettings(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentSettings } = await import("../drizzle/schema");
+  
+  let settings = await getEnrichmentSettings(userId);
+  if (!settings) {
+    await db.insert(enrichmentSettings).values({
+      userId,
+      maxCreditsPerRun: 20,
+      requireConfirmationThreshold: 50,
+      absoluteHardLimit: 1000,
+      enabled: 1,
+    });
+    settings = await getEnrichmentSettings(userId);
+  }
+  return settings;
+}
+
+export async function updateEnrichmentSettings(userId: number, data: {
+  maxCreditsPerRun?: number;
+  requireConfirmationThreshold?: number;
+  absoluteHardLimit?: number;
+  enabled?: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentSettings } = await import("../drizzle/schema");
+  
+  const updateData: any = {};
+  if (data.maxCreditsPerRun !== undefined) updateData.maxCreditsPerRun = data.maxCreditsPerRun;
+  if (data.requireConfirmationThreshold !== undefined) updateData.requireConfirmationThreshold = data.requireConfirmationThreshold;
+  if (data.absoluteHardLimit !== undefined) updateData.absoluteHardLimit = data.absoluteHardLimit;
+  if (data.enabled !== undefined) updateData.enabled = data.enabled;
+  
+  await db.update(enrichmentSettings).set(updateData).where(eq(enrichmentSettings.userId, userId));
+  return await getEnrichmentSettings(userId);
+}
+
+// Phase B: Idempotency - Check if job already exists or is in progress
+export async function checkEnrichmentJobExists(jobId: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const { enrichmentJobs } = await import("../drizzle/schema");
+  
+  const result = await db.select().from(enrichmentJobs).where(eq(enrichmentJobs.jobId, jobId)).limit(1);
+  return result.length > 0;
+}
+
+export async function getEnrichmentJobByIdempotencyKey(userId: number, payloadHash: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentJobs } = await import("../drizzle/schema");
+  
+  const result = await db.select().from(enrichmentJobs).where(
+    and(
+      eq(enrichmentJobs.userId, userId),
+      eq(enrichmentJobs.payloadHash, payloadHash),
+      inArray(enrichmentJobs.status, ['pending', 'in_progress'])
+    )
+  ).limit(1);
+  return result[0] || null;
+}
+
+export async function createEnrichmentJob(userId: number, selectedLeadIds: number[]) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentJobs } = await import("../drizzle/schema");
+  
+  const jobId = `enrich-${userId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const payloadHash = crypto.createHash('sha256').update(JSON.stringify(selectedLeadIds)).digest('hex');
+  
+  await db.insert(enrichmentJobs).values({
+    jobId,
+    userId,
+    status: 'pending',
+    selectedLeads: selectedLeadIds.length,
+    payloadHash,
+  });
+  
+  return jobId;
+}
+
+export async function updateEnrichmentJob(jobId: string, data: {
+  status?: 'pending' | 'in_progress' | 'completed' | 'failed';
+  searchRequests?: number;
+  researchRequests?: number;
+  pollRequests?: number;
+  researchIdsSubmitted?: number;
+  successful?: number;
+  failed?: number;
+  failureReasons?: string[];
+  completedAt?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentJobs } = await import("../drizzle/schema");
+  
+  const updateData: any = {};
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.searchRequests !== undefined) updateData.searchRequests = data.searchRequests;
+  if (data.researchRequests !== undefined) updateData.researchRequests = data.researchRequests;
+  if (data.pollRequests !== undefined) updateData.pollRequests = data.pollRequests;
+  if (data.researchIdsSubmitted !== undefined) updateData.researchIdsSubmitted = data.researchIdsSubmitted;
+  if (data.successful !== undefined) updateData.successful = data.successful;
+  if (data.failed !== undefined) updateData.failed = data.failed;
+  if (data.failureReasons !== undefined) updateData.failureReasons = JSON.stringify(data.failureReasons);
+  if (data.completedAt !== undefined) updateData.completedAt = data.completedAt;
+  
+  await db.update(enrichmentJobs).set(updateData).where(eq(enrichmentJobs.jobId, jobId));
+  return await getEnrichmentJobByJobId(jobId);
+}
+
+export async function getEnrichmentJobByJobId(jobId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const { enrichmentJobs } = await import("../drizzle/schema");
+  
+  const result = await db.select().from(enrichmentJobs).where(eq(enrichmentJobs.jobId, jobId)).limit(1);
+  return result[0] || null;
+}

@@ -475,3 +475,49 @@ export type EmailReply = typeof emailReplies.$inferSelect;
 
 export type InsertSocialOutreach = typeof socialOutreach.$inferInsert;
 export type SocialOutreach = typeof socialOutreach.$inferSelect;
+
+
+// Enrichment settings and job tracking for credit protection
+export const enrichmentSettings = mysqlTable("enrichmentSettings", {
+	id: int().autoincrement().notNull().primaryKey(),
+	userId: int().notNull(),
+	maxCreditsPerRun: int().default(20).notNull(),
+	requireConfirmationThreshold: int().default(50).notNull(),
+	absoluteHardLimit: int().default(1000).notNull(),
+	enabled: tinyint().default(1).notNull(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	index("enrichmentSettings_userId_unique").on(table.userId),
+]);
+
+export const enrichmentJobs = mysqlTable("enrichmentJobs", {
+	id: int().autoincrement().notNull().primaryKey(),
+	jobId: varchar({ length: 255 }).notNull().unique(),
+	userId: int().notNull(),
+	status: mysqlEnum(['pending', 'in_progress', 'completed', 'failed']).default('pending').notNull(),
+	selectedLeads: int().notNull(),
+	searchRequests: int().default(0).notNull(),
+	researchRequests: int().default(0).notNull(),
+	pollRequests: int().default(0).notNull(),
+	researchIdsSubmitted: int().default(0).notNull(),
+	successful: int().default(0).notNull(),
+	failed: int().default(0).notNull(),
+	failureReasons: json(),
+	payloadHash: varchar({ length: 255 }).notNull(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	completedAt: timestamp({ mode: 'string' }),
+},
+(table) => [
+	index("enrichmentJobs_userId").on(table.userId),
+	index("enrichmentJobs_status").on(table.status),
+	index("enrichmentJobs_jobId_unique").on(table.jobId),
+]);
+
+export type InsertEnrichmentSettings = typeof enrichmentSettings.$inferInsert;
+export type EnrichmentSettings = typeof enrichmentSettings.$inferSelect;
+
+export type InsertEnrichmentJob = typeof enrichmentJobs.$inferInsert;
+export type EnrichmentJob = typeof enrichmentJobs.$inferSelect;
