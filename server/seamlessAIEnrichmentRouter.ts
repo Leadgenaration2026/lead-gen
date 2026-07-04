@@ -5,6 +5,7 @@ import { getLeadById, updateLead, getUserSettings } from "./db";
 import * as db from "./db";
 import { searchContacts, researchContact, SeamlessSearchResult, SeamlessResearchResponse } from "./seamlessAI";
 import { leads } from "../drizzle/schema";
+import crypto from "crypto";
 
 interface EnrichmentReport {
   leadId: number;
@@ -159,11 +160,15 @@ export const seamlessAIEnrichmentRouter = router({
       const userId = ctx.user.id;
       auditLog.userId = userId;
 
+      // Load configurable credit settings (Phase C)
+      const enrichmentSettings = await db.getOrCreateEnrichmentSettings(userId);
+      const MAX_CREDITS_PER_RUN = enrichmentSettings?.maxCreditsPerRun || 20;
+      const REQUIRE_CONFIRMATION_THRESHOLD = enrichmentSettings?.requireConfirmationThreshold || 50;
+      const ABSOLUTE_HARD_LIMIT = enrichmentSettings?.absoluteHardLimit || 1000;
+
       // PHASE 2: CREDIT PROTECTION - Hard safety guard
       // Verify that research IDs submitted will never exceed selected leads
       const CREDIT_PROTECTION_ENABLED = true;
-      const MAX_CREDITS_PER_RUN = 100; // Default limit
-      const REQUIRE_CONFIRMATION_THRESHOLD = 50;
 
       if (CREDIT_PROTECTION_ENABLED && leadIds.length > MAX_CREDITS_PER_RUN) {
         const errorMsg = `[CREDIT PROTECTION] Requested enrichment of ${leadIds.length} leads exceeds safety limit of ${MAX_CREDITS_PER_RUN}. Please enrich in smaller batches.`;
@@ -172,7 +177,25 @@ export const seamlessAIEnrichmentRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: errorMsg });
       }
 
+      const payloadHash = crypto.createHash('sha256').update(JSON.stringify(leadIds.sort((a, b) => a - b))).digest('hex');
+      const existingJob = await db.getEnrichmentJobByIdempotencyKey(userId, payloadHash);
+      
+      if (existingJob && existingJob.status === 'in_progress') {
+        console.warn(`[Idempotency] Duplicate enrichment request detected. Job ID: ${existingJob.jobId}`);
+        throw new TRPCError({ 
+          code: "CONFLICT", 
+          message: `Enrichment already in progress. Job ID: ${existingJob.jobId}` 
+        });
+      }
+
+      const jobId = await db.createEnrichmentJob(userId, leadIds);
+      console.log(`[Idempotency] Created new enrichment job: ${jobId}`);
+      
+      let jobCreated = false;
       try {
+        await db.updateEnrichmentJob(jobId, { status: 'in_progress' });
+        jobCreated = true;
+
         const selectedLeads = [];
         for (const leadId of leadIds) {
           const lead = await getLeadById(leadId);
@@ -263,6 +286,13 @@ export const seamlessAIEnrichmentRouter = router({
               throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
             }
 
+            if (searchResultIds.length !== 1) {
+              const errorMsg = `[IDEMPOTENCY] Expected exactly 1 research ID, got ${searchResultIds.length}. Aborting.`;
+              console.error(errorMsg);
+              stats.addFailureReason("Idempotency violation: multiple research IDs");
+              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
+            }
+
             stats.increment("researchRequestsSubmitted");
             stats.researchIdsSubmitted += searchResultIds.length;
             const researchResult: SeamlessResearchResponse = await researchContact(userSettings.seamlessApiKey, searchResultIds);
@@ -335,6 +365,17 @@ export const seamlessAIEnrichmentRouter = router({
         });
 
         console.log("[SeamlessAIEnrichment] Enrichment process completed. Stats:", stats);
+
+        if (jobCreated) {
+          const finalStatus = stats.failedEnrichments > 0 ? 'completed' : 'completed';
+          await db.updateEnrichmentJob(jobId, { 
+            status: finalStatus,
+            successful: stats.enrichedLeads,
+            failed: stats.failedEnrichments,
+            failureReasons: stats.failureReasons
+          });
+          console.log(`[Idempotency] Job ${jobId} marked as ${finalStatus}`);
+        }
         for (const report of reports) {
           console.log(formatEnrichmentReport(report));
         }
