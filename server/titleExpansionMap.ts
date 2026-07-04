@@ -195,16 +195,23 @@ export function parseSearchInstruction(instruction: string) {
     return true;
   });
 
-  // Extract company size
-  const sizeKeywords = [
-    "startup", "small", "medium", "large", "enterprise",
-    "1-10", "2-10", "11-50", "51-100", "101-500", "501-1000", "1000+", "5000+"
-  ];
-  
-  for (const keyword of sizeKeywords) {
-    if (lower.includes(keyword)) {
-      result.companySize = parseCompanySize(keyword);
-      break; // Use first match
+  // Extract company size - prioritize numeric ranges over keywords
+  // Check for numeric ranges first (e.g., "2-10", "1-50", "100-500")
+  const numericRangeMatch = lower.match(/(\d+)\s*-\s*(\d+)/);
+  if (numericRangeMatch) {
+    result.companySize = parseCompanySize(`${numericRangeMatch[1]}-${numericRangeMatch[2]}`);
+  } else {
+    // Fall back to keyword matching
+    const sizeKeywords = [
+      "startup", "small", "medium", "large", "enterprise",
+      "1-10", "2-10", "11-50", "51-100", "101-500", "501-1000", "1000+", "5000+"
+    ];
+    
+    for (const keyword of sizeKeywords) {
+      if (lower.includes(keyword)) {
+        result.companySize = parseCompanySize(keyword);
+        break; // Use first match
+      }
     }
   }
 

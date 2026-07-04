@@ -1109,3 +1109,68 @@
 - [x] Generate jobTitle array with expanded titles
 - [x] Parse company size to min/max employee count
 - [x] Create parseInstructionToFilters.test.ts with 20+ test cases
+
+
+## Batch 32 — Search Preview Mode (Separate Search → Import → Enrich Workflow)
+
+### Phase 1: Design & Architecture
+- [ ] Design database schema for search_cache table (searchId, filters, totalResults, nextToken, expiresAt)
+- [ ] Design database schema for lead_imports table (importId, searchId, importedCount, importedAt)
+- [ ] Create tRPC types for SearchPreview, SearchResult, ImportResult
+- [ ] Document API flow: Search → Preview → Import → Enrich → Outreach
+
+### Phase 2: Backend Implementation
+- [ ] Create tRPC procedure: leads.search (POST /search/contacts only, no research)
+- [ ] Create tRPC procedure: leads.getSearchPreview (get cached results with pagination)
+- [ ] Create tRPC procedure: leads.importSearchResults (save to database, no enrichment)
+- [ ] Implement search result caching with TTL (24 hours)
+- [ ] Implement pagination using nextToken
+- [ ] Add credit estimation: importCount * 1 credit
+
+### Phase 3: Database & Caching
+- [ ] Create search_cache table migration
+- [ ] Create lead_imports table migration
+- [ ] Implement cache invalidation when filters change
+- [ ] Store nextToken for pagination resumption
+
+### Phase 4: UI Components
+- [ ] Create SearchPreview component with:
+  - [ ] Search form (instruction, country, state)
+  - [ ] Results display: "Leads Found: X"
+  - [ ] Pagination controls with nextToken
+  - [ ] Import count selector (1-1000)
+  - [ ] Credit estimation display
+  - [ ] "Preview" button (no charges)
+  - [ ] "Import" button (saves leads, no enrichment)
+- [ ] Create ImportResults component showing:
+  - [ ] Leads Imported: X
+  - [ ] Leads Remaining: X
+  - [ ] Estimated Credits for Enrichment
+
+### Phase 5: Import Functionality
+- [ ] Implement import leads procedure
+- [ ] Save imported leads to leads table
+- [ ] Link to search_cache for audit trail
+- [ ] Display import success/failure
+- [ ] Show "Enrich" button after import
+
+### Phase 6: Enrichment Integration
+- [ ] Update enrichment to work with imported leads
+- [ ] Display enrichment button only after import
+- [ ] Show credit cost before enrichment
+- [ ] Implement enrichment on imported leads
+
+### Phase 7: Testing
+- [ ] Test search with various filters
+- [ ] Test pagination with nextToken
+- [ ] Test cache invalidation
+- [ ] Test import functionality
+- [ ] Test credit estimation accuracy
+- [ ] Test no credits consumed on search/import
+- [ ] Test enrichment only after explicit import
+
+### Phase 8: Final Integration
+- [ ] Update navigation to show Search → Import → Enrich workflow
+- [ ] Remove old "Generate Leads" flow
+- [ ] Add documentation for new workflow
+- [ ] Create checkpoint

@@ -11,6 +11,7 @@
  */
 
 import { createSeamlessError, logSeamlessError } from "./seamlessAIErrorLogger";
+import { parseSearchInstruction } from "./titleExpansionMap";
 
 const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
@@ -482,10 +483,8 @@ export async function pollContactResults(
 
 
 export function parseInstructionToFilters(instruction: string, country?: string) {
-  // Parse user instruction into Seamless.AI search filters using titleExpansionMap
+  // Parse user instruction into Seamless.AI search filters
   // This converts natural language like "small business owners" into structured API filters
-  
-  const { parseSearchInstruction } = require('./titleExpansionMap');
   
   const parsed = parseSearchInstruction(instruction);
   
