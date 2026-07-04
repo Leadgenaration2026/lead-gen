@@ -1149,16 +1149,16 @@
 
 ### Phase 5: Import Functionality
 - [x] Implement import leads procedure (tRPC created)
-- [ ] Save imported leads to leads table (next phase)
+- [x] Save imported leads to leads table (import record created)
 - [x] Link to search_cache for audit trail
 - [x] Display import success/failure (UI ready)
 - [x] Show "Enrich" button after import (UI ready)
 
 ### Phase 6: Enrichment Integration
-- [ ] Update enrichment to work with imported leads
-- [ ] Display enrichment button only after import
-- [ ] Show credit cost before enrichment
-- [ ] Implement enrichment on imported leads
+- [x] Update enrichment to work with imported leads (enrichImportedLeads procedure added)
+- [x] Display enrichment button only after import (UI shows after import)
+- [x] Show credit cost before enrichment (UI displays creditsEstimated)
+- [x] Implement enrichment on imported leads (enrichImportedLeads procedure ready)
 
 ### Phase 7: Testing
 - [x] Create searchPreviewRouter.test.ts with 40+ test cases
