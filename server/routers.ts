@@ -15,6 +15,7 @@ import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PL
 // DISABLED: Browser automation for enrichment - using REST API instead
 // import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
 import { seamlessAIEnrichmentRouter } from "./seamlessAIEnrichmentRouter";
+import { phoneVerificationRouter } from "./phoneVerificationRouter";
 import { searchPreviewRouter } from "./searchPreviewRouter";
 import { testHardcodedSeamlessSearch } from "./testHardcodedSearch";
 import { testIsolatedFilters } from "./testIsolatedFilters";
@@ -90,6 +91,7 @@ const updateUserSettingsSchema = z.object({
 export const appRouter = router({
   system: systemRouter,
   searchDiagnostics: searchDiagnosticsRouter,
+  phoneVerification: phoneVerificationRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

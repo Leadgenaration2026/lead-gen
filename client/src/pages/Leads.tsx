@@ -2019,6 +2019,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <div>Requested: <strong>{enrichmentProgress.requested}</strong></div>
                   <div>Extracted: <strong>{enrichmentProgress.extracted}/{enrichmentProgress.requested}</strong></div>
                   <div>Remaining: <strong>{Math.max(0, enrichmentProgress.requested - enrichmentProgress.extracted)}</strong></div>
+                  <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                    <div>Estimated Credits: <strong>{enrichmentProgress.requested}</strong> (1 per lead for phone verification)</div>
+                  </div>
                 </div>
               )}
               <Button

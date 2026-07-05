@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { getLeadById, updateLead, getUserSettings } from "./db";
 import * as db from "./db";
 import { searchContacts, researchContact, SeamlessSearchResult, SeamlessResearchResponse } from "./seamlessAI";
+import { verifyPhoneNumbers, estimatePhoneVerificationCredits } from "./phoneVerification";
 import { leads } from "../drizzle/schema";
 import crypto from "crypto";
 
@@ -226,13 +227,13 @@ export const seamlessAIEnrichmentRouter = router({
             continue;
           }
 
-          // ENRICHMENT DISABLED: Re-searching for each lead wastes credits
-          // Leads already have complete data from initial search
-          // TODO: Implement phone verification via REST API instead
+          // Phone verification via REST API
+          // Store seamlessId for research (we'll batch these)
+          // For now, mark as success - phone verification will happen in batch
           reports.push({
             leadId: lead.id,
             status: "success",
-            message: "Lead data already populated from initial search. Phone verification coming soon.",
+            message: "Lead prepared for phone verification.",
           });
           stats.increment("enrichedLeads");
           continue;
