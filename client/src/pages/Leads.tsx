@@ -2142,6 +2142,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     <TableHead className="text-center">Engagement Score</TableHead>
                      <TableHead className="text-center">Email Status</TableHead>
                      <TableHead>Country</TableHead>
+                    <TableHead className="text-center">Credits Used</TableHead>
                     <TableHead>Set</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tag</TableHead>
@@ -2353,6 +2354,16 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       </TableCell>
                       <TableCell className="text-sm">
                         {lead.country ? lead.country : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(lead as any).enrichmentCreditsUsed > 0 ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <Zap className="w-3.5 h-3.5 text-amber-500" />
+                            <span className="text-xs font-medium">{(lead as any).enrichmentCreditsUsed}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {lead.leadSetId ? (

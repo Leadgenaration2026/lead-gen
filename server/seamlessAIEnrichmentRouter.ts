@@ -249,21 +249,24 @@ export const seamlessAIEnrichmentRouter = router({
                 const phoneNumber = pollResult?.contact?.phoneNumber || pollResult?.contact?.contactPhone1 || pollResult?.contact?.workPhone;
                 console.log(`  Extracted Phone: ${phoneNumber}`);
                 
+                const creditsForThisLead = 2;
+                
                 if (phoneNumber) {
                   console.log(`[SeamlessAIEnrichment] Updating lead ${lead.id} with phone: ${phoneNumber}`);
-                  await updateLead(lead.id, { phoneNumber });
+                  await updateLead(lead.id, { phoneNumber, enrichmentCreditsUsed: creditsForThisLead });
                   reports.push({
                     leadId: lead.id,
                     status: "success",
-                    message: `Phone verified: ${phoneNumber}`,
+                    message: `Phone verified: ${phoneNumber} (${creditsForThisLead} credits)`,
                   });
                   stats.increment("enrichedLeads");
                 } else {
                   console.log(`[SeamlessAIEnrichment] No phone found for lead ${lead.id}`);
+                  await updateLead(lead.id, { enrichmentCreditsUsed: creditsForThisLead });
                   reports.push({
                     leadId: lead.id,
                     status: "needs_review",
-                    message: "Phone verification returned no results",
+                    message: `Phone verification returned no results (${creditsForThisLead} credits)`,
                   });
                   stats.increment("needsReviewLeads");
                 }

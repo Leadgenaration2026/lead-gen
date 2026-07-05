@@ -270,10 +270,11 @@ export const leads = mysqlTable("leads", {
 	personalEmail: varchar({ length: 320 }),
 	workEmail: varchar({ length: 320 }),
 	allEmails: json(),
-	city: varchar({ length: 100 }),
-	state: varchar({ length: 100 }),
-	seamlessId: varchar({ length: 255 }), // Seamless.AI contact ID for phone verification
-});
+		city: varchar({ length: 100 }),
+		state: varchar({ length: 100 }),
+		seamlessId: varchar({ length: 255 }), // Seamless.AI contact ID for phone verification
+		enrichmentCreditsUsed: int().default(0), // Credits consumed during phone verification enrichment
+	});
 
 export const rotationalEmails = mysqlTable("rotationalEmails", {
 	id: int().autoincrement().notNull(),
