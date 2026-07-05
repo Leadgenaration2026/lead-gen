@@ -215,14 +215,21 @@ export function parseSearchInstruction(instruction: string) {
     }
   }
 
-  // Extract industries
+  // Extract industries - ONLY if explicitly mentioned
+  // Do NOT infer industries from other keywords
+  // For example: "small business" should NOT infer "technology"
+  // Only explicit mentions like "restaurant owners" or "healthcare CEOs" should add industry
   const industryKeywords = [
     "technology", "finance", "healthcare", "retail", "manufacturing",
-    "real estate", "education", "media", "telecom", "energy"
+    "real estate", "education", "media", "telecom", "energy",
+    "restaurant", "construction", "legal", "accounting", "consulting"
   ];
   
+  // Only add industry if it's explicitly mentioned as a standalone word
+  // Use word boundary matching to avoid false positives
   for (const keyword of industryKeywords) {
-    if (lower.includes(keyword)) {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+    if (regex.test(instruction)) {
       result.industries.push(keyword);
     }
   }

@@ -29,8 +29,8 @@ describe("Search Preview Workflow", () => {
       const filters = parseInstructionToFilters("CEO in technology");
       expect(filters.jobTitle).toBeDefined();
       expect(Array.isArray(filters.jobTitle)).toBe(true);
-      expect(filters.industry).toBeDefined();
-      expect(Array.isArray(filters.industry)).toBe(true);
+      expect(filters.industryName).toBeDefined();
+      expect(Array.isArray(filters.industryName)).toBe(true);
     });
 
     it("should handle 'VP of Sales' expansion", () => {
@@ -261,7 +261,7 @@ describe("Search Preview Workflow", () => {
     it("Scenario 2: Search for CEOs in technology companies", () => {
       const filters = parseInstructionToFilters("CEO in technology companies");
       expect(filters.jobTitle).toBeDefined();
-      expect(filters.industry).toBeDefined();
+      expect(filters.industryName).toBeDefined();
     });
 
     it("Scenario 3: Search for VPs in enterprise companies", () => {

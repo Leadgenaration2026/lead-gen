@@ -12,6 +12,7 @@
 
 import { createSeamlessError, logSeamlessError } from "./seamlessAIErrorLogger";
 import { parseSearchInstruction } from "./titleExpansionMap";
+import { logSeamlessAIRequest } from "./seamlessAIDebug";
 
 const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
@@ -308,7 +309,20 @@ export async function searchContacts(
 
     console.log(`[Seamless.AI] Search page ${pageCount}${nextToken ? " (with nextToken)" : ""}, have ${allResults.length} results so far`);
     
+    if (pageCount === 1) {
+      console.log("\n[DEBUG] FIRST API REQUEST:");
+      console.log(JSON.stringify(requestBody, null, 2));
+    }
+    
     const response = await seamlessRequest(apiKey, "POST", "/search/contacts", requestBody);
+    
+    if (pageCount === 1) {
+      console.log("\n[DEBUG] FIRST API RESPONSE:");
+      console.log("Total Results:", response.supplementalData?.totalResults);
+      console.log("Data Length:", response.data?.length || 0);
+      console.log("Has Next Token:", !!response.supplementalData?.nextToken);
+      console.log("Full Response:", JSON.stringify(response, null, 2));
+    }
     
     const pageData: SeamlessSearchResult[] = response.data || [];
     allResults.push(...pageData);
@@ -508,7 +522,7 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   
   // Add industries if detected
   if (parsed.industries && parsed.industries.length > 0) {
-    filters.industry = parsed.industries;
+    filters.industryName = parsed.industries;
     console.log(`[Seamless.AI] Industries: ${JSON.stringify(parsed.industries)}`);
   }
   

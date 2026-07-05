@@ -16,6 +16,10 @@ import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PL
 // import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
 import { seamlessAIEnrichmentRouter } from "./seamlessAIEnrichmentRouter";
 import { searchPreviewRouter } from "./searchPreviewRouter";
+import { testHardcodedSeamlessSearch } from "./testHardcodedSearch";
+import { testIsolatedFilters } from "./testIsolatedFilters";
+import { testDiagnosticPayload } from "./testDiagnosticPayload";
+import { testCompanySizeFormats } from "./testCompanySizeFormats";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -4225,5 +4229,20 @@ Use the website data to:
   seamlessAIEnrichment: seamlessAIEnrichmentRouter,
   // Search Preview router (Search → Preview → Import → Enrich workflow)
   searchPreview: searchPreviewRouter,
+  // DEBUG: Hard-coded search test (bypass parser)
+  debug: router({
+    testHardcodedSearch: publicProcedure.query(async () => {
+      return await testHardcodedSeamlessSearch();
+    }),
+    testIsolatedFilters: publicProcedure.query(async () => {
+      return await testIsolatedFilters();
+    }),
+    testDiagnosticPayload: publicProcedure.query(async () => {
+      return await testDiagnosticPayload();
+    }),
+    testCompanySizeFormats: publicProcedure.query(async () => {
+      return await testCompanySizeFormats();
+    }),
+  }),
 });
 export type AppRouter = typeof appRouter;
