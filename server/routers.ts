@@ -745,6 +745,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               companySize: leadData.companySize || undefined,
               timezone: leadData.timezone || "America/New_York",
               linkedinUrl: leadData.linkedinUrl || undefined,
+              seamlessId: (leadData as any).seamlessId || undefined,
               instagramUrl: leadData.instagramUrl || undefined,
               facebookUrl: leadData.facebookUrl || undefined,
               userId: ctx.user.id,
