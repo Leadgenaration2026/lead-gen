@@ -113,7 +113,8 @@ export function expandJobTitle(title: string): string[] {
   }
   
   if (matches.length > 0) {
-    return matches.sort();
+    // Limit to 10 titles max (Seamless.AI API limit)
+    return matches.sort().slice(0, 10);
   }
   
   // Fallback: return the original title
@@ -184,16 +185,18 @@ export function parseSearchInstruction(instruction: string) {
     if (lower.includes(keyword)) {
       const expanded = expandJobTitle(keyword);
       result.titles.push(...expanded);
+      // Stop expanding if we already have 10 titles
+      if (result.titles.length >= 10) break;
     }
   }
   
-  // Remove duplicates
+  // Remove duplicates and limit to 10 titles max (Seamless.AI API limit)
   const titleSet: Record<string, boolean> = {};
   result.titles = result.titles.filter(t => {
     if (titleSet[t]) return false;
     titleSet[t] = true;
     return true;
-  });
+  }).slice(0, 10);
 
   // Extract company size - prioritize numeric ranges over keywords
   // Check for numeric ranges first (e.g., "2-10", "1-50", "100-500")
@@ -234,11 +237,22 @@ export function parseSearchInstruction(instruction: string) {
     }
   }
 
-  // Extract countries
-  const countryKeywords = ["united states", "us", "canada", "uk", "australia", "india"];
-  for (const keyword of countryKeywords) {
+  // Extract countries - map to full country names for API
+  const countryMap: Record<string, string> = {
+    "united states": "United States",
+    "us": "United States",
+    "canada": "Canada",
+    "uk": "United Kingdom",
+    "australia": "Australia",
+    "india": "India"
+  };
+  
+  for (const keyword of Object.keys(countryMap)) {
     if (lower.includes(keyword)) {
-      result.countries.push(keyword);
+      const fullName = countryMap[keyword];
+      if (!result.countries.includes(fullName)) {
+        result.countries.push(fullName);
+      }
     }
   }
 
