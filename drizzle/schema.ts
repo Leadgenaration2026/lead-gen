@@ -272,6 +272,7 @@ export const leads = mysqlTable("leads", {
 	allEmails: json(),
 	city: varchar({ length: 100 }),
 	state: varchar({ length: 100 }),
+	seamlessId: varchar({ length: 255 }), // Seamless.AI contact ID for phone verification
 });
 
 export const rotationalEmails = mysqlTable("rotationalEmails", {

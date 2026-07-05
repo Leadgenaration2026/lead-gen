@@ -571,6 +571,7 @@ export const appRouter = router({
                 linkedinUrl: contact.liUrl || undefined,
                 instagramUrl: undefined,
                 facebookUrl: undefined,
+                seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
               };
             });
             
@@ -750,6 +751,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               status: "new",
               leadSetId,
               sourceListId: leadSetId || undefined,
+              seamlessId: (leadData as any).seamlessId || undefined,
             });
             createdLeads.push(result);
           } catch (e) {

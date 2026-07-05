@@ -3,7 +3,7 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getLeadById, updateLead, getUserSettings } from "./db";
 import * as db from "./db";
-import { searchContacts, researchContact, SeamlessSearchResult, SeamlessResearchResponse } from "./seamlessAI";
+import { searchContacts, researchContact, pollContactResults, SeamlessSearchResult, SeamlessResearchResponse } from "./seamlessAI";
 import { verifyPhoneNumbers, estimatePhoneVerificationCredits } from "./phoneVerification";
 import { leads } from "../drizzle/schema";
 import crypto from "crypto";
@@ -39,7 +39,7 @@ class SeamlessAIAutomationStats {
   failedEnrichments: number = 0;
   needsReviewLeads: number = 0;
   pollRequests: number = 0;
-  researchIdsSubmitted: number = 0;
+  researchIdsSubmitted: string[] = [];
   failureReasons: string[] = [];
 
   increment(key: keyof SeamlessAIAutomationStats) {
@@ -216,29 +216,83 @@ export const seamlessAIEnrichmentRouter = router({
           `[SeamlessAIEnrichment] Found ${selectedLeads.length} leads to enrich`
         );
 
-        for (const lead of selectedLeads) {
-          if (stats.researchRequestsSubmitted >= (maxResearchSubmissions || Number.MAX_SAFE_INTEGER)) {
+        // Collect leads with seamlessId for batch phone verification
+        const leadsForPhoneVerification = selectedLeads.filter(l => (l as any).seamlessId);
+        
+        if (leadsForPhoneVerification.length > 0) {
+          console.log(`[SeamlessAIEnrichment] Starting phone verification for ${leadsForPhoneVerification.length} leads`);
+          
+          try {
+            // Submit research requests for phone verification
+            const seamlessIds = leadsForPhoneVerification.map(l => (l as any).seamlessId);
+            const researchResponse = await researchContact(process.env.SEAMLESS_AI_API_KEY || "", seamlessIds);
+            
+            if (researchResponse.success && researchResponse.requestIds?.length) {
+              stats.researchRequestsSubmitted += researchResponse.requestIds.length;
+              stats.researchIdsSubmitted.push(...researchResponse.requestIds);
+              console.log(`[SeamlessAIEnrichment] Submitted ${researchResponse.requestIds.length} research requests`);
+              
+              // Poll for results
+              const pollResults = await pollContactResults(process.env.SEAMLESS_AI_API_KEY || "", researchResponse.requestIds);
+              stats.pollRequests += 1;
+              
+              console.log(`[SeamlessAIEnrichment] Received ${pollResults.length} poll results`);
+              
+              // Update leads with phone numbers
+              for (let i = 0; i < leadsForPhoneVerification.length; i++) {
+                const lead = leadsForPhoneVerification[i];
+                const pollResult = pollResults[i];
+                
+                const phoneNumber = pollResult?.contact?.phoneNumber || pollResult?.contact?.contactPhone1 || pollResult?.contact?.workPhone;
+                if (phoneNumber) {
+                  await updateLead(lead.id, { phoneNumber });
+                  reports.push({
+                    leadId: lead.id,
+                    status: "success",
+                    message: `Phone verified: ${phoneNumber}`,
+                  });
+                  stats.increment("enrichedLeads");
+                } else {
+                  reports.push({
+                    leadId: lead.id,
+                    status: "needs_review",
+                    message: "Phone verification returned no results",
+                  });
+                  stats.increment("needsReviewLeads");
+                }
+              }
+            } else {
+              console.warn(`[SeamlessAIEnrichment] Research submission failed`);
+              for (const lead of leadsForPhoneVerification) {
+                reports.push({
+                  leadId: lead.id,
+                  status: "failed",
+                  message: "Failed to submit phone verification request",
+                });
+                stats.increment("failedEnrichments");
+              }
+            }
+          } catch (error) {
+            console.error(`[SeamlessAIEnrichment] Phone verification error:`, error);
+            for (const lead of leadsForPhoneVerification) {
+              reports.push({
+                leadId: lead.id,
+                status: "failed",
+                message: error instanceof Error ? error.message : "Phone verification failed",
+              });
+              stats.increment("failedEnrichments");
+            }
+          }
+        } else {
+          console.log(`[SeamlessAIEnrichment] No leads with seamlessId for phone verification`);
+          for (const lead of selectedLeads) {
             reports.push({
               leadId: lead.id,
               status: "skipped",
-              message: `Skipped due to global research submission limit (${maxResearchSubmissions})`,
+              message: "No seamlessId available for phone verification",
             });
             stats.increment("skippedLeads");
-            continue;
           }
-
-          // Phone verification via REST API
-          // Store seamlessId for research (we'll batch these)
-          // For now, mark as success - phone verification will happen in batch
-          reports.push({
-            leadId: lead.id,
-            status: "success",
-            message: "Lead prepared for phone verification.",
-          });
-          stats.increment("enrichedLeads");
-          continue;
-          
-          // OLD CODE REMOVED - DISABLED TO PREVENT CREDIT WASTE
         }
       } catch (error) {
         console.error("[SeamlessAIEnrichment] Error during enrichment:", error);
@@ -258,7 +312,7 @@ export const seamlessAIEnrichmentRouter = router({
         auditLog.searchRequests = stats.searchesPerformed;
         auditLog.researchRequests = stats.researchRequestsSubmitted;
         auditLog.pollRequests = stats.pollRequests;
-        auditLog.researchIdsSubmitted = stats.researchIdsSubmitted;
+        auditLog.researchIdsSubmitted = stats.researchIdsSubmitted.length;
         auditLog.successful = stats.enrichedLeads;
         auditLog.failed = stats.failedEnrichments;
         auditLog.failureReasons = stats.failureReasons;

@@ -1,0 +1,1 @@
+ALTER TABLE `leads` ADD `seamlessId` varchar(255);
