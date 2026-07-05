@@ -20,6 +20,7 @@ import { testHardcodedSeamlessSearch } from "./testHardcodedSearch";
 import { testIsolatedFilters } from "./testIsolatedFilters";
 import { testDiagnosticPayload } from "./testDiagnosticPayload";
 import { testCompanySizeFormats } from "./testCompanySizeFormats";
+import { searchDiagnosticsRouter } from "./searchDiagnosticsRouter";
 
 // Validation schemas
 const createLeadSchema = z.object({
@@ -88,6 +89,7 @@ const updateUserSettingsSchema = z.object({
 
 export const appRouter = router({
   system: systemRouter,
+  searchDiagnostics: searchDiagnosticsRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

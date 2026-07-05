@@ -271,6 +271,8 @@ export async function searchContacts(
     industryName?: string[];
     contactCountry?: string[];
     contactState?: string[];
+    companyEmployeeCountMin?: number;
+    companyEmployeeCountMax?: number;
     limit?: number;
   },
   maxResults?: number
@@ -291,6 +293,8 @@ export async function searchContacts(
   if (filters.country) body.country = filters.country;
   if (filters.contactCountry?.length) body.contactCountry = filters.contactCountry;
   if (filters.contactState?.length) body.contactState = filters.contactState;
+  if (filters.companyEmployeeCountMin !== undefined) body.companyEmployeeCountMin = filters.companyEmployeeCountMin;
+  if (filters.companyEmployeeCountMax !== undefined) body.companyEmployeeCountMax = filters.companyEmployeeCountMax;
   if (filters.firstName) body.firstName = filters.firstName;
   if (filters.lastName) body.lastName = filters.lastName;
   body.limit = pageSize;
