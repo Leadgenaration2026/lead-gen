@@ -61,7 +61,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // DISABLED: Browser automation mutations - using REST API instead
   // const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
   // const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
-  const apiFirstEnrichMutation = trpc.seamlessAIEnrichment.enrichSelectedLeads.useMutation();
+  const apiFirstEnrichMutation = trpc.seamlessAIEnrichment.enrichLeads.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
 
@@ -1968,10 +1968,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     });
                     toast.loading(`Starting REST API enrichment for ${requestedExtraction} leads...`);
                     
-                    // Call the new REST API-first enrichment service
+                    // Call the enrichment service
                     const result = await apiFirstEnrichMutation.mutateAsync({
                       leadIds: Array.from(selectedLeadIds),
-                      requestedExtraction: requestedExtraction,
+                      confidenceThreshold: 80,
                     });
                     
                     // Update progress with actual results from API

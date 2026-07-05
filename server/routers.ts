@@ -561,7 +561,7 @@ export const appRouter = router({
                 ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unknown",
                 jobTitle: contact.title || undefined,
                 email: email,
-                phoneNumber: contact.phone || "",
+                phoneNumber: "", // Seamless.AI doesn't provide phone numbers - only available after enrichment
                 website: contact.domain ? `https://${contact.domain}` : undefined,
                 industry: Array.isArray(contact.industries) ? contact.industries[0] : contact.industries || undefined,
                 companySize: companySize,
