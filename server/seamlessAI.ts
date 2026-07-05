@@ -555,9 +555,16 @@ export async function getSeamlessLeads(
 ) {
   // Search for leads using Seamless.AI API with filters
   // This is called from routers.ts for lead generation
+  // Uses searchContacts() which has proper pagination and field handling
   try {
-    const response = await seamlessRequest(apiKey, "POST", "/contacts/search", filters);
-    return response || { contacts: [] };
+    const response = await searchContacts(apiKey, filters, count || 50);
+    
+    // Convert response to expected format: { contacts: [...] }
+    return {
+      contacts: response.data || [],
+      totalResults: response.supplementalData?.totalResults,
+      nextToken: response.supplementalData?.nextToken,
+    };
   } catch (error) {
     console.error("[Seamless.AI] Error searching leads:", error);
     return { contacts: [] };
