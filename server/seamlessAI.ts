@@ -348,11 +348,12 @@ export async function searchContacts(
       pageData = pageData.filter(result => {
         const employeeCount = result.companyEmployeeCount;
         if (employeeCount === undefined || employeeCount === null) {
-          // Include results with unknown employee count
-          return true;
+          // EXCLUDE results with unknown employee count when filter is active
+          // This ensures we only get companies we can verify match the criteria
+          return false;
         }
         const count = typeof employeeCount === 'string' ? parseInt(employeeCount) : employeeCount;
-        if (isNaN(count)) return true; // Include if can't parse
+        if (isNaN(count)) return false; // EXCLUDE if can't parse
         
         if (filters.companyEmployeeCountMin !== undefined && count < filters.companyEmployeeCountMin) {
           return false;

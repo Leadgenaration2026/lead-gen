@@ -835,6 +835,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           leads: uniqueLeadsData,
           duplicatesSkipped,
           source: input.source || "ai",
+          extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
         };
       }),
 

@@ -248,7 +248,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.error(result.message || `All ${result.duplicatesSkipped} contacts found are already in your system. Try different search criteria.`, { duration: 8000 });
       } else if (result.count > 0) {
         const dupMsg = result.duplicatesSkipped ? ` (${result.duplicatesSkipped} duplicates skipped)` : "";
-        toast.success(`Generated ${result.count} new leads!${dupMsg}`);
+        const seamlessMsg = result.extractedFromSeamless ? ` - ${result.extractedFromSeamless} extracted from Seamless.AI` : "";
+        toast.success(`Generated ${result.count} new leads!${dupMsg}${seamlessMsg}`);
         setInstruction("");
         setGenerateLeadSetName("");
       } else {
