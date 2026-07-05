@@ -293,7 +293,21 @@ export const seamlessAIEnrichmentRouter = router({
         }
       }
 
-      return { success: true, stats, auditLog, jobId };
+      return { 
+        success: true, 
+        stats: {
+          totalSearchResults: stats.resultsReturned,
+          extracted: stats.enrichedLeads,
+          enrichedLeads: stats.enrichedLeads,
+          failedLeads: stats.failedEnrichments,
+          skippedLeads: stats.skippedLeads,
+          needsReviewLeads: stats.needsReviewLeads,
+          searchesPerformed: stats.searchesPerformed,
+          researchRequestsSubmitted: stats.researchRequestsSubmitted,
+        },
+        auditLog, 
+        jobId 
+      };
     }),
 });
 
