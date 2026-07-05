@@ -268,6 +268,7 @@ export async function searchContacts(
     department?: string[];
     seniority?: string[];
     industry?: string[];
+    industryName?: string[];
     contactCountry?: string[];
     contactState?: string[];
     limit?: number;
@@ -283,6 +284,7 @@ export async function searchContacts(
   if (filters.department?.length) body.department = filters.department;
   if (filters.seniority?.length) body.seniority = filters.seniority;
   if (filters.industry?.length) body.industry = filters.industry;
+  if (filters.industryName?.length) body.industryName = filters.industryName;
   if (filters.email) body.email = filters.email;
   if (filters.city) body.city = filters.city;
   if (filters.state) body.state = filters.state;
