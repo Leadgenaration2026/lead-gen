@@ -712,7 +712,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         leads: csvPreview,
         leadSetName: csvLeadSetName.trim() || undefined,
       });
-      toast.success(`Successfully imported ${result.imported} leads`);
+      const summaryParts = [`Imported ${result.imported} leads`];
+      if (result.duplicatesSkipped && result.duplicatesSkipped > 0) {
+        summaryParts.push(`${result.duplicatesSkipped} duplicates skipped`);
+      }
+      toast.success(summaryParts.join(' | '));
+      
+      if (result.duplicates && result.duplicates.length > 0) {
+        const dupList = result.duplicates.slice(0, 3).map(d => `${d.name} (${d.company})`).join(', ');
+        const moreText = result.duplicates.length > 3 ? ` + ${result.duplicates.length - 3} more` : '';
+        toast.info(`Skipped: ${dupList}${moreText}`, { duration: 6000 });
+      }
+      
       if (result.errors.length > 0) {
         toast.warning(`${result.errors.length} rows had errors`);
       }

@@ -884,10 +884,33 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             });
           }
         }
+        
+        // Get existing leads for duplicate detection
+        const existingLeads = await db.getLeadsByUserId(ctx.user.id);
+        
         const createdLeads = [];
         const errors: string[] = [];
+        const duplicates: Array<{ row: number; name: string; company: string; email: string }> = [];
+        
         for (let i = 0; i < input.leads.length; i++) {
           const leadData = input.leads[i];
+          
+          // Check for duplicates: same company + same contact name
+          const isDuplicate = existingLeads.some(existing => 
+            existing.companyName.toLowerCase().trim() === leadData.companyName.toLowerCase().trim() &&
+            existing.ownerName.toLowerCase().trim() === leadData.ownerName.toLowerCase().trim()
+          );
+          
+          if (isDuplicate) {
+            duplicates.push({
+              row: i + 1,
+              name: leadData.ownerName,
+              company: leadData.companyName,
+              email: leadData.email,
+            });
+            continue; // Skip this lead
+          }
+          
           try {
             const result = await db.createLead({
               companyName: leadData.companyName,
@@ -950,7 +973,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
           console.log(`[AutoVerify] CSV import auto-verification disabled - user must manually verify emails`);
         }
-        return { success: true, imported: createdLeads.length, errors, leadIds: importedIds };
+        return { 
+          success: true, 
+          imported: createdLeads.length, 
+          duplicatesSkipped: duplicates.length,
+          duplicates: duplicates,
+          errors, 
+          leadIds: importedIds 
+        };
       }),
 
     // Overwrite existing lead by email (upsert)
