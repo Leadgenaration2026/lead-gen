@@ -293,10 +293,11 @@ export const seamlessAIEnrichmentRouter = router({
         }
       }
 
+      const totalProcessed = stats.enrichedLeads + stats.failedEnrichments + stats.skippedLeads + stats.needsReviewLeads;
       return { 
         success: true, 
         stats: {
-          totalSearchResults: stats.resultsReturned,
+          totalSearchResults: totalProcessed,
           extracted: stats.enrichedLeads,
           enrichedLeads: stats.enrichedLeads,
           failedLeads: stats.failedEnrichments,
@@ -304,6 +305,7 @@ export const seamlessAIEnrichmentRouter = router({
           needsReviewLeads: stats.needsReviewLeads,
           searchesPerformed: stats.searchesPerformed,
           researchRequestsSubmitted: stats.researchRequestsSubmitted,
+          creditsUsed: 0,
         },
         auditLog, 
         jobId 

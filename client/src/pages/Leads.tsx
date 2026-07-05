@@ -1981,10 +1981,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       requested: requestedExtraction,
                     });
                     
+                    // Clear loading toast
+                    toast.dismiss();
+                    
+                    // Show success with stats
                     toast.success(`REST API enrichment completed: ${result.stats.enrichedLeads} successful, ${result.stats.failedLeads} failed`);
+                    
+                    // Clear state immediately
                     setSelectedLeadIds(new Set());
                     setEnrichmentProgress(null);
-                    leadsQuery.refetch();
+                    
+                    // Refetch leads
+                    await leadsQuery.refetch();
                   } catch (error) {
                     const errorMsg = error instanceof Error ? error.message : "Unknown error";
                     console.error("Enrichment error:", error);
