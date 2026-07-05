@@ -44,7 +44,17 @@ const TAG_COLORS: Record<string, { bg: string; text: string; label: string }> = 
 };
 
 export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnassigned?: boolean } = {}) {
-  const allLeadsQuery = trpc.leads.list.useQuery(undefined, { enabled: !showOnlyUnassigned });
+  const [instruction, setInstruction] = useState("");
+  const [count, setCount] = useState(10);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [filterSourceListId, setFilterSourceListId] = useState<string>("all"); // For imported lists
+  const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [enrichmentProgress, setEnrichmentProgress] = useState<{ totalSearchResults: number; extracted: number; requested: number } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  
+  const allLeadsQuery = trpc.leads.list.useQuery({ page: currentPage, pageSize }, { enabled: !showOnlyUnassigned });
   const unassignedLeadsQuery = trpc.leads.listUnassigned.useQuery(undefined, { enabled: showOnlyUnassigned });
   const leadsQuery = showOnlyUnassigned ? unassignedLeadsQuery : allLeadsQuery;
   const generateLeadsMutation = trpc.leads.generate.useMutation();
@@ -64,14 +74,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const apiFirstEnrichMutation = trpc.seamlessAIEnrichment.enrichLeads.useMutation();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
-
-  const [instruction, setInstruction] = useState("");
-  const [count, setCount] = useState(10);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [filterSourceListId, setFilterSourceListId] = useState<string>("all"); // For imported lists
-  const [drawerLeadId, setDrawerLeadId] = useState<number | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [enrichmentProgress, setEnrichmentProgress] = useState<{ totalSearchResults: number; extracted: number; requested: number } | null>(null);
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
   const [filterIndustry, setFilterIndustry] = useState<string>("all");

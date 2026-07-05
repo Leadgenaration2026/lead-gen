@@ -98,10 +98,21 @@ export async function createLead(data: InsertLead) {
   return db.insert(leads).values(data);
 }
 
-export async function getLeadsByUserId(userId: number) {
+export async function getLeadsByUserId(userId: number, page: number = 1, pageSize: number = 50) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.select().from(leads).where(eq(leads.userId, userId)).orderBy(desc(leads.createdAt));
+  const offset = (page - 1) * pageSize;
+  const results = await db.select().from(leads)
+    .where(eq(leads.userId, userId))
+    .orderBy(desc(leads.createdAt))
+    .limit(pageSize)
+    .offset(offset);
+  
+  // Get total count for pagination
+  const countResult = await db.select({ count: sql`count(*)` }).from(leads).where(eq(leads.userId, userId));
+  const total = countResult[0]?.count as number || 0;
+  
+  return { results, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
 }
 
 // Get leads not assigned to any campaign (for dashboard leads view)

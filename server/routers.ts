@@ -105,9 +105,16 @@ export const appRouter = router({
 
   // Leads router
   leads: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
-      return db.getLeadsByUserId(ctx.user.id);
-    }),
+    list: protectedProcedure
+      .input(z.object({
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(10).max(100).default(50),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const page = input?.page || 1;
+        const pageSize = input?.pageSize || 50;
+        return db.getLeadsByUserId(ctx.user.id, page, pageSize);
+      }),
 
     // Leads not yet assigned to any campaign (for dashboard leads view)
     listUnassigned: protectedProcedure.query(async ({ ctx }) => {
