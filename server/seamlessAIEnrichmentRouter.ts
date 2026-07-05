@@ -226,122 +226,18 @@ export const seamlessAIEnrichmentRouter = router({
             continue;
           }
 
-          stats.increment("searchesPerformed");
-          console.log(`[SeamlessAIEnrichment] Searching Seamless.AI for lead ${lead.id} (${lead.ownerName}, ${lead.companyName})`);
-
-          const searchFilters = {
-            firstName: lead.ownerName.split(" ")[0],
-            lastName: lead.ownerName.split(" ").slice(1).join(" "),
-            companyName: [lead.companyName],
-            jobTitle: lead.jobTitle ? [lead.jobTitle] : undefined,
-            email: lead.email || undefined,
-            city: lead.city || undefined,
-            state: lead.state || undefined,
-            country: lead.country || undefined,
-            linkedinUrl: lead.linkedinUrl || undefined,
-          };
-
-          const userSettings = await db.getUserSettings(ctx.user.id);
-          if (!userSettings?.seamlessApiKey) {
-            throw new Error('Seamless.AI API key not configured');
-          }
-          const searchResults = await searchContacts(userSettings.seamlessApiKey, searchFilters);
-          stats.increment("resultsReturned");
-
-          if (!searchResults || searchResults.data.length === 0) {
-            reports.push({
-              leadId: lead.id,
-              status: "needs_review",
-              message: "No search results found on Seamless.AI",
-            });
-            stats.increment("needsReviewLeads");
-            continue;
-          }
-
-          let bestMatch: { result: SeamlessSearchResult; score: number } | null = null;
-          for (const result of searchResults.data) {
-            const score = scoreSearchResult(lead, result);
-            if (!bestMatch || score > bestMatch.score) {
-              bestMatch = { result, score };
-            }
-          }
-
-          if (!bestMatch || bestMatch.score < confidenceThreshold) {
-            reports.push({
-              leadId: lead.id,
-              status: "needs_review",
-              message: `Best match confidence (${bestMatch?.score || 0}) below threshold (${confidenceThreshold})`,
-              confidenceScore: bestMatch?.score,
-              seamlessSearchResultId: bestMatch?.result.id,
-            });
-            stats.increment("needsReviewLeads");
-            continue;
-          }
-
-          // Safety guard: ensure only one result is selected for research
-          if (bestMatch.result.id) {
-            console.log(`[SeamlessAIEnrichment] Lead: ${lead.ownerName}`);
-            console.log(`[SeamlessAIEnrichment] Search Results Returned: ${searchResults.data.length}`);
-            console.log(`[SeamlessAIEnrichment] Selected Best Match: 1`);
-            console.log(`[SeamlessAIEnrichment] Research IDs Submitted: 1`);
-            console.log(`[SeamlessAIEnrichment] Expected Credits: 1`);
-
-            // PHASE 2: HARD SAFETY GUARD - Verify searchResultIds.length <= selectedLeadCount
-            const searchResultIds = [bestMatch.result.id];
-            if (searchResultIds.length > auditLog.selectedLeads) {
-              const errorMsg = `[CREDIT PROTECTION ABORT] Research IDs exceed selected leads. Aborting to prevent credit over-submission.`;
-              console.error(errorMsg);
-              stats.addFailureReason("Research IDs exceed selected leads");
-              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
-            }
-
-            if (searchResultIds.length !== 1) {
-              const errorMsg = `[IDEMPOTENCY] Expected exactly 1 research ID, got ${searchResultIds.length}. Aborting.`;
-              console.error(errorMsg);
-              stats.addFailureReason("Idempotency violation: multiple research IDs");
-              throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errorMsg });
-            }
-
-            stats.increment("researchRequestsSubmitted");
-            stats.researchIdsSubmitted += searchResultIds.length;
-            const researchResult: SeamlessResearchResponse = await researchContact(userSettings.seamlessApiKey, searchResultIds);
-
-            if (researchResult) {
-              await updateLead(lead.id, {
-                email: researchResult.email || lead.email,
-                phoneNumber: researchResult.phoneNumber || lead.phoneNumber,
-                jobTitle: researchResult.jobTitle || lead.jobTitle,
-                linkedinUrl: researchResult.linkedinUrl || lead.linkedinUrl,
-                companyName: researchResult.companyName || lead.companyName,
-                website: researchResult.website || lead.website,
-                industry: researchResult.industry || lead.industry,
-                city: researchResult.contactLocation?.city || lead.city,
-                state: researchResult.contactLocation?.state || lead.state,
-                country: researchResult.contactLocation?.country || lead.country,
-                companySize: researchResult.companySize || lead.companySize,
-                personalEmail: researchResult.personalEmail || lead.personalEmail,
-                workEmail: researchResult.workEmail || lead.workEmail,
-                allEmails: researchResult.allEmails || lead.allEmails,
-              });
-              reports.push({
-                leadId: lead.id,
-                status: "success",
-                message: "Lead enriched successfully",
-                confidenceScore: bestMatch.score,
-                seamlessSearchResultId: bestMatch.result.id,
-              });
-              stats.increment("enrichedLeads");
-            } else {
-              reports.push({
-                leadId: lead.id,
-                status: "failed",
-                message: "Failed to research contact on Seamless.AI",
-                confidenceScore: bestMatch.score,
-                seamlessSearchResultId: bestMatch.result.id,
-              });
-              stats.increment("failedEnrichments");
-            }
-          }
+          // ENRICHMENT DISABLED: Re-searching for each lead wastes credits
+          // Leads already have complete data from initial search
+          // TODO: Implement phone verification via REST API instead
+          reports.push({
+            leadId: lead.id,
+            status: "success",
+            message: "Lead data already populated from initial search. Phone verification coming soon.",
+          });
+          stats.increment("enrichedLeads");
+          continue;
+          
+          // OLD CODE REMOVED - DISABLED TO PREVENT CREDIT WASTE
         }
       } catch (error) {
         console.error("[SeamlessAIEnrichment] Error during enrichment:", error);
