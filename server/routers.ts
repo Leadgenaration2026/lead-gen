@@ -534,6 +534,44 @@ export const appRouter = router({
               });
             }
             
+            // Map Seamless.AI API response to expected schema
+            // API returns: firstName, lastName, title, company, domain, industries, liUrl, timezone, etc.
+            // We need: companyName, ownerName, jobTitle, email, phoneNumber, website, industry, companySize, etc.
+            leadsData = leadsData.map((contact: any) => {
+              // Try to construct email from domain if not provided
+              let email = contact.email || "";
+              if (!email && contact.domain && contact.firstName && contact.lastName) {
+                // Guess common email formats: firstname.lastname@domain, first.last@domain, etc.
+                const first = contact.firstName.toLowerCase().replace(/[^a-z0-9]/g, "");
+                const last = contact.lastName.toLowerCase().replace(/[^a-z0-9]/g, "");
+                email = `${first}.${last}@${contact.domain}`;
+              }
+              
+              // Determine company size from employeeSizeRange
+              let companySize = "1-10";
+              const sizeRange = contact.employeeSizeRange?.toLowerCase() || "";
+              if (sizeRange.includes("1") && sizeRange.includes("10")) companySize = "1-10";
+              else if (sizeRange.includes("11") || sizeRange.includes("50")) companySize = "11-50";
+              else if (sizeRange.includes("51") || sizeRange.includes("200")) companySize = "51-200";
+              else if (sizeRange.includes("201") || sizeRange.includes("500")) companySize = "201-500";
+              else if (sizeRange.includes("500") || sizeRange.includes("1000") || sizeRange.includes("10000")) companySize = "500+";
+              
+              return {
+                companyName: contact.company || "Unknown",
+                ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unknown",
+                jobTitle: contact.title || undefined,
+                email: email,
+                phoneNumber: contact.phone || "",
+                website: contact.domain ? `https://${contact.domain}` : undefined,
+                industry: Array.isArray(contact.industries) ? contact.industries[0] : contact.industries || undefined,
+                companySize: companySize,
+                timezone: contact.timezone || undefined,
+                linkedinUrl: contact.liUrl || undefined,
+                instagramUrl: undefined,
+                facebookUrl: undefined,
+              };
+            });
+            
             // Log how many have emails vs don't
             const withEmail = leadsData.filter((l: any) => l.email).length;
             const withoutEmail = leadsData.length - withEmail;
