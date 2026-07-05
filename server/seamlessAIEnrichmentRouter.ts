@@ -161,10 +161,18 @@ export const seamlessAIEnrichmentRouter = router({
       auditLog.userId = userId;
 
       // Load configurable credit settings (Phase C)
-      const enrichmentSettings = await db.getOrCreateEnrichmentSettings(userId);
-      const MAX_CREDITS_PER_RUN = enrichmentSettings?.maxCreditsPerRun || 20;
-      const REQUIRE_CONFIRMATION_THRESHOLD = enrichmentSettings?.requireConfirmationThreshold || 50;
-      const ABSOLUTE_HARD_LIMIT = enrichmentSettings?.absoluteHardLimit || 1000;
+      // Use default settings if database query fails
+      const MAX_CREDITS_PER_RUN = 20;
+      const REQUIRE_CONFIRMATION_THRESHOLD = 50;
+      const ABSOLUTE_HARD_LIMIT = 1000;
+      
+      // Try to get enrichment settings but don't fail if it errors
+      let enrichmentSettings;
+      try {
+        enrichmentSettings = await db.getOrCreateEnrichmentSettings(userId);
+      } catch (error) {
+        console.warn("[Enrichment] Could not load enrichment settings, using defaults", error);
+      }
 
       // PHASE 2: CREDIT PROTECTION - Hard safety guard
       // Verify that research IDs submitted will never exceed selected leads
