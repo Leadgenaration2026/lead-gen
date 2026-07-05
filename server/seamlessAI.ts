@@ -33,6 +33,7 @@ export interface SeamlessSearchResult {
   companyName?: string;
   website?: string;
   industry?: string;
+  companyEmployeeCount?: number | string;
   contactLocation?: {
     city?: string;
     state?: string;
@@ -293,8 +294,10 @@ export async function searchContacts(
   if (filters.country) body.country = filters.country;
   if (filters.contactCountry?.length) body.contactCountry = filters.contactCountry;
   if (filters.contactState?.length) body.contactState = filters.contactState;
-  if (filters.companyEmployeeCountMin !== undefined) body.companyEmployeeCountMin = filters.companyEmployeeCountMin;
-  if (filters.companyEmployeeCountMax !== undefined) body.companyEmployeeCountMax = filters.companyEmployeeCountMax;
+  // NOTE: Seamless.AI API does NOT support employee count filtering
+  // We will do post-filtering instead
+  // if (filters.companyEmployeeCountMin !== undefined) body.companyEmployeeCountMin = filters.companyEmployeeCountMin;
+  // if (filters.companyEmployeeCountMax !== undefined) body.companyEmployeeCountMax = filters.companyEmployeeCountMax;
   if (filters.firstName) body.firstName = filters.firstName;
   if (filters.lastName) body.lastName = filters.lastName;
   body.limit = pageSize;
@@ -318,6 +321,11 @@ export async function searchContacts(
     if (pageCount === 1) {
       console.log("\n[DEBUG] FIRST API REQUEST:");
       console.log(JSON.stringify(requestBody, null, 2));
+      if (filters.companyEmployeeCountMin || filters.companyEmployeeCountMax) {
+        console.log("\n[DEBUG] EMPLOYEE COUNT FILTERS (will be applied post-search):");
+        console.log(`  Min: ${filters.companyEmployeeCountMin}`);
+        console.log(`  Max: ${filters.companyEmployeeCountMax}`);
+      }
     }
     
     const response = await seamlessRequest(apiKey, "POST", "/search/contacts", requestBody);
@@ -327,10 +335,39 @@ export async function searchContacts(
       console.log("Total Results:", response.supplementalData?.totalResults);
       console.log("Data Length:", response.data?.length || 0);
       console.log("Has Next Token:", !!response.supplementalData?.nextToken);
-      console.log("Full Response:", JSON.stringify(response, null, 2));
+      console.log("\n[DEBUG] FIRST 3 RESULTS (checking company sizes):");
+      (response.data || []).slice(0, 3).forEach((result: any, idx: number) => {
+        console.log(`  Result ${idx + 1}: ${result.firstName} ${result.lastName} @ ${result.company} (employees: ${result.companyEmployeeCount || 'N/A'})`);
+      });
     }
     
-    const pageData: SeamlessSearchResult[] = response.data || [];
+    let pageData: SeamlessSearchResult[] = response.data || [];
+    
+    // Post-filter by employee count (Seamless.AI API doesn't support this natively)
+    if (filters.companyEmployeeCountMin !== undefined || filters.companyEmployeeCountMax !== undefined) {
+      pageData = pageData.filter(result => {
+        const employeeCount = result.companyEmployeeCount;
+        if (employeeCount === undefined || employeeCount === null) {
+          // Include results with unknown employee count
+          return true;
+        }
+        const count = typeof employeeCount === 'string' ? parseInt(employeeCount) : employeeCount;
+        if (isNaN(count)) return true; // Include if can't parse
+        
+        if (filters.companyEmployeeCountMin !== undefined && count < filters.companyEmployeeCountMin) {
+          return false;
+        }
+        if (filters.companyEmployeeCountMax !== undefined && count > filters.companyEmployeeCountMax) {
+          return false;
+        }
+        return true;
+      });
+      
+      if (pageCount === 1) {
+        console.log(`[Seamless.AI] Post-filtered page 1: ${(response.data || []).length} results → ${pageData.length} results after employee count filter`);
+      }
+    }
+    
     allResults.push(...pageData);
     
     // Track total available results from API
@@ -347,6 +384,11 @@ export async function searchContacts(
     if (allResults.length >= targetCount) {
       console.log(`[Seamless.AI] Reached target count (${targetCount}), stopping pagination`);
       break;
+    }
+    
+    // If this page had no results after filtering, we might need more pages
+    if (pageData.length === 0 && (response.data || []).length > 0) {
+      console.log(`[Seamless.AI] Page ${pageCount} had results but all filtered out by employee count, continuing...`);
     }
     
     // Stop if no more pages

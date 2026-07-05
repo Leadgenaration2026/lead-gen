@@ -75,6 +75,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
   const [filterIndustry, setFilterIndustry] = useState<string>("all");
+  const [filterHasPhone, setFilterHasPhone] = useState<string>("all"); // "all", "has-phone", "no-phone"
   // Support URL param ?setId=123 to pre-filter by lead set
   useEffect(() => {
     const params = new URLSearchParams(searchString);
@@ -863,7 +864,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       // If filterLeadSet === "all" and filterSourceListId === "all", show all leads
       const matchesIndustry =
         filterIndustry === "all" || lead.industry === filterIndustry;
-      return matchesListFilter && matchesSearch && matchesIndustry;
+      
+      // Check phone filter
+      const hasPhone = lead.phoneNumber && lead.phoneNumber.trim().length > 0;
+      const hasEmail = lead.email && lead.email.trim().length > 0;
+      let matchesPhoneFilter = true;
+      if (filterHasPhone === "has-phone") {
+        matchesPhoneFilter = hasPhone && hasEmail; // Both email AND phone
+      } else if (filterHasPhone === "no-phone") {
+        matchesPhoneFilter = !hasPhone || !hasEmail; // Missing either
+      }
+      
+      return matchesListFilter && matchesSearch && matchesIndustry && matchesPhoneFilter;
     });
 
     // Apply sorting
@@ -885,7 +897,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       return [...filtered].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
     return filtered;
-  }, [leadsQuery.data, filterSourceListId, searchQuery, filterLeadSet, filterIndustry, sortBy]);
+  }, [leadsQuery.data, filterSourceListId, searchQuery, filterLeadSet, filterIndustry, filterHasPhone, sortBy]);
 
   const leadSets = leadSetsQuery.data || [];
 
@@ -1785,6 +1797,17 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       {industry}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterHasPhone} onValueChange={setFilterHasPhone}>
+                <SelectTrigger className="w-44">
+                  <Zap className="w-3.5 h-3.5 mr-1.5" />
+                  <SelectValue placeholder="Filter by phone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Leads</SelectItem>
+                  <SelectItem value="has-phone">Has Email & Phone</SelectItem>
+                  <SelectItem value="no-phone">Missing Email or Phone</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={setSortBy}>

@@ -243,8 +243,14 @@ export const seamlessAIEnrichmentRouter = router({
                 const lead = leadsForPhoneVerification[i];
                 const pollResult = pollResults[i];
                 
+                console.log(`[SeamlessAIEnrichment] Processing lead ${lead.id}:`);
+                console.log(`  Poll Result:`, JSON.stringify(pollResult, null, 2));
+                
                 const phoneNumber = pollResult?.contact?.phoneNumber || pollResult?.contact?.contactPhone1 || pollResult?.contact?.workPhone;
+                console.log(`  Extracted Phone: ${phoneNumber}`);
+                
                 if (phoneNumber) {
+                  console.log(`[SeamlessAIEnrichment] Updating lead ${lead.id} with phone: ${phoneNumber}`);
                   await updateLead(lead.id, { phoneNumber });
                   reports.push({
                     leadId: lead.id,
@@ -253,6 +259,7 @@ export const seamlessAIEnrichmentRouter = router({
                   });
                   stats.increment("enrichedLeads");
                 } else {
+                  console.log(`[SeamlessAIEnrichment] No phone found for lead ${lead.id}`);
                   reports.push({
                     leadId: lead.id,
                     status: "needs_review",
