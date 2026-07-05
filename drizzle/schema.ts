@@ -243,6 +243,7 @@ export const leads = mysqlTable("leads", {
 	ownerName: varchar({ length: 255 }).notNull(),
 	email: varchar({ length: 320 }).notNull(),
 	phoneNumber: varchar({ length: 20 }).notNull(),
+	allPhones: json(), // Array of {number, type: 'cell'|'landline'|'office'}
 	website: varchar({ length: 255 }),
 	industry: varchar({ length: 100 }),
 	customData: json(),

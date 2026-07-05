@@ -15,6 +15,13 @@
       "when": 1783265685872,
       "tag": "0001_typical_silver_fox",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1783275591696,
+      "tag": "0002_cloudy_toad",
+      "breakpoints": true
     }
   ]
 }

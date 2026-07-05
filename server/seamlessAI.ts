@@ -345,15 +345,15 @@ export async function searchContacts(
     
     // Post-filter by employee count (Seamless.AI API doesn't support this natively)
     if (filters.companyEmployeeCountMin !== undefined || filters.companyEmployeeCountMax !== undefined) {
+      const beforeFilter = pageData.length;
       pageData = pageData.filter(result => {
         const employeeCount = result.companyEmployeeCount;
         if (employeeCount === undefined || employeeCount === null) {
-          // EXCLUDE results with unknown employee count when filter is active
-          // This ensures we only get companies we can verify match the criteria
-          return false;
+          // Include results with unknown employee count (Seamless.AI doesn't always provide this)
+          return true;
         }
         const count = typeof employeeCount === 'string' ? parseInt(employeeCount) : employeeCount;
-        if (isNaN(count)) return false; // EXCLUDE if can't parse
+        if (isNaN(count)) return true; // Include if can't parse
         
         if (filters.companyEmployeeCountMin !== undefined && count < filters.companyEmployeeCountMin) {
           return false;
@@ -363,6 +363,10 @@ export async function searchContacts(
         }
         return true;
       });
+      const afterFilter = pageData.length;
+      if (pageCount === 1) {
+        console.log(`[Seamless.AI] Post-filter results: ${beforeFilter} -> ${afterFilter} (${beforeFilter - afterFilter} filtered out)`);
+      }
       
       if (pageCount === 1) {
         console.log(`[Seamless.AI] Post-filtered page 1: ${(response.data || []).length} results → ${pageData.length} results after employee count filter`);
