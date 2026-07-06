@@ -1192,3 +1192,5 @@
 - [x] All tests passing: CSV header parsing, row parsing, phone number handling, location fields, LinkedIn URLs
 - [x] Verified phone number extraction works correctly with multiple formats
 - [x] Verified CSV import data structure matches server validation schema
+- [x] Confirmed: Phone numbers are already extracted from Seamless.AI CSV exports (no enrichment needed)
+- [x] Enrichment button remains paused until AI-based lead extraction workflow begins
