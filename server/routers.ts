@@ -954,8 +954,6 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             createdLeads.push(result);
           } catch (e: any) {
             console.error(`[CSV Import] Error on row ${i + 1}:`, e);
-            console.error(`[CSV Import] Full error stack:`, e.stack);
-            console.error(`[CSV Import] Lead data that failed:`, JSON.stringify(leadData, null, 2));
             errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
           }
         }

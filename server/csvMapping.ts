@@ -27,9 +27,8 @@ export interface ParsedLead {
  */
 const SEAMLESS_COLUMN_MAPPING: Record<string, string[]> = {
   companyName: ['company name', 'company', 'organization', 'company_name', 'company name - cleaned'],
-  firstName: ['first name', 'first_name', 'firstname'],
-  lastName: ['last name', 'last_name', 'lastname'],
-  fullName: ['contact full name', 'full name', 'full_name', 'fullname'],
+  firstName: ['first name', 'first_name', 'firstname', 'contact full name'],
+  lastName: ['last name', 'last_name', 'lastname', 'last name'],
   email: ['email', 'email address', 'work email', 'work_email', 'primary email', 'contact email', 'email 1'],
   email2: ['email 2', 'email2', 'secondary email', 'secondary_email', 'personal email', 'contact email 2'],
   email3: ['email 3', 'email3', 'tertiary email', 'contact email 3'],
@@ -38,14 +37,14 @@ const SEAMLESS_COLUMN_MAPPING: Record<string, string[]> = {
   phoneLandline: ['landline', 'office phone', 'office', 'work phone', 'phone (office)', 'company phone 1', 'company phone 2'],
   jobTitle: ['job title', 'title', 'position', 'job_title', 'designation'],
   industry: ['industry', 'industry name', 'industry_name'],
-  companySize: ['company size', 'employee size', 'employee count', 'employees', 'company_size', 'headcount', 'employee_count', 'company employee size', 'company employee size range', '# employees', 'company staff count', 'company staff count range'],
-  website: ['website', 'company website', 'web site', 'url', 'company_website', 'company website domain'],
-  linkedinUrl: ['linkedin', 'linkedin url', 'linkedin_url', 'linkedin profile', 'contact li profile url', 'company li profile url', 'company linkedin url'],
+  companySize: ['company size', 'employee count', 'employees', 'company_size', 'headcount', 'employee_count'],
+  website: ['website', 'company website', 'web site', 'url', 'company_website'],
+  linkedinUrl: ['linkedin', 'linkedin url', 'linkedin_url', 'linkedin profile'],
   instagramUrl: ['instagram', 'instagram url', 'instagram_url', 'instagram profile'],
   facebookUrl: ['facebook', 'facebook url', 'facebook_url', 'facebook profile'],
-  city: ['city', 'location city', 'location_city', 'contact city', 'company city', 'contact location - city', 'company location - city'],
-  state: ['state', 'province', 'region', 'state_province', 'contact state', 'company state', 'contact location - state', 'company location - state', 'state/region', 'contact state abbr', 'company state abbr', 'contact location - state abbreviation', 'company location - state abbreviation'],
-  country: ['country', 'location country', 'location_country', 'contact country', 'company country', 'contact location - country', 'company location - country', 'contact country (alpha 2)', 'company country (alpha 2)', 'contact location - country alpha-2 code', 'company location - country alpha-2 code'],
+  city: ['city', 'location city', 'location_city'],
+  state: ['state', 'province', 'region', 'state_province'],
+  country: ['country', 'location country', 'location_country'],
 };
 
 /**
@@ -78,22 +77,16 @@ export function parseCSVRow(row: string[], columnMapping: Record<string, number>
     lead.companyName = row[columnMapping.companyName]?.trim();
   }
 
-  // Name - use full name if available, otherwise combine first and last
-  if (columnMapping.fullName !== undefined) {
-    lead.ownerName = row[columnMapping.fullName]?.trim();
+  // Name - combine first and last
+  let firstName = '';
+  let lastName = '';
+  if (columnMapping.firstName !== undefined) {
+    firstName = row[columnMapping.firstName]?.trim() || '';
   }
-  
-  if (!lead.ownerName) {
-    let firstName = '';
-    let lastName = '';
-    if (columnMapping.firstName !== undefined) {
-      firstName = row[columnMapping.firstName]?.trim() || '';
-    }
-    if (columnMapping.lastName !== undefined) {
-      lastName = row[columnMapping.lastName]?.trim() || '';
-    }
-    lead.ownerName = `${firstName} ${lastName}`.trim();
+  if (columnMapping.lastName !== undefined) {
+    lastName = row[columnMapping.lastName]?.trim() || '';
   }
+  lead.ownerName = `${firstName} ${lastName}`.trim();
 
   // Emails - collect all email columns
   const emails: string[] = [];
