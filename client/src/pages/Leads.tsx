@@ -411,19 +411,28 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
   // CSV file handling
   const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[CSV Upload] File input changed');
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[CSV Upload] No file selected');
+      return;
+    }
+    console.log(`[CSV Upload] File selected: ${file.name} (${file.size} bytes)`);
     setCsvFileName(file.name);
 
+    console.log('[CSV Upload] Starting Papa Parse');
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       transformHeader: (header: string) => header.trim(),
       complete: (results: any) => {
+        console.log(`[CSV Upload] Papa Parse complete, ${results.data?.length || 0} rows`);
         if (!results.data || results.data.length === 0) {
+          console.log('[CSV Upload] CSV file is empty');
           toast.error("CSV file is empty or has no valid data rows");
           return;
         }
+        console.log('[CSV Upload] CSV has data, processing rows');
 
         // Get original headers (preserving case for detection)
         const rawHeaders = Object.keys(results.data[0] || {});
@@ -677,30 +686,49 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           toast.success(`${rows.length} Seamless.AI contacts with email + phone ready to import!`);
         }
 
+        console.log(`[CSV Upload] Setting preview with ${rows.length} rows`);
         setCsvPreview(rows);
+        console.log('[CSV Upload] Opening CSV preview dialog');
         setCsvDialogOpen(true);
+        console.log('[CSV Upload] Dialog state updated');
       },
       error: (error: any) => {
+        console.error('[CSV Upload] Papa Parse error:', error);
         toast.error(`Failed to parse CSV: ${error.message}`);
       },
     });
 
+    console.log('[CSV Upload] Clearing file input');
     if (fileInputRef.current) fileInputRef.current.value = "";
+    console.log('[CSV Upload] File select handler complete');
   };
 
   const handleCSVImport = async () => {
-    if (csvPreview.length === 0) return;
+    console.log('[CSV Import] Step 1: handleCSVImport called');
+    if (csvPreview.length === 0) {
+      console.log('[CSV Import] Step 1: csvPreview is empty, returning');
+      return;
+    }
+    console.log(`[CSV Import] Step 2: csvPreview has ${csvPreview.length} leads`);
     try {
+      console.log('[CSV Import] Step 3: Extracting emails from preview');
       const emails = csvPreview.map((r: any) => r.email).filter(Boolean);
+      console.log(`[CSV Import] Step 4: Found ${emails.length} unique emails`);
+      
+      console.log('[CSV Import] Step 5: Calling dedup check mutation');
       const dedupResult = emails.length > 0 
         ? await dedupCheckMutation.mutateAsync({ emails })
         : { duplicates: [] };
+      console.log(`[CSV Import] Step 6: Dedup check complete, ${dedupResult.duplicates.length} duplicates found`);
+      
       const dupSet = new Set(dedupResult.duplicates);
       // Leads without email are always considered unique
       const uniqueLeads = csvPreview.filter((r: any) => !r.email || !dupSet.has(r.email));
       const dupCount = csvPreview.length - uniqueLeads.length;
+      console.log(`[CSV Import] Step 7: ${uniqueLeads.length} unique leads, ${dupCount} duplicates`);
 
       if (dupCount > 0) {
+        console.log('[CSV Import] Step 8: Duplicates found, showing dialog');
         setDupDialogData({
           mode: "csv",
           duplicateEmails: dedupResult.duplicates,
@@ -711,10 +739,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         return;
       }
 
+      console.log('[CSV Import] Step 9: No duplicates, calling CSV import mutation');
       const result = await csvImportMutation.mutateAsync({
         leads: csvPreview,
         leadSetName: csvLeadSetName.trim() || undefined,
       });
+      console.log(`[CSV Import] Step 10: CSV import complete, ${result.imported} leads imported`);
       const summaryParts = [`Imported ${result.imported} leads`];
       if (result.duplicatesSkipped && result.duplicatesSkipped > 0) {
         summaryParts.push(`${result.duplicatesSkipped} duplicates skipped`);
@@ -749,7 +779,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         }
       }
     } catch (error) {
-      toast.error("Failed to import CSV leads");
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      toast.error(`CSV Import failed: ${errorMsg}`);
     }
   };
 
