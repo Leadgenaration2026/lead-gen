@@ -875,6 +875,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         leadSetName: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        console.log(`[CSV Import] Starting import for user ${ctx.user.id} with ${input.leads.length} leads`);
+        
         // Resolve lead set
         let leadSetId: number | null = null;
         if (input.leadSetName && input.leadSetName.trim()) {
@@ -902,6 +904,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         for (let i = 0; i < input.leads.length; i++) {
           const leadData = input.leads[i];
           
+          console.log(`[CSV Import] Processing lead ${i + 1}: ${leadData.ownerName} at ${leadData.companyName}`);
+          
           // Check for duplicates: same company + same contact name
           const isDuplicate = existingLeads.some(existing => 
             existing.companyName.toLowerCase().trim() === leadData.companyName.toLowerCase().trim() &&
@@ -909,6 +913,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           );
           
           if (isDuplicate) {
+            console.log(`[CSV Import] Skipping duplicate: ${leadData.ownerName} at ${leadData.companyName}`);
             duplicates.push({
               row: i + 1,
               name: leadData.ownerName,
@@ -948,9 +953,13 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             }
             createdLeads.push(result);
           } catch (e: any) {
+            console.error(`[CSV Import] Error on row ${i + 1}:`, e);
             errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
           }
         }
+        
+        console.log(`[CSV Import] Completed: ${createdLeads.length} imported, ${duplicates.length} duplicates, ${errors.length} errors`);
+        
         // Auto-score social media activity for imported leads in background
         const importedIds = createdLeads.filter(Boolean).map(Number);
         if (importedIds.length > 0) {
