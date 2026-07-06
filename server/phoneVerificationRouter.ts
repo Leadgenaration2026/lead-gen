@@ -3,7 +3,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { verifyPhoneNumbers, estimatePhoneVerificationCredits } from "./phoneVerification";
 import { updateLead } from "./db";
-import { ENV } from "./_core/env";
+import { env } from "./_core/env";
 
 export const phoneVerificationRouter = router({
   /**

@@ -26,9 +26,9 @@ export interface ParsedLead {
  * Common Seamless.AI CSV column names (case-insensitive)
  */
 const SEAMLESS_COLUMN_MAPPING: Record<string, string[]> = {
-  companyName: ['company name', 'company', 'organization', 'company_name'],
+  companyName: ['company name', 'company', 'organization', 'company_name', 'company name - cleaned'],
   firstName: ['first name', 'first_name', 'firstname', 'contact full name'],
-  lastName: ['last name', 'last_name', 'lastname'],
+  lastName: ['last name', 'last_name', 'lastname', 'last name'],
   email: ['email', 'email address', 'work email', 'work_email', 'primary email', 'contact email', 'email 1'],
   email2: ['email 2', 'email2', 'secondary email', 'secondary_email', 'personal email', 'contact email 2'],
   email3: ['email 3', 'email3', 'tertiary email', 'contact email 3'],
