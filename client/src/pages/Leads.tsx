@@ -449,7 +449,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           let phones: string[] = [];
           
           for (const [key, val] of Object.entries(record)) {
-            const header = (key as string).toLowerCase().trim();
+            // Normalize header: remove quotes, convert to lowercase, trim
+            const header = (key as string)
+              .replace(/^"|"$/g, "") // Remove surrounding quotes
+              .toLowerCase()
+              .trim();
             const value = ((val as string) || "").trim();
             if (!value || value === "N/A" || value === "n/a" || value === "NA") continue;
 
