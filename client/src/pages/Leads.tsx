@@ -448,6 +448,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           let lastName = "";
           let phones: string[] = [];
           
+          console.log(`\n[CSV TRACE] ===== Processing row ${idx + 2} =====`);
+          console.log(`[CSV TRACE] Raw headers:`, Object.keys(record));
+          console.log(`[CSV TRACE] Raw values:`, Object.values(record));
+          
           for (const [key, val] of Object.entries(record)) {
             // Normalize header: remove quotes, convert to lowercase, trim
             const header = (key as string)
@@ -494,15 +498,21 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               header.match(/^phone\s*\d*$/) ||
               header === "phone" || header === "phone number"
             ) {
-              if (value.replace(/[^0-9]/g, "").length >= 7) {
+              const digits = value.replace(/[^0-9]/g, "");
+              console.log(`[PHONE] Contact phone found: ${header}, value: ${value}, digits: ${digits.length}`);
+              if (digits.length >= 7) {
                 phones.push(value);
+                console.log(`[PHONE] Added to array. Total phones: ${phones.length}`);
               }
             } else if (
               header.match(/^company phone\s*\d*$/) ||
               header.match(/^company_phone\s*\d*$/)
             ) {
-              if (value.replace(/[^0-9]/g, "").length >= 7) {
+              const digits = value.replace(/[^0-9]/g, "");
+              console.log(`[PHONE] Company phone found: ${header}, value: ${value}, digits: ${digits.length}`);
+              if (digits.length >= 7) {
                 phones.push(value);
+                console.log(`[PHONE] Added to array. Total phones: ${phones.length}`);
               }
             }
             // === COMPANY FIELDS (Seamless uses "Company Name - Cleaned") ===
@@ -583,11 +593,16 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           }
 
           // Assign phones: first valid = primary, second = secondary
+          console.log(`[PHONE] Phones array before assignment: ${JSON.stringify(phones)}`);
           if (phones.length > 0) {
             row.phoneNumber = phones[0];
+            console.log(`[PHONE] Assigned row.phoneNumber = ${row.phoneNumber}`);
             if (phones.length > 1 && phones[1] !== phones[0]) {
               row.secondaryPhone = phones[1];
+              console.log(`[PHONE] Assigned row.secondaryPhone = ${row.secondaryPhone}`);
             }
+          } else {
+            console.log(`[PHONE] No phones found! phones.length = 0`);
           }
 
           // Only use positional fallback for NON-Seamless formats
