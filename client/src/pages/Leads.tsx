@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { toast } from "sonner";
 import { LeadDetailDrawer } from "@/components/LeadDetailDrawer";
+import { downloadCSVTemplate } from "@/utils/csvTemplate";
 
 // Format phone number for display: +1XXXXXXXXXX → (XXX) XXX-XXXX
 function formatUSPhone(phone: string | null | undefined): string {
@@ -1348,16 +1349,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             </Button>
             <button
               type="button"
-              onClick={() => {
-                const csvContent = `companyName,ownerName,email,phoneNumber,industry,companySize,website,linkedinUrl,instagramUrl,facebookUrl,tag\nAcme Corp,John Smith,john@acme.com,+1-555-123-4567,SaaS,50-100,https://acme.com,https://linkedin.com/in/johnsmith,https://instagram.com/johnsmith,https://facebook.com/johnsmith,hot\nGlobal Tech,Jane Doe,jane@globaltech.io,+1-555-987-6543,Technology,100-500,https://globaltech.io,https://linkedin.com/in/janedoe,,,warm\nStartup Inc,Bob Wilson,bob@startup.co,+44-20-1234-5678,Fintech,10-50,,https://linkedin.com/in/bobwilson,,,none`;
-                const blob = new Blob([csvContent], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'sample-leads.csv';
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
+              onClick={() => downloadCSVTemplate()}
               className="text-xs text-green-600 hover:text-green-700 hover:underline mt-1 cursor-pointer"
             >
               Download sample CSV format
