@@ -175,14 +175,21 @@ export function parseSearchInstruction(instruction: string) {
   const lower = instruction.toLowerCase();
 
   // Extract job titles
+  // IMPORTANT: Order by specificity (longest/most specific first) to avoid shorter keywords
+  // crowding out more specific matches due to the 10-title cap
   const titleKeywords = [
-    "owner", "founder", "ceo", "president", "director", "manager", "vp", "vice president",
+    "small business owner", "business owner", // Most specific phrases first
+    "vice president", // Longer than "vp"
+    "owner", "founder", "ceo", "president", "director", "manager", "vp",
     "sales", "marketing", "operations", "finance", "hr", "engineering", "it",
-    "consultant", "partner", "entrepreneur", "business owner", "small business owner"
+    "consultant", "partner", "entrepreneur"
   ];
   
   for (const keyword of titleKeywords) {
-    if (lower.includes(keyword)) {
+    // Use word boundary regex to avoid false positives
+    // e.g., "it" should not match inside "with", "hr" should not match inside "chair"
+    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+    if (regex.test(instruction)) {
       const expanded = expandJobTitle(keyword);
       result.titles.push(...expanded);
       // Stop expanding if we already have 10 titles
@@ -248,7 +255,10 @@ export function parseSearchInstruction(instruction: string) {
   };
   
   for (const keyword of Object.keys(countryMap)) {
-    if (lower.includes(keyword)) {
+    // Use word boundary regex to avoid false positives
+    // e.g., "us" should not match inside "business", "uk" should not match inside "duke"
+    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+    if (regex.test(instruction)) {
       const fullName = countryMap[keyword];
       if (!result.countries.includes(fullName)) {
         result.countries.push(fullName);
