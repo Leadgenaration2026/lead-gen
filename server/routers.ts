@@ -1441,9 +1441,23 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           throw new TRPCError({ code: "BAD_REQUEST", message: "No valid leads to score" });
         }
 
+        // Run scoring in background (non-blocking) — return immediately
         const { scoreLeadsBatch } = await import("./engagementScoring");
-        const result = await scoreLeadsBatch(validIds);
-        return { ...result, total: validIds.length };
+        setImmediate(async () => {
+          try {
+            await scoreLeadsBatch(validIds);
+            console.log(`[Engagement] Background batch scoring completed for ${validIds.length} leads`);
+          } catch (error: any) {
+            console.error(`[Engagement] Background batch scoring failed:`, error.message);
+          }
+        });
+
+        // Return immediately without waiting
+        return { 
+          message: `Scoring ${validIds.length} leads in background...`, 
+          total: validIds.length,
+          status: "started"
+        };
       }),
 
     // Score social media activity for a single lead

@@ -747,10 +747,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       if (result.imported > 0 && result.leadIds && result.leadIds.length > 0) {
         toast.info("Scoring engagement for imported leads (LinkedIn + Website)...", { duration: 5000 });
         try {
-          await scoreEngagementBatchMutation.mutateAsync({ leadIds: result.leadIds });
-          toast.success("Engagement scores updated! Leads ranked by LinkedIn + Website presence.");
-          leadsQuery.refetch();
-        } catch {
+          const scoringResult = await scoreEngagementBatchMutation.mutateAsync({ leadIds: result.leadIds });
+          toast.success(scoringResult.message || "Scoring leads in background...", { duration: 8000 });
+          // Refetch after a delay to see updated scores
+          setTimeout(() => leadsQuery.refetch(), 3000);
+        } catch (err: any) {
+          console.error("Auto-scoring error:", err);
           toast.info("Leads imported. Click 'Score Social Engagement' to rank by activity.");
         }
       }
@@ -1914,10 +1916,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   toast.info(`Scoring engagement for ${ids.length} leads (LinkedIn + Website)... This may take a moment.`);
                   try {
                     const result = await scoreEngagementBatchMutation.mutateAsync({ leadIds: ids });
-                    toast.success(`Scored ${result.scored} leads (${result.errors} errors)`);
-                    leadsQuery.refetch();
+                    toast.success(result.message || `Scoring ${result.total} leads in background...`, { duration: 8000 });
+                    // Refetch after a delay to see updated scores
+                    setTimeout(() => leadsQuery.refetch(), 3000);
                   } catch (err: any) {
-                    toast.error(err.message || "Failed to score engagement");
+                    console.error("Engagement scoring error:", err);
+                    toast.error(err?.message || err?.data?.message || "Failed to score engagement", { duration: 8000 });
                   }
                 }}
                 disabled={scoreEngagementBatchMutation.isPending}

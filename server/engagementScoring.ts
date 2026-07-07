@@ -187,7 +187,7 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
     try {
       const websiteUrl = lead.website.startsWith("http") ? lead.website : `https://${lead.website}`;
       const response = await fetch(websiteUrl, {
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(3000),
         redirect: "follow",
         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
       });
@@ -260,23 +260,35 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
 }
 
 /**
- * Score multiple leads in batch (with rate limiting to avoid being blocked).
+ * Score multiple leads in batch (parallel processing with rate limiting).
+ * Processes 3 leads in parallel at a time to balance speed and API rate limits.
  */
 export async function scoreLeadsBatch(leadIds: number[]): Promise<{ scored: number; errors: number }> {
   let scored = 0;
   let errors = 0;
+  const batchSize = 3; // Process 3 leads in parallel
 
-  for (const leadId of leadIds) {
-    try {
-      await scoreLeadEngagement(leadId);
-      scored++;
-      // Rate limit: wait 1.5 seconds between requests
-      if (scored < leadIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+  for (let i = 0; i < leadIds.length; i += batchSize) {
+    const batch = leadIds.slice(i, i + batchSize);
+    
+    // Process batch in parallel
+    const results = await Promise.allSettled(
+      batch.map(leadId => scoreLeadEngagement(leadId))
+    );
+
+    // Count successes and failures
+    results.forEach((result) => {
+      if (result.status === 'fulfilled') {
+        scored++;
+      } else {
+        errors++;
+        console.error(`[Engagement] Batch scoring failed:`, result.reason?.message || result.reason);
       }
-    } catch (error: any) {
-      console.error(`[Engagement] Failed to score lead ${leadId}:`, error.message);
-      errors++;
+    });
+
+    // Rate limit: wait 500ms between batches (not between individual leads)
+    if (i + batchSize < leadIds.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
 
