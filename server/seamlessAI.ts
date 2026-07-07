@@ -647,6 +647,124 @@ export async function enrichContactsWithPhones(
   }
 }
 
+/**
+ * Hybrid enrichment + filtering approach:
+ * 1. Enrich candidates in batches (max 300 total to cap credit cost)
+ * 2. Filter enriched contacts by company size
+ * 3. Return matched contacts + enrichment credit cost + warning if cap hit
+ */
+export async function enrichAndFilterByCompanySize(
+  apiKey: string,
+  candidates: SeamlessSearchResult[],
+  filters: any,
+  targetCount: number,
+  maxEnrichmentCandidates: number = 300
+): Promise<{
+  enrichedContacts: SeamlessContact[];
+  creditsUsed: number;
+  cappedAtLimit: boolean;
+  message: string;
+}> {
+  const enrichedContacts: SeamlessContact[] = [];
+  let creditsUsed = 0;
+  let cappedAtLimit = false;
+  
+  // Batch size for enrichment (API limit)
+  const ENRICHMENT_BATCH_SIZE = 100;
+  const candidatesToEnrich = candidates.slice(0, maxEnrichmentCandidates);
+  
+  console.log(`[Seamless.AI] Starting hybrid enrichment: ${candidatesToEnrich.length} candidates (capped at ${maxEnrichmentCandidates})`);
+  
+  // Process in batches
+  for (let i = 0; i < candidatesToEnrich.length; i += ENRICHMENT_BATCH_SIZE) {
+    const batch = candidatesToEnrich.slice(i, i + ENRICHMENT_BATCH_SIZE);
+    const batchNum = Math.floor(i / ENRICHMENT_BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(candidatesToEnrich.length / ENRICHMENT_BATCH_SIZE);
+    
+    console.log(`[Seamless.AI] Enriching batch ${batchNum}/${totalBatches} (${batch.length} contacts)`);
+    
+    try {
+      // Research
+      const searchResultIds = batch.map(c => c.id).filter(Boolean);
+      const researchResult = await researchContact(apiKey, searchResultIds);
+      creditsUsed += searchResultIds.length; // Each research call costs 1 credit per contact
+      
+      if (!researchResult.success || !researchResult.requestIds?.length) {
+        console.warn(`[Seamless.AI] Batch ${batchNum} research failed`);
+        continue;
+      }
+      
+      // Poll
+      const pollResults = await pollContactResults(apiKey, researchResult.requestIds, 60, 1000);
+      
+      // Filter by company size and collect enriched contacts
+      for (const pollResult of pollResults) {
+        if (!pollResult.contact) continue;
+        
+        const contact = pollResult.contact;
+        let employeeCount: number | undefined;
+        
+        // Try to get employee count from enriched data
+        if (contact.companyStaffCount !== undefined && contact.companyStaffCount !== null) {
+          employeeCount = typeof contact.companyStaffCount === 'string' 
+            ? parseInt(contact.companyStaffCount, 10) 
+            : contact.companyStaffCount;
+        } else if (contact.companyStaffCountRange) {
+          // Parse range string like "1-10" -> use midpoint
+          const rangeMatch = (contact.companyStaffCountRange as string).match(/(\d+)\s*-\s*(\d+)/);
+          if (rangeMatch) {
+            const min = parseInt(rangeMatch[1], 10);
+            const max = parseInt(rangeMatch[2], 10);
+            employeeCount = Math.floor((min + max) / 2);
+          }
+        }
+        
+        // Apply company size filter
+        if (employeeCount !== undefined) {
+          if (filters.companyEmployeeCountMin !== undefined && employeeCount < filters.companyEmployeeCountMin) {
+            continue; // Skip this contact
+          }
+          if (filters.companyEmployeeCountMax !== undefined && employeeCount > filters.companyEmployeeCountMax) {
+            continue; // Skip this contact
+          }
+        }
+        
+        enrichedContacts.push(contact);
+        
+        // Stop if we have enough
+        if (enrichedContacts.length >= targetCount) {
+          break;
+        }
+      }
+      
+      if (enrichedContacts.length >= targetCount) {
+        break;
+      }
+    } catch (error: any) {
+      console.error(`[Seamless.AI] Batch ${batchNum} enrichment failed:`, error.message);
+      continue;
+    }
+  }
+  
+  // Check if we hit the enrichment cap
+  if (candidatesToEnrich.length >= maxEnrichmentCandidates && enrichedContacts.length < targetCount) {
+    cappedAtLimit = true;
+  }
+  
+  const message = cappedAtLimit 
+    ? `Found ${enrichedContacts.length} of ${targetCount} requested leads matching your criteria. Enrichment limit reached — try broadening your search (wider size range, different title, or different state) for more.`
+    : `Found ${enrichedContacts.length} leads matching your criteria.`;
+  
+  console.log(`[Seamless.AI] Hybrid enrichment complete: ${enrichedContacts.length} matches, ${creditsUsed} credits used, capped: ${cappedAtLimit}`);
+  
+  return {
+    enrichedContacts,
+    creditsUsed,
+    cappedAtLimit,
+    message,
+  };
+}
+
 export async function getSeamlessLeads(
   apiKey: string,
   filters: any,
