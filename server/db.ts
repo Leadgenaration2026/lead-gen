@@ -98,9 +98,19 @@ export async function createLead(data: InsertLead) {
   return db.insert(leads).values(data);
 }
 
-export async function getLeadsByUserId(userId: number, page: number = 1, pageSize: number = 50) {
+export async function getLeadsByUserId(userId: number, page?: number, pageSize?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  
+  // If no pagination params provided, return plain array (backward compatible)
+  if (page === undefined || pageSize === undefined) {
+    const results = await db.select().from(leads)
+      .where(eq(leads.userId, userId))
+      .orderBy(desc(leads.createdAt));
+    return results;
+  }
+  
+  // Otherwise return paginated wrapper object
   const offset = (page - 1) * pageSize;
   const results = await db.select().from(leads)
     .where(eq(leads.userId, userId))
