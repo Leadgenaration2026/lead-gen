@@ -280,8 +280,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         return next;
       });
       leadsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to delete lead");
+    } catch (error: any) {
+      console.error("Delete lead error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to delete lead", { duration: 8000 });
     }
   };
 
@@ -318,8 +319,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       toast.success("Lead added successfully");
       setManualLead({ companyName: "", ownerName: "", jobTitle: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
       leadsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to add lead");
+    } catch (error: any) {
+      console.error("Add lead error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to add lead", { duration: 8000 });
     }
   };
 
@@ -352,8 +354,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvLeadSetName("");
       leadsQuery.refetch();
       leadSetsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to import leads");
+    } catch (error: any) {
+      console.error("Import leads error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to import leads", { duration: 8000 });
     }
     setDupDialogOpen(false);
     setDupDialogData(null);
@@ -375,8 +378,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.success("Lead updated (existing record overwritten)");
         setManualLead({ companyName: "", ownerName: "", jobTitle: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
         leadsQuery.refetch();
-      } catch (error) {
-        toast.error("Failed to overwrite lead");
+      } catch (error: any) {
+        console.error("Overwrite lead error:", error);
+        toast.error(error?.message || error?.data?.message || "Failed to overwrite lead", { duration: 8000 });
       }
     } else {
       try {
@@ -391,8 +395,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setCsvLeadSetName("");
         leadsQuery.refetch();
         leadSetsQuery.refetch();
-      } catch (error) {
-        toast.error("Failed to import leads");
+      } catch (error: any) {
+        console.error("Overwrite import error:", error);
+        toast.error(error?.message || error?.data?.message || "Failed to import leads", { duration: 8000 });
       }
     }
     setDupDialogOpen(false);
@@ -404,8 +409,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       await updateTagMutation.mutateAsync({ leadId, tag: tag as any });
       toast.success(`Tag updated to "${TAG_COLORS[tag]?.label || tag}"`);
       leadsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to update tag");
+    } catch (error: any) {
+      console.error("Update tag error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to update tag", { duration: 8000 });
     }
   };
 
@@ -748,8 +754,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           toast.info("Leads imported. Click 'Score Social Engagement' to rank by activity.");
         }
       }
-    } catch (error) {
-      toast.error("Failed to import CSV leads");
+    } catch (error: any) {
+      console.error("CSV import error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to import CSV leads", { duration: 8000 });
     }
   };
 
@@ -799,8 +806,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setAssignToSetId("");
       leadsQuery.refetch();
       leadSetsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to assign leads");
+    } catch (error: any) {
+      console.error("Assign leads error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to assign leads", { duration: 8000 });
     }
   };
 
@@ -824,8 +832,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setShowCreateTag(false);
       leadsQuery.refetch();
       leadSetsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to create tag");
+    } catch (error: any) {
+      console.error("Create tag error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to create tag", { duration: 8000 });
     }
   };
 
@@ -842,8 +851,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setAssignToSetId("");
       leadsQuery.refetch();
       leadSetsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to remove from tag");
+    } catch (error: any) {
+      console.error("Remove from tag error:", error);
+      toast.error(error?.message || error?.data?.message || "Failed to remove from tag", { duration: 8000 });
     }
   };
 

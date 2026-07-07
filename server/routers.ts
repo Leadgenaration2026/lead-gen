@@ -3330,7 +3330,7 @@ Respond in this exact JSON format:
   dedup: router({
     check: protectedProcedure
       .input(z.object({
-        emails: z.array(z.string().email()),
+        emails: z.array(z.string().min(1)),
       }))
       .mutation(async ({ input, ctx }) => {
         const existingLeads = await db.getLeadsByEmails(input.emails, ctx.user.id);
