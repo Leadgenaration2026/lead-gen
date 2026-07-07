@@ -347,13 +347,35 @@ export async function searchContacts(
     if (filters.companyEmployeeCountMin !== undefined || filters.companyEmployeeCountMax !== undefined) {
       const beforeFilter = pageData.length;
       pageData = pageData.filter(result => {
-        const employeeCount = result.companyEmployeeCount;
+        // Try primary field first
+        let employeeCount = result.companyEmployeeCount;
+        
+        // If primary field is missing, try fallback fields from enriched data
         if (employeeCount === undefined || employeeCount === null) {
-          // Include results with unknown employee count (Seamless.AI doesn't always provide this)
-          return true;
+          // Try companyStaffCount (numeric)
+          if ((result as any).companyStaffCount !== undefined && (result as any).companyStaffCount !== null) {
+            employeeCount = (result as any).companyStaffCount;
+          }
+          // Try companyStaffCountRange (string like "1-10", "11-50", etc.)
+          else if ((result as any).companyStaffCountRange) {
+            const range = (result as any).companyStaffCountRange as string;
+            // Parse range string: "1-10" -> use midpoint 5, "11-50" -> use midpoint 30, etc.
+            const rangeMatch = range.match(/(\d+)\s*-\s*(\d+)/);
+            if (rangeMatch) {
+              const min = parseInt(rangeMatch[1], 10);
+              const max = parseInt(rangeMatch[2], 10);
+              employeeCount = Math.floor((min + max) / 2); // Use midpoint for filtering
+            }
+          }
         }
+        
+        // If still no employee count available, EXCLUDE the result (don't include unknown sizes)
+        if (employeeCount === undefined || employeeCount === null) {
+          return false;
+        }
+        
         const count = typeof employeeCount === 'string' ? parseInt(employeeCount) : employeeCount;
-        if (isNaN(count)) return true; // Include if can't parse
+        if (isNaN(count)) return false; // Exclude if can't parse
         
         if (filters.companyEmployeeCountMin !== undefined && count < filters.companyEmployeeCountMin) {
           return false;
@@ -593,6 +615,57 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   console.log(`[Seamless.AI] Generated filters:`, JSON.stringify(filters, null, 2));
   
   return filters;
+}
+
+/**
+ * Enrich contacts with phone numbers via research + poll flow
+ * Returns a map of contact ID -> phone number
+ */
+export async function enrichContactsWithPhones(
+  apiKey: string,
+  contacts: SeamlessSearchResult[]
+): Promise<Record<string, string>> {
+  if (!contacts.length) return {};
+  
+  try {
+    console.log(`[Seamless.AI] Enriching ${contacts.length} contacts with phone numbers...`);
+    
+    // Step 1: Research - submit contact IDs for enrichment
+    const searchResultIds = contacts.map(c => c.id).filter(Boolean);
+    if (!searchResultIds.length) {
+      console.warn("[Seamless.AI] No contact IDs to enrich");
+      return {};
+    }
+    
+    const researchResult = await researchContact(apiKey, searchResultIds);
+    if (!researchResult.success || !researchResult.requestIds?.length) {
+      console.warn("[Seamless.AI] Research failed or returned no request IDs");
+      return {};
+    }
+    
+    // Step 2: Poll - wait for research results
+    console.log(`[Seamless.AI] Polling ${researchResult.requestIds.length} research requests...`);
+    const pollResults = await pollContactResults(apiKey, researchResult.requestIds, 60, 1000);
+    
+    // Step 3: Map results to contact ID -> phone number
+    const phoneMap: Record<string, string> = {};
+    for (const result of pollResults) {
+      const contact = result.contact;
+      if (contact && result.searchResultId) {
+        // Prefer workPhone > contactPhone1 > phone from contact data
+        const phone = contact.workPhone || contact.contactPhone1 || contact.phone || "";
+        if (phone) {
+          phoneMap[result.searchResultId] = phone;
+        }
+      }
+    }
+    
+    console.log(`[Seamless.AI] Enrichment complete: ${Object.keys(phoneMap).length} contacts have phone numbers`);
+    return phoneMap;
+  } catch (error: any) {
+    console.error("[Seamless.AI] Phone enrichment failed:", error.message);
+    return {};
+  }
 }
 
 export async function getSeamlessLeads(

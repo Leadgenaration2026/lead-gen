@@ -543,6 +543,13 @@ export const appRouter = router({
               });
             }
             
+            // AUTOMATIC PHONE ENRICHMENT: Research + Poll for phone numbers
+            // This ensures generated leads come back complete with phone numbers in one action
+            console.log(`[Seamless.AI] Starting automatic phone enrichment for ${leadsData.length} contacts...`);
+            const { enrichContactsWithPhones } = await import("./seamlessAI");
+            const phoneMap = await enrichContactsWithPhones(settings.seamlessApiKey, leadsData);
+            console.log(`[Seamless.AI] Phone enrichment complete: ${Object.keys(phoneMap).length} contacts have phone numbers`);
+            
             // Map Seamless.AI API response to expected schema
             // API returns: firstName, lastName, title, company, domain, industries, liUrl, timezone, etc.
             // We need: companyName, ownerName, jobTitle, email, phoneNumber, website, industry, companySize, etc.
@@ -570,7 +577,7 @@ export const appRouter = router({
                 ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unknown",
                 jobTitle: contact.title || undefined,
                 email: email,
-                phoneNumber: "", // Seamless.AI doesn't provide phone numbers - only available after enrichment
+                phoneNumber: phoneMap[contact.id] || "", // Use enriched phone number from research+poll
                 website: contact.domain ? `https://${contact.domain}` : undefined,
                 industry: Array.isArray(contact.industries) ? contact.industries[0] : contact.industries || undefined,
                 companySize: companySize,
