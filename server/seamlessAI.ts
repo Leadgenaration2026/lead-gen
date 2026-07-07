@@ -343,40 +343,22 @@ export async function searchContacts(
     
     let pageData: SeamlessSearchResult[] = response.data || [];
     
-    // Post-filter by employee count (Seamless.AI API doesn't support this natively)
+    // CHEAP PRE-FILTER: Only exclude if companyEmployeeCount is present AND clearly out of range
+    // If field is missing/unknown, KEEP the candidate — we can't know yet without enrichment
     if (filters.companyEmployeeCountMin !== undefined || filters.companyEmployeeCountMax !== undefined) {
       const beforeFilter = pageData.length;
       pageData = pageData.filter(result => {
-        // Try primary field first
-        let employeeCount = result.companyEmployeeCount;
+        const employeeCount = result.companyEmployeeCount;
         
-        // If primary field is missing, try fallback fields from enriched data
+        // If no employee count data available, KEEP it (we'll filter after enrichment)
         if (employeeCount === undefined || employeeCount === null) {
-          // Try companyStaffCount (numeric)
-          if ((result as any).companyStaffCount !== undefined && (result as any).companyStaffCount !== null) {
-            employeeCount = (result as any).companyStaffCount;
-          }
-          // Try companyStaffCountRange (string like "1-10", "11-50", etc.)
-          else if ((result as any).companyStaffCountRange) {
-            const range = (result as any).companyStaffCountRange as string;
-            // Parse range string: "1-10" -> use midpoint 5, "11-50" -> use midpoint 30, etc.
-            const rangeMatch = range.match(/(\d+)\s*-\s*(\d+)/);
-            if (rangeMatch) {
-              const min = parseInt(rangeMatch[1], 10);
-              const max = parseInt(rangeMatch[2], 10);
-              employeeCount = Math.floor((min + max) / 2); // Use midpoint for filtering
-            }
-          }
-        }
-        
-        // If still no employee count available, EXCLUDE the result (don't include unknown sizes)
-        if (employeeCount === undefined || employeeCount === null) {
-          return false;
+          return true;
         }
         
         const count = typeof employeeCount === 'string' ? parseInt(employeeCount) : employeeCount;
-        if (isNaN(count)) return false; // Exclude if can't parse
+        if (isNaN(count)) return true; // Keep if can't parse (will re-evaluate after enrichment)
         
+        // Only exclude if clearly out of range
         if (filters.companyEmployeeCountMin !== undefined && count < filters.companyEmployeeCountMin) {
           return false;
         }
@@ -387,12 +369,9 @@ export async function searchContacts(
       });
       const afterFilter = pageData.length;
       if (pageCount === 1) {
-        console.log(`[Seamless.AI] Post-filter results: ${beforeFilter} -> ${afterFilter} (${beforeFilter - afterFilter} filtered out)`);
+        console.log(`[Seamless.AI] Cheap pre-filter: ${beforeFilter} -> ${afterFilter} (${beforeFilter - afterFilter} excluded for being clearly out of range)`);
       }
-      
-      if (pageCount === 1) {
-        console.log(`[Seamless.AI] Post-filtered page 1: ${(response.data || []).length} results → ${pageData.length} results after employee count filter`);
-      }
+    }
     }
     
     allResults.push(...pageData);
