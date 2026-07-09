@@ -85,7 +85,12 @@
                 linkedinUrl: contact.linkedinUrl || undefined,
                 instagramUrl: undefined,
                 facebookUrl: undefined,
+<<<<<<< Updated upstream
                 seamlessId: contact.contactId || undefined,
+=======
+                seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
+                enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
+>>>>>>> Stashed changes
               };
             });
             
@@ -346,6 +351,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
         console.log(`[AutoVerify] AI import auto-verification disabled - user must manually verify emails`);
 
+        // Option A: Calculate total enrichment credits used (1 per Seamless.AI lead)
+        const enrichmentCreditsUsed = input.source === "seamless" ? leadsData.length : 0;
         return {
           success: true,
           count: createdLeads.length,
@@ -353,6 +360,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           duplicatesSkipped,
           source: input.source || "ai",
           extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
+          enrichmentCreditsUsed, // Option A: 1 credit per Seamless.AI lead enriched
         };
       }),
 
