@@ -345,6 +345,7 @@ export async function searchContacts(
     
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     // CHEAP PRE-FILTER: Only exclude if companyEmployeeCount is present AND clearly out of range
     // If field is missing/unknown, KEEP the candidate — we can't know yet without enrichment
     if (filters.companyEmployeeCountMin !== undefined || filters.companyEmployeeCountMax !== undefined) {
@@ -375,6 +376,11 @@ export async function searchContacts(
       }
     }
     }
+=======
+    // Option A: No automatic company-size filtering during search.
+    // All leads are returned regardless of size; enrichment happens later.
+    // Company sizes are shown per-lead for manual review/filtering by user.
+>>>>>>> Stashed changes
 =======
     // Option A: No automatic company-size filtering during search.
     // All leads are returned regardless of size; enrichment happens later.

@@ -88,7 +88,11 @@
                 seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
+=======
+                enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
+>>>>>>> Stashed changes
 =======
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
 >>>>>>> Stashed changes
@@ -357,9 +361,12 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         // Option A: Calculate total enrichment credits used (1 per Seamless.AI lead)
         const enrichmentCreditsUsed = input.source === "seamless" ? leadsData.length : 0;
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
         // Calculate total enrichment credits used (1 per Seamless.AI lead enriched)
@@ -370,6 +377,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           : 0;
         
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
@@ -382,7 +392,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
           enrichmentCreditsUsed, // Option A: 1 credit per Seamless.AI lead enriched
+=======
+          enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
+>>>>>>> Stashed changes
 =======
           enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
 >>>>>>> Stashed changes
