@@ -86,7 +86,11 @@
                 instagramUrl: undefined,
                 facebookUrl: undefined,
                 seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
+<<<<<<< Updated upstream
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
+=======
+                enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
+>>>>>>> Stashed changes
               };
             });
             
@@ -347,8 +351,18 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
         console.log(`[AutoVerify] AI import auto-verification disabled - user must manually verify emails`);
 
+<<<<<<< Updated upstream
         // Option A: Calculate total enrichment credits used (1 per Seamless.AI lead)
         const enrichmentCreditsUsed = input.source === "seamless" ? leadsData.length : 0;
+=======
+        // Calculate total enrichment credits used (1 per Seamless.AI lead enriched)
+        // Use leadsData.length (actual contacts enriched) not uniqueLeadsData.length (after dedup)
+        // Enrichment happens on leadsData before dedup, so credit cost is based on leadsData count
+        const enrichmentCreditsUsed = input.source === "seamless" 
+          ? leadsData.length // All contacts that went through enrichContactsWithPhones()
+          : 0;
+        
+>>>>>>> Stashed changes
         return {
           success: true,
           count: createdLeads.length,
@@ -356,7 +370,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           duplicatesSkipped,
           source: input.source || "ai",
           extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
+<<<<<<< Updated upstream
           enrichmentCreditsUsed, // Option A: 1 credit per Seamless.AI lead enriched
+=======
+          enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
+>>>>>>> Stashed changes
         };
       }),
 

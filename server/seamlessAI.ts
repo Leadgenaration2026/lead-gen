@@ -343,6 +343,7 @@ export async function searchContacts(
     
     let pageData: SeamlessSearchResult[] = response.data || [];
     
+<<<<<<< Updated upstream
     // CHEAP PRE-FILTER: Only exclude if companyEmployeeCount is present AND clearly out of range
     // If field is missing/unknown, KEEP the candidate — we can't know yet without enrichment
     if (filters.companyEmployeeCountMin !== undefined || filters.companyEmployeeCountMax !== undefined) {
@@ -373,6 +374,11 @@ export async function searchContacts(
       }
     }
     }
+=======
+    // Option A: No automatic company-size filtering during search.
+    // All leads are returned regardless of size; enrichment happens later.
+    // Company sizes are shown per-lead for manual review/filtering by user.
+>>>>>>> Stashed changes
     
     allResults.push(...pageData);
     
@@ -564,15 +570,10 @@ export function parseInstructionToFilters(instruction: string, country?: string)
     console.log(`[Seamless.AI] Expanded job titles: ${JSON.stringify(parsed.titles)}`);
   }
   
-  // Add company size range if detected
-  if (parsed.companySize) {
-    if (parsed.companySize.min !== undefined) {
-      filters.companyEmployeeCountMin = parsed.companySize.min;
-    }
-    if (parsed.companySize.max !== undefined) {
-      filters.companyEmployeeCountMax = parsed.companySize.max;
-    }
-  }
+  // Option A: Company size is NOT applied as a filter during search.
+  // Sizes are shown per-lead for manual review; user can filter/delete out-of-range leads in UI.
+  // Parsed company size is available in parsed.companySize but not applied to filters.
+  // (Parsing logic in titleExpansionMap.ts is preserved for future UI dropdown use)
   
   // Add industries if detected
   if (parsed.industries && parsed.industries.length > 0) {
