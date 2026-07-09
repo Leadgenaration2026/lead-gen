@@ -87,7 +87,11 @@
                 facebookUrl: undefined,
                 seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
+=======
+                enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
+>>>>>>> Stashed changes
 =======
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
 >>>>>>> Stashed changes
@@ -352,9 +356,12 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         console.log(`[AutoVerify] AI import auto-verification disabled - user must manually verify emails`);
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         // Option A: Calculate total enrichment credits used (1 per Seamless.AI lead)
         const enrichmentCreditsUsed = input.source === "seamless" ? leadsData.length : 0;
 =======
+=======
+>>>>>>> Stashed changes
         // Calculate total enrichment credits used (1 per Seamless.AI lead enriched)
         // Use leadsData.length (actual contacts enriched) not uniqueLeadsData.length (after dedup)
         // Enrichment happens on leadsData before dedup, so credit cost is based on leadsData count
@@ -362,6 +369,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           ? leadsData.length // All contacts that went through enrichContactsWithPhones()
           : 0;
         
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         return {
           success: true,
@@ -371,7 +381,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           source: input.source || "ai",
           extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
           enrichmentCreditsUsed, // Option A: 1 credit per Seamless.AI lead enriched
+=======
+          enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
+>>>>>>> Stashed changes
 =======
           enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
 >>>>>>> Stashed changes
