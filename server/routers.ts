@@ -85,12 +85,8 @@
                 linkedinUrl: contact.linkedinUrl || undefined,
                 instagramUrl: undefined,
                 facebookUrl: undefined,
-<<<<<<< Updated upstream
-                seamlessId: contact.contactId || undefined,
-=======
                 seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
->>>>>>> Stashed changes
               };
             });
             
