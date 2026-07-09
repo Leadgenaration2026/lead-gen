@@ -181,6 +181,7 @@ listHeartbeatJobs(userSession: string, pagination?: { page?: number; pageSize?: 
 
 ### 5b. Sandbox CLI — `manus-heartbeat`
 
+// TEST CHECKPOINT: trivial no-op change for checkpoint bug isolation
 In-sandbox tool that hits the same backend as the SDK in §5a but with project owner identity (no end-user cookie). `BUILT_IN_FORGE_API_*` envs are pre-set on PATH; run from a sandbox terminal during this session.
 
 The table below is just an index — `manus-heartbeat <cmd> --help` is canonical for full flag lists and examples.
