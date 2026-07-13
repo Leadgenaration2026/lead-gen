@@ -354,6 +354,15 @@ export async function searchContacts(
       (response.data || []).slice(0, 3).forEach((result: any, idx: number) => {
         console.log(`  Result ${idx + 1}: ${result.firstName} ${result.lastName} @ ${result.company} (employees: ${result.companyEmployeeCount || 'N/A'})`);
       });
+      // Full raw shape of the first raw search result, to confirm the real field
+      // names for LinkedIn/website/etc. on /search/contacts (pre-enrichment) —
+      // several fields on this endpoint have turned out to use different names
+      // than the ones the SeamlessSearchResult type assumed (e.g. searchResultId
+      // vs id), so log everything rather than guess again.
+      if (response.data?.[0]) {
+        console.log("\n[DEBUG] FULL FIRST RAW RESULT (all fields):");
+        console.log(JSON.stringify(response.data[0], null, 2));
+      }
     }
     
     let pageData: SeamlessSearchResult[] = response.data || [];
