@@ -549,20 +549,58 @@ export async function pollContactResults(
 
 
 
+/**
+ * The keyword list in parseSearchInstruction() only covers a fixed set of
+ * generic business roles (owner, CEO, manager, sales, etc.) and has no way
+ * to recognize arbitrary professions (e.g. "motivational speaker", "yoga
+ * instructor"). When no keyword matches, ask the LLM to pull out the actual
+ * title/profession from the free-text instruction instead of silently
+ * searching with no title filter at all.
+ */
+async function extractTitleWithLLM(instruction: string): Promise<string[]> {
+  try {
+    const { invokeLLM } = await import("./_core/llm");
+    const response = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: "Extract the specific job title, profession, or occupation the user is searching for. Respond with ONLY a JSON object like {\"titles\": [\"Motivational Speaker\"]} containing 1-3 short title strings as they would appear on a business card or LinkedIn profile. No explanation, no markdown.",
+        },
+        { role: "user", content: instruction },
+      ],
+      response_format: { type: "json_object" },
+    }) as any;
+
+    let content = response?.choices?.[0]?.message?.content;
+    if (Array.isArray(content)) {
+      content = content.map((c: any) => (typeof c === "string" ? c : c.text || "")).join("");
+    }
+    if (!content) return [];
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(content);
+    const titles = Array.isArray(parsed) ? parsed : parsed.titles;
+    if (!Array.isArray(titles)) return [];
+    return titles.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3);
+  } catch (error: any) {
+    console.warn("[Seamless.AI] LLM title extraction failed:", error.message);
+    return [];
+  }
+}
+
 export function parseInstructionToFilters(instruction: string, country?: string) {
   // Parse user instruction into Seamless.AI search filters
   // This converts natural language like "small business owners" into structured API filters
-  
+
   const parsed = parseSearchInstruction(instruction);
-  
+
   const filters: any = {};
-  
+
   // Add expanded job titles (critical for search quality)
   if (parsed.titles && parsed.titles.length > 0) {
     filters.jobTitle = parsed.titles;
     console.log(`[Seamless.AI] Expanded job titles: ${JSON.stringify(parsed.titles)}`);
   }
-  
+
   // Option A: Company size is NOT applied as a filter during search.
   // Sizes are shown per-lead for manual review; user can filter/delete out-of-range leads in UI.
   // Parsed company size is available in parsed.companySize but not applied to filters.
@@ -586,7 +624,30 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   }
   
   console.log(`[Seamless.AI] Generated filters:`, JSON.stringify(filters, null, 2));
-  
+
+  return filters;
+}
+
+/**
+ * Same as parseInstructionToFilters(), but when the fixed keyword list finds no
+ * job title at all (e.g. a profession like "motivational speaker" that isn't one
+ * of the hardcoded business roles), falls back to an LLM extraction instead of
+ * searching with no title filter. Kept separate from parseInstructionToFilters()
+ * (rather than making it async) since several other call sites — searchPreviewRouter.ts
+ * and existing unit tests — call that function synchronously and expect a plain
+ * object back, not a Promise.
+ */
+export async function parseInstructionToFiltersWithTitleFallback(instruction: string, country?: string) {
+  const filters = parseInstructionToFilters(instruction, country);
+
+  if (!filters.jobTitle?.length) {
+    const llmTitles = await extractTitleWithLLM(instruction);
+    if (llmTitles.length > 0) {
+      filters.jobTitle = llmTitles;
+      console.log(`[Seamless.AI] LLM-extracted job titles: ${JSON.stringify(llmTitles)}`);
+    }
+  }
+
   return filters;
 }
 

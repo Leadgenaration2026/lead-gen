@@ -497,10 +497,11 @@ export const appRouter = router({
             });
           }
 
-          const { parseInstructionToFilters, getSeamlessLeads } = await import("./seamlessAI");
+          const { parseInstructionToFiltersWithTitleFallback, getSeamlessLeads } = await import("./seamlessAI");
 
-          // Parse user instruction into Seamless.AI filters using LLM
-          const filters = await parseInstructionToFilters(input.instruction, input.country);
+          // Parse user instruction into Seamless.AI filters (LLM fallback for titles
+          // not covered by the fixed keyword list, e.g. "motivational speaker")
+          const filters = await parseInstructionToFiltersWithTitleFallback(input.instruction, input.country);
           
           // ALWAYS enforce country filter when user specifies a country
           if (input.country) {
