@@ -284,15 +284,17 @@ export async function searchContacts(
   maxResults?: number
 ): Promise<SeamlessSearchResponse> {
   const targetCount = maxResults || filters.limit || 50;
-  // Only ask the API for as many results as we actually need (plus a small buffer for
-  // post-search country filtering), instead of always requesting a full page of 50.
-  // Confirmed live: Seamless.AI's search step consumes credits per result returned
-  // (a search for 3 leads cost 8 credits when the page size floor was 10), so
-  // over-fetching records we immediately discard wastes real credits for no benefit.
-  // If the buffer isn't enough after country filtering, the pagination loop below
-  // will fetch another (still tightly-sized) page via nextToken rather than
-  // over-asking upfront.
-  const pageSize = Math.min(50, targetCount + 2); // Seamless.AI max is 50/page
+  // Only ask the API for as many results as we actually need, instead of always
+  // requesting a full page of 50. Confirmed live across two tests: Seamless.AI's
+  // search step consumes ~1 credit per result returned, separate from and in
+  // addition to the ~1 credit per contact spent during research/enrichment
+  // (5 requested leads cost 10 credits: 5 for search + 5 for research). No buffer
+  // is added here for country filtering — the API's own contactCountry filter
+  // (sent in the request body below) already does that server-side, so the
+  // client-side re-check rarely discards anything. If it ever does fall short,
+  // the pagination loop will fetch another tightly-sized page via nextToken
+  // rather than paying for a buffer upfront on every search.
+  const pageSize = Math.min(50, targetCount); // Seamless.AI max is 50/page
   
   const body: Record<string, any> = {};
   if (filters.companyName?.length) body.companyName = filters.companyName;
