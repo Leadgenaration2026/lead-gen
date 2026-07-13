@@ -582,7 +582,7 @@ export const appRouter = router({
                 email: contact.email || enrichment.email || "",
                 phoneNumber: enrichment.phoneNumber || "", // From research+poll enrichment
                 website: contact.website || undefined,
-                industry: contact.industry || undefined,
+                industry: contact.industry || enrichment.industry || undefined,
                 companySize: enrichment.companySize || "1-10",
                 timezone: contact.timezone || undefined,
                 linkedinUrl: contact.linkedinUrl || undefined,

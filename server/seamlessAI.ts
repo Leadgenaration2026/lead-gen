@@ -594,15 +594,17 @@ export interface SeamlessEnrichmentResult {
   phoneNumber: string;
   email: string;
   companySize: string;
+  industry: string;
 }
 
 /**
  * Enrich contacts via research + poll flow.
- * Returns a map of searchResultId -> { phoneNumber, email, companySize },
+ * Returns a map of searchResultId -> { phoneNumber, email, companySize, industry },
  * using the field names confirmed against the live API (test-rest-api-enrichment.ts):
  * phone: contactPhone1 > contactPhone2 > contactPhone3 > companyPhone1
  * email: email > personalEmail
  * companySize: companyStaffCountRange > companyStaffCount
+ * industry: companyIndustry > industry
  */
 export async function enrichContacts(
   apiKey: string,
@@ -641,8 +643,9 @@ export async function enrichContacts(
       const phoneNumber = contact.contactPhone1 || contact.contactPhone2 || contact.contactPhone3 || contact.companyPhone1 || "";
       const email = contact.email || contact.personalEmail || "";
       const companySize = contact.companyStaffCountRange || (contact.companyStaffCount ? String(contact.companyStaffCount) : "");
+      const industry = contact.companyIndustry || contact.industry || "";
 
-      enrichmentMap[searchResultId] = { phoneNumber, email, companySize };
+      enrichmentMap[searchResultId] = { phoneNumber, email, companySize, industry };
     }
 
     const withPhone = Object.values(enrichmentMap).filter(e => e.phoneNumber).length;
