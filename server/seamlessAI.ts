@@ -18,6 +18,11 @@ const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
 export interface SeamlessSearchResult {
   id: string;
+  // The real Seamless.AI /search/contacts response identifies each result by
+  // searchResultId, not id — confirmed via test-rest-api-enrichment.ts and
+  // test-seamless-poll.ts live API captures. `id` is kept for backward
+  // compatibility with existing typed call sites but is not populated by the API.
+  searchResultId?: string;
   name?: string;
   company?: string;
   title?: string;
@@ -404,28 +409,38 @@ export async function searchContacts(
 export async function researchContact(
   apiKey: string,
   searchResultIds: string[]
-): Promise<SeamlessResearchResponse> {
+): Promise<SeamlessResearchResponse & { requestIdToSearchResultId: Record<string, string> }> {
   const BATCH_SIZE = 100; // API maximum per request
   const allRequestIds: string[] = [];
-  
+  // The API returns requestIds in the same order as the submitted searchResultIds
+  // within a single batch call, so we can zip them to recover which request
+  // corresponds to which original contact (needed since poll results don't
+  // reliably echo back searchResultId).
+  const requestIdToSearchResultId: Record<string, string> = {};
+
   // Split into batches of 100
   for (let i = 0; i < searchResultIds.length; i += BATCH_SIZE) {
     const batch = searchResultIds.slice(i, i + BATCH_SIZE);
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     const totalBatches = Math.ceil(searchResultIds.length / BATCH_SIZE);
-    
+
     console.log(`[Seamless.AI] Research batch ${batchNum}/${totalBatches}: submitting ${batch.length} contacts`);
-    
+
     const response = await seamlessRequest(apiKey, "POST", "/contacts/research", {
       searchResultIds: batch,
     });
-    
+
     if (response.requestIds?.length) {
       allRequestIds.push(...response.requestIds);
+      response.requestIds.forEach((reqId: string, idx: number) => {
+        if (batch[idx]) {
+          requestIdToSearchResultId[reqId] = batch[idx];
+        }
+      });
     } else if (!response.success) {
       console.error(`[Seamless.AI] Research batch ${batchNum} failed:`, JSON.stringify(response));
     }
-    
+
     // Delay between batches to respect rate limits
     if (i + BATCH_SIZE < searchResultIds.length) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -435,6 +450,7 @@ export async function researchContact(
   return {
     success: allRequestIds.length > 0,
     requestIds: allRequestIds,
+    requestIdToSearchResultId,
   };
 }
 
@@ -564,53 +580,66 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   return filters;
 }
 
+export interface SeamlessEnrichmentResult {
+  phoneNumber: string;
+  email: string;
+  companySize: string;
+}
+
 /**
- * Enrich contacts with phone numbers via research + poll flow
- * Returns a map of contact ID -> phone number
+ * Enrich contacts via research + poll flow.
+ * Returns a map of searchResultId -> { phoneNumber, email, companySize },
+ * using the field names confirmed against the live API (test-rest-api-enrichment.ts):
+ * phone: contactPhone1 > contactPhone2 > contactPhone3 > companyPhone1
+ * email: email > personalEmail
+ * companySize: companyStaffCountRange > companyStaffCount
  */
-export async function enrichContactsWithPhones(
+export async function enrichContacts(
   apiKey: string,
   contacts: SeamlessSearchResult[]
-): Promise<Record<string, string>> {
+): Promise<Record<string, SeamlessEnrichmentResult>> {
   if (!contacts.length) return {};
-  
+
   try {
-    console.log(`[Seamless.AI] Enriching ${contacts.length} contacts with phone numbers...`);
-    
-    // Step 1: Research - submit contact IDs for enrichment
-    const searchResultIds = contacts.map(c => c.id).filter(Boolean);
+    console.log(`[Seamless.AI] Enriching ${contacts.length} contacts...`);
+
+    // Step 1: Research - submit searchResultIds for enrichment
+    const searchResultIds = contacts.map(c => (c as any).searchResultId).filter(Boolean);
     if (!searchResultIds.length) {
-      console.warn("[Seamless.AI] No contact IDs to enrich");
+      console.warn("[Seamless.AI] No searchResultIds to enrich");
       return {};
     }
-    
+
     const researchResult = await researchContact(apiKey, searchResultIds);
     if (!researchResult.success || !researchResult.requestIds?.length) {
       console.warn("[Seamless.AI] Research failed or returned no request IDs");
       return {};
     }
-    
+
     // Step 2: Poll - wait for research results
     console.log(`[Seamless.AI] Polling ${researchResult.requestIds.length} research requests...`);
     const pollResults = await pollContactResults(apiKey, researchResult.requestIds, 60, 1000);
-    
-    // Step 3: Map results to contact ID -> phone number
-    const phoneMap: Record<string, string> = {};
+
+    // Step 3: Map results back to searchResultId using the requestId association
+    // captured at submission time (poll results don't reliably echo searchResultId).
+    const enrichmentMap: Record<string, SeamlessEnrichmentResult> = {};
     for (const result of pollResults) {
+      const searchResultId = researchResult.requestIdToSearchResultId[result.requestId];
       const contact = result.contact;
-      if (contact && result.searchResultId) {
-        // Prefer workPhone > contactPhone1 > phone from contact data
-        const phone = contact.workPhone || contact.contactPhone1 || contact.phone || "";
-        if (phone) {
-          phoneMap[result.searchResultId] = phone;
-        }
-      }
+      if (!searchResultId || !contact) continue;
+
+      const phoneNumber = contact.contactPhone1 || contact.contactPhone2 || contact.contactPhone3 || contact.companyPhone1 || "";
+      const email = contact.email || contact.personalEmail || "";
+      const companySize = contact.companyStaffCountRange || (contact.companyStaffCount ? String(contact.companyStaffCount) : "");
+
+      enrichmentMap[searchResultId] = { phoneNumber, email, companySize };
     }
-    
-    console.log(`[Seamless.AI] Enrichment complete: ${Object.keys(phoneMap).length} contacts have phone numbers`);
-    return phoneMap;
+
+    const withPhone = Object.values(enrichmentMap).filter(e => e.phoneNumber).length;
+    console.log(`[Seamless.AI] Enrichment complete: ${withPhone} of ${contacts.length} contacts have phone numbers`);
+    return enrichmentMap;
   } catch (error: any) {
-    console.error("[Seamless.AI] Phone enrichment failed:", error.message);
+    console.error("[Seamless.AI] Enrichment failed:", error.message);
     return {};
   }
 }

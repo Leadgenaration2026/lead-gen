@@ -480,6 +480,10 @@ export const appRouter = router({
           instagramUrl?: string;
           facebookUrl?: string;
         }>;
+        // Actual Seamless.AI research credits spent (1 per enrichment attempt),
+        // captured before the phone/email completeness filter below so cost
+        // reporting reflects real spend, not just the leads that passed the filter.
+        let seamlessCreditsSpent = 0;
 
         // ═══════════════════════════════════════════════
         // SOURCE: SEAMLESS.AI (Real verified contacts)
@@ -543,59 +547,52 @@ export const appRouter = router({
               });
             }
             
-            // AUTOMATIC PHONE ENRICHMENT: Research + Poll for phone numbers
-            // This ensures generated leads come back complete with phone numbers in one action
-            console.log(`[Seamless.AI] Starting automatic phone enrichment for ${leadsData.length} contacts...`);
-            const { enrichContactsWithPhones } = await import("./seamlessAI");
-            const phoneMap = await enrichContactsWithPhones(settings.seamlessApiKey, leadsData);
-            console.log(`[Seamless.AI] Phone enrichment complete: ${Object.keys(phoneMap).length} contacts have phone numbers`);
-            
+            // AUTOMATIC ENRICHMENT: Research + Poll for phone number, email, and company size
+            // This ensures generated leads come back complete in one action
+            console.log(`[Seamless.AI] Starting automatic enrichment for ${leadsData.length} contacts...`);
+            const { enrichContacts } = await import("./seamlessAI");
+            const enrichmentMap = await enrichContacts(settings.seamlessApiKey, leadsData);
+            seamlessCreditsSpent = leadsData.length; // 1 research credit per contact attempted, regardless of outcome
+
             // Map Seamless.AI API response to expected schema
-            // API returns: firstName, lastName, title, company, domain, industries, liUrl, timezone, etc.
-            // We need: companyName, ownerName, jobTitle, email, phoneNumber, website, industry, companySize, etc.
             leadsData = leadsData.map((contact: any) => {
-              // Try to construct email from domain if not provided
-              let email = contact.email || "";
-              if (!email && contact.domain && contact.firstName && contact.lastName) {
-                // Guess common email formats: firstname.lastname@domain, first.last@domain, etc.
-                const first = contact.firstName.toLowerCase().replace(/[^a-z0-9]/g, "");
-                const last = contact.lastName.toLowerCase().replace(/[^a-z0-9]/g, "");
-                email = `${first}.${last}@${contact.domain}`;
-              }
-              
-              // Determine company size from employeeSizeRange
-              let companySize = "1-10";
-              const sizeRange = contact.employeeSizeRange?.toLowerCase() || "";
-              if (sizeRange.includes("1") && sizeRange.includes("10")) companySize = "1-10";
-              else if (sizeRange.includes("11") || sizeRange.includes("50")) companySize = "11-50";
-              else if (sizeRange.includes("51") || sizeRange.includes("200")) companySize = "51-200";
-              else if (sizeRange.includes("201") || sizeRange.includes("500")) companySize = "201-500";
-              else if (sizeRange.includes("500") || sizeRange.includes("1000") || sizeRange.includes("10000")) companySize = "500+";
-              
+              const enrichment = enrichmentMap[contact.searchResultId] || {};
+
               return {
                 companyName: contact.company || "Unknown",
                 ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unknown",
                 jobTitle: contact.title || undefined,
-                email: email,
-                phoneNumber: phoneMap[contact.id] || "", // Use enriched phone number from research+poll
-                website: contact.domain ? `https://${contact.domain}` : undefined,
-                industry: Array.isArray(contact.industries) ? contact.industries[0] : contact.industries || undefined,
-                companySize: companySize,
+                email: contact.email || enrichment.email || "",
+                phoneNumber: enrichment.phoneNumber || "", // From research+poll enrichment
+                website: contact.website || undefined,
+                industry: contact.industry || undefined,
+                companySize: enrichment.companySize || "1-10",
                 timezone: contact.timezone || undefined,
-                linkedinUrl: contact.liUrl || undefined,
+                linkedinUrl: contact.linkedinUrl || undefined,
                 instagramUrl: undefined,
                 facebookUrl: undefined,
-                seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
+                seamlessId: contact.searchResultId, // Store Seamless.AI search result ID for later phone verification
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
               };
             });
 
-            // Log how many have emails vs don't
-            const withEmail = leadsData.filter((l: any) => l.email).length;
-            const withoutEmail = leadsData.length - withEmail;
-            if (withoutEmail > 0) {
-              console.log(`[Seamless.AI] Returning ${withEmail} leads with email, ${withoutEmail} without email (have phone/LinkedIn)`);
+            // Only keep leads with both a phone number and an email — per user requirement,
+            // leads missing either are not useful and should be dropped rather than returned incomplete.
+            const beforeContactFilter = leadsData.length;
+            leadsData = leadsData.filter((l: any) => l.phoneNumber && l.email);
+            const droppedForMissingContact = beforeContactFilter - leadsData.length;
+            if (droppedForMissingContact > 0) {
+              console.log(`[Seamless.AI] Dropped ${droppedForMissingContact} of ${beforeContactFilter} leads missing phone number or email`);
             }
+
+            if (leadsData.length === 0) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: `Found ${beforeContactFilter} contact(s) but none had both a phone number and email after enrichment. Try broadening your search or increasing the requested count.`,
+              });
+            }
+
+            console.log(`[Seamless.AI] Returning ${leadsData.length} leads, all with phone number and email`);
           } catch (error: any) {
             if (error instanceof TRPCError) throw error;
             console.error("[Seamless.AI] Error:", error.message);
@@ -845,12 +842,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
         console.log(`[AutoVerify] AI import auto-verification disabled - user must manually verify emails`);
 
-        // Calculate total enrichment credits used (1 per Seamless.AI lead enriched)
-        // Use leadsData.length (actual contacts enriched) not uniqueLeadsData.length (after dedup) —
-        // enrichment happens on leadsData before dedup, so credit cost is based on leadsData count
-        const enrichmentCreditsUsed = input.source === "seamless"
-          ? leadsData.length // All contacts that went through enrichContactsWithPhones()
-          : 0;
+        // Calculate total enrichment credits used (1 per Seamless.AI contact enriched).
+        // Use seamlessCreditsSpent (captured before the phone/email completeness filter),
+        // not leadsData.length or uniqueLeadsData.length — credits are spent on every
+        // enrichment attempt regardless of whether the result passed the filter or dedup.
+        const enrichmentCreditsUsed = input.source === "seamless" ? seamlessCreditsSpent : 0;
 
         return {
           success: true,
