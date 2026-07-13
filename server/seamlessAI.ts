@@ -549,22 +549,30 @@ export async function pollContactResults(
 
 
 
+interface LLMParsedInstruction {
+  titles: string[];
+  industries: string[];
+}
+
 /**
- * The keyword list in parseSearchInstruction() only covers a fixed set of
- * generic business roles (owner, CEO, manager, sales, etc.) and has no way
- * to recognize arbitrary professions (e.g. "motivational speaker", "yoga
- * instructor"). When no keyword matches, ask the LLM to pull out the actual
- * title/profession from the free-text instruction instead of silently
- * searching with no title filter at all.
+ * Both the job-title and industry keyword lists in parseSearchInstruction() only
+ * cover a small fixed set of options (~20 generic business roles, ~15 industries)
+ * and have no way to recognize anything outside that list (e.g. "motivational
+ * speaker" as a title, or an industry that isn't in the hardcoded list). This asks
+ * the LLM to interpret the full instruction directly instead, so any profession or
+ * industry works, not just the ones we happened to hardcode.
  */
-async function extractTitleWithLLM(instruction: string): Promise<string[]> {
+async function parseInstructionWithLLM(instruction: string): Promise<LLMParsedInstruction | null> {
   try {
     const { invokeLLM } = await import("./_core/llm");
     const response = await invokeLLM({
       messages: [
         {
           role: "system",
-          content: "Extract the specific job title, profession, or occupation the user is searching for. Respond with ONLY a JSON object like {\"titles\": [\"Motivational Speaker\"]} containing 1-3 short title strings as they would appear on a business card or LinkedIn profile. No explanation, no markdown.",
+          content: `Extract structured search criteria from a lead-generation request for a B2B contact database. Respond with ONLY a JSON object: {"titles": ["..."], "industries": ["..."]}
+- "titles": 1-5 job titles/professions/occupations as they would appear on a business card or LinkedIn profile (e.g. ["Motivational Speaker"], or ["Owner","Founder","CEO","President"] if the request implies close synonyms like "business owners"). Always include at least one title if any role or profession is mentioned or implied.
+- "industries": 0-3 industry names, ONLY if explicitly mentioned in the request (e.g. "restaurant owners" -> ["Restaurant"]). Do not infer an industry that was not stated.
+No explanation, no markdown, no extra fields.`,
         },
         { role: "user", content: instruction },
       ],
@@ -575,15 +583,19 @@ async function extractTitleWithLLM(instruction: string): Promise<string[]> {
     if (Array.isArray(content)) {
       content = content.map((c: any) => (typeof c === "string" ? c : c.text || "")).join("");
     }
-    if (!content) return [];
+    if (!content) return null;
     content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const parsed = JSON.parse(content);
-    const titles = Array.isArray(parsed) ? parsed : parsed.titles;
-    if (!Array.isArray(titles)) return [];
-    return titles.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3);
+    const titles = Array.isArray(parsed.titles)
+      ? parsed.titles.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 5)
+      : [];
+    const industries = Array.isArray(parsed.industries)
+      ? parsed.industries.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3)
+      : [];
+    return { titles, industries };
   } catch (error: any) {
-    console.warn("[Seamless.AI] LLM title extraction failed:", error.message);
-    return [];
+    console.warn("[Seamless.AI] LLM instruction parsing failed:", error.message);
+    return null;
   }
 }
 
@@ -629,23 +641,31 @@ export function parseInstructionToFilters(instruction: string, country?: string)
 }
 
 /**
- * Same as parseInstructionToFilters(), but when the fixed keyword list finds no
- * job title at all (e.g. a profession like "motivational speaker" that isn't one
- * of the hardcoded business roles), falls back to an LLM extraction instead of
- * searching with no title filter. Kept separate from parseInstructionToFilters()
- * (rather than making it async) since several other call sites — searchPreviewRouter.ts
- * and existing unit tests — call that function synchronously and expect a plain
- * object back, not a Promise.
+ * Same as parseInstructionToFilters(), but uses the LLM as the primary interpreter
+ * for job titles and industries (covering any profession or industry, not just the
+ * ~20 titles / ~15 industries hardcoded in parseSearchInstruction()'s keyword
+ * lists), falling back to the keyword-based result only if the LLM call fails.
+ * Kept separate from parseInstructionToFilters() (rather than making it async)
+ * since several other call sites — searchPreviewRouter.ts and existing unit tests —
+ * call that function synchronously and expect a plain object back, not a Promise.
  */
-export async function parseInstructionToFiltersWithTitleFallback(instruction: string, country?: string) {
+export async function parseInstructionToFiltersWithLLM(instruction: string, country?: string) {
+  // Keyword-based parse as a safety-net fallback if the LLM call fails.
   const filters = parseInstructionToFilters(instruction, country);
 
-  if (!filters.jobTitle?.length) {
-    const llmTitles = await extractTitleWithLLM(instruction);
-    if (llmTitles.length > 0) {
-      filters.jobTitle = llmTitles;
-      console.log(`[Seamless.AI] LLM-extracted job titles: ${JSON.stringify(llmTitles)}`);
-    }
+  const llmResult = await parseInstructionWithLLM(instruction);
+  if (!llmResult) {
+    console.warn("[Seamless.AI] LLM parsing unavailable, using keyword-based filters");
+    return filters;
+  }
+
+  if (llmResult.titles.length > 0) {
+    filters.jobTitle = llmResult.titles;
+    console.log(`[Seamless.AI] LLM-parsed job titles: ${JSON.stringify(llmResult.titles)}`);
+  }
+  if (llmResult.industries.length > 0) {
+    filters.industryName = llmResult.industries;
+    console.log(`[Seamless.AI] LLM-parsed industries: ${JSON.stringify(llmResult.industries)}`);
   }
 
   return filters;

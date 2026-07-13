@@ -497,11 +497,13 @@ export const appRouter = router({
             });
           }
 
-          const { parseInstructionToFiltersWithTitleFallback, getSeamlessLeads } = await import("./seamlessAI");
+          const { parseInstructionToFiltersWithLLM, getSeamlessLeads } = await import("./seamlessAI");
 
-          // Parse user instruction into Seamless.AI filters (LLM fallback for titles
-          // not covered by the fixed keyword list, e.g. "motivational speaker")
-          const filters = await parseInstructionToFiltersWithTitleFallback(input.instruction, input.country);
+          // Parse user instruction into Seamless.AI filters. The LLM is the primary
+          // interpreter for job titles and industries (covers any profession/industry,
+          // not just the fixed keyword lists), with keyword-based parsing as a
+          // fallback if the LLM call fails.
+          const filters = await parseInstructionToFiltersWithLLM(input.instruction, input.country);
           
           // ALWAYS enforce country filter when user specifies a country
           if (input.country) {
