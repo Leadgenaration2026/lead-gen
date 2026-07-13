@@ -913,7 +913,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
     searchSeamlessPreview: protectedProcedure
       .input(z.object({
         instruction: z.string().min(3),
-        count: z.number().min(1).max(100),
+        count: z.number().min(1).max(1000),
         country: z.string().optional(),
         state: z.string().optional(),
       }))
@@ -966,7 +966,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           website: z.string().optional(),
           industry: z.string().optional(),
           linkedinUrl: z.string().optional(),
-        })).min(1).max(100),
+        })).min(1).max(1000),
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);

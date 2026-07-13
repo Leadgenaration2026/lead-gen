@@ -1341,7 +1341,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set())}>Deselect All</Button>
               </div>
             </div>
-            <div className="border rounded-md overflow-auto flex-1 max-h-[400px]">
+            <div className="border rounded-md overflow-auto flex-1 max-h-[450px]">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 sticky top-0">
                   <tr>
@@ -1349,7 +1349,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     <th className="p-2 text-left font-medium">Contact</th>
                     <th className="p-2 text-left font-medium">Title</th>
                     <th className="p-2 text-left font-medium">Company</th>
+                    <th className="p-2 text-left font-medium">Industry</th>
                     <th className="p-2 text-left font-medium">Location</th>
+                    <th className="p-2 text-left font-medium">Website</th>
+                    <th className="p-2 text-left font-medium">LinkedIn</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1369,13 +1372,20 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       <td className="p-2">{c.ownerName || "Unknown"}</td>
                       <td className="p-2 text-muted-foreground">{c.jobTitle || "—"}</td>
                       <td className="p-2 text-muted-foreground">{c.companyName}</td>
+                      <td className="p-2 text-muted-foreground">{c.industry || "—"}</td>
                       <td className="p-2 text-muted-foreground text-xs">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="p-2 text-muted-foreground text-xs">
+                        {c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
+                      </td>
+                      <td className="p-2 text-muted-foreground text-xs">
+                        {c.linkedinUrl ? <a href={c.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">Phone, email, and company size are not shown yet — they're only fetched for the contacts you enrich below.</p>
+            <p className="text-xs text-muted-foreground">Phone, email, and company size aren't fetched yet — those are only looked up (and only cost credits) for the contacts you enrich below.</p>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Button variant="outline" onClick={() => setSeamlessPreviewDialogOpen(false)}>Cancel</Button>
