@@ -764,9 +764,13 @@ export async function searchAndFilterSeamlessCandidates(
       city: c.city || undefined,
       state: c.state || undefined,
       country: c.country || undefined,
-      website: c.website || undefined,
+      // Confirmed via live raw /search/contacts output: website is a bare domain
+      // string field called "domain" (e.g. "pwc.com"), and LinkedIn is "liUrl" —
+      // neither matches the "website"/"linkedinUrl" names the SeamlessSearchResult
+      // type assumed. Both are available pre-enrichment at no credit cost.
+      website: c.domain ? `https://${c.domain}` : (c.website || undefined),
       industry: c.industry || undefined,
-      linkedinUrl: c.linkedinUrl || undefined,
+      linkedinUrl: c.liUrl || c.linkedinUrl || undefined,
     }));
 
   return { candidates: preview, totalAvailable };

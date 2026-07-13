@@ -608,11 +608,14 @@ export const appRouter = router({
                 jobTitle: contact.title || undefined,
                 email: contact.email || enrichment.email || "",
                 phoneNumber: enrichment.phoneNumber || "", // From research+poll enrichment
-                website: contact.website || undefined,
+                // Confirmed via live raw /search/contacts output: website is a bare
+                // domain string field called "domain" (e.g. "pwc.com"), and LinkedIn
+                // is "liUrl" — neither matches "website"/"linkedinUrl" as assumed.
+                website: contact.domain ? `https://${contact.domain}` : (contact.website || undefined),
                 industry: contact.industry || enrichment.industry || undefined,
                 companySize: enrichment.companySize || "1-10",
                 timezone: contact.timezone || undefined,
-                linkedinUrl: contact.linkedinUrl || undefined,
+                linkedinUrl: contact.liUrl || contact.linkedinUrl || undefined,
                 instagramUrl: undefined,
                 facebookUrl: undefined,
                 seamlessId: contact.searchResultId, // Store Seamless.AI search result ID for later phone verification
