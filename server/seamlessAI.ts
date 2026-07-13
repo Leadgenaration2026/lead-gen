@@ -283,8 +283,12 @@ export async function searchContacts(
   },
   maxResults?: number
 ): Promise<SeamlessSearchResponse> {
-  const pageSize = 50; // Seamless.AI default/max per page
   const targetCount = maxResults || filters.limit || 50;
+  // Only ask the API for as many results as we actually need (plus a small buffer for
+  // post-search country filtering), instead of always requesting a full page of 50.
+  // Seamless.AI's search step appears to consume credits per result returned, so
+  // over-fetching records we immediately discard wastes credits for no benefit.
+  const pageSize = Math.min(50, Math.max(targetCount + 5, 10)); // Seamless.AI max is 50/page
   
   const body: Record<string, any> = {};
   if (filters.companyName?.length) body.companyName = filters.companyName;
