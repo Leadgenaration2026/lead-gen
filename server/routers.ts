@@ -113,7 +113,12 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const page = input?.page || 1;
         const pageSize = input?.pageSize || 50;
-        return db.getLeadsByUserId(ctx.user.id, page, pageSize);
+        // getLeadsByUserId returns a paginated wrapper object ({results, total, ...})
+        // when both page and pageSize are given, but the frontend has always expected
+        // a plain array here (every leadsQuery.data usage in Leads.tsx does .map/.filter/
+        // .forEach directly on it) — unwrap it to avoid crashing the leads list page.
+        const result = await db.getLeadsByUserId(ctx.user.id, page, pageSize);
+        return Array.isArray(result) ? result : result.results;
       }),
 
     // Leads not yet assigned to any campaign (for dashboard leads view)
