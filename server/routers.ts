@@ -904,6 +904,164 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         };
       }),
 
+    // ═══════════════════════════════════════════════
+    // SEARCH -> SELECT -> ENRICH: search-only preview, no credits spent.
+    // The user reviews the raw candidates and picks which ones to enrich via
+    // enrichSeamlessSelection below, so credits are only spent on leads actually
+    // wanted instead of enriching everything the search returns.
+    // ═══════════════════════════════════════════════
+    searchSeamlessPreview: protectedProcedure
+      .input(z.object({
+        instruction: z.string().min(3),
+        count: z.number().min(1).max(100),
+        country: z.string().optional(),
+        state: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.seamlessApiKey) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Seamless.AI API key not configured. Go to Settings → Seamless.ai to add your API key.",
+          });
+        }
+
+        const { searchAndFilterSeamlessCandidates } = await import("./seamlessAI");
+        const { candidates } = await searchAndFilterSeamlessCandidates(
+          settings.seamlessApiKey,
+          input.instruction,
+          input.count,
+          input.country,
+          input.state
+        );
+
+        if (candidates.length === 0) {
+          return { candidates: [], skippedAlreadyOwned: 0 };
+        }
+
+        // Skip candidates already saved as leads — no point showing them again
+        const seamlessIds = candidates.map((c) => c.searchResultId).filter(Boolean);
+        const alreadyOwned = seamlessIds.length > 0 ? await db.getLeadsBySeamlessIds(seamlessIds, ctx.user.id) : [];
+        const ownedIds = new Set(alreadyOwned.map((l: any) => l.seamlessId));
+        const filtered = candidates.filter((c) => !ownedIds.has(c.searchResultId));
+        const skippedAlreadyOwned = candidates.length - filtered.length;
+
+        return { candidates: filtered, skippedAlreadyOwned };
+      }),
+
+    // Enrich only the candidates the user selected from searchSeamlessPreview,
+    // then create them as leads.
+    enrichSeamlessSelection: protectedProcedure
+      .input(z.object({
+        leadSetName: z.string().optional(),
+        candidates: z.array(z.object({
+          searchResultId: z.string(),
+          ownerName: z.string(),
+          companyName: z.string(),
+          jobTitle: z.string().optional(),
+          email: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          country: z.string().optional(),
+          website: z.string().optional(),
+          industry: z.string().optional(),
+          linkedinUrl: z.string().optional(),
+        })).min(1).max(100),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.seamlessApiKey) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Seamless.AI API key not configured. Go to Settings → Seamless.ai to add your API key.",
+          });
+        }
+
+        const { enrichSeamlessCandidatesToLeadData } = await import("./seamlessAI");
+        const { leadsData, seamlessCreditsSpent, droppedForMissingContact } =
+          await enrichSeamlessCandidatesToLeadData(settings.seamlessApiKey, input.candidates);
+
+        if (leadsData.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `None of the ${input.candidates.length} selected contact(s) had a complete phone number, email, and name after enrichment.`,
+          });
+        }
+
+        // Dedup by email against existing leads
+        const emailsToCheck = leadsData.map((l) => l.email).filter(Boolean);
+        const existingLeads = emailsToCheck.length > 0 ? await db.getLeadsByEmails(emailsToCheck, ctx.user.id) : [];
+        const existingEmails = new Set(existingLeads.map((l: any) => l.email.toLowerCase()));
+        const uniqueLeadsData = leadsData.filter((l) => !l.email || !existingEmails.has(l.email.toLowerCase()));
+        const duplicatesSkipped = leadsData.length - uniqueLeadsData.length;
+
+        if (uniqueLeadsData.length === 0) {
+          return {
+            success: true,
+            count: 0,
+            duplicatesSkipped,
+            droppedForMissingContact,
+            enrichmentCreditsUsed: seamlessCreditsSpent,
+            message: `All ${duplicatesSkipped} selected contact(s) are already in your system.`,
+          };
+        }
+
+        // If leadSetName is provided, create or find the lead set (same pattern as leads.generate)
+        let leadSetId: number | null = null;
+        if (input.leadSetName && input.leadSetName.trim()) {
+          const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
+          const existing = existingSets.find((s) => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+          if (existing) {
+            leadSetId = existing.id;
+          } else {
+            leadSetId = await db.createLeadSet({
+              userId: ctx.user.id,
+              name: input.leadSetName.trim(),
+              description: `Manually selected from Seamless.AI search`,
+              type: "list",
+            });
+          }
+        }
+
+        const createdLeads = [];
+        for (const leadData of uniqueLeadsData) {
+          try {
+            const result = await db.createLead({
+              companyName: leadData.companyName || "Unknown",
+              ownerName: leadData.ownerName || "Unknown",
+              jobTitle: leadData.jobTitle || undefined,
+              email: leadData.email || "",
+              phoneNumber: leadData.phoneNumber || "",
+              website: leadData.website,
+              industry: leadData.industry,
+              companySize: leadData.companySize || undefined,
+              timezone: leadData.timezone || "America/New_York",
+              linkedinUrl: leadData.linkedinUrl || undefined,
+              seamlessId: leadData.seamlessId || undefined,
+              instagramUrl: leadData.instagramUrl || undefined,
+              facebookUrl: leadData.facebookUrl || undefined,
+              userId: ctx.user.id,
+              status: "new",
+              leadSetId,
+              sourceListId: leadSetId || undefined,
+              enrichmentCreditsUsed: leadData.enrichmentCreditsUsed || 0,
+            });
+            createdLeads.push(result);
+          } catch (e) {
+            console.error("Failed to create lead:", e);
+          }
+        }
+
+        return {
+          success: true,
+          count: createdLeads.length,
+          leads: uniqueLeadsData,
+          duplicatesSkipped,
+          droppedForMissingContact,
+          enrichmentCreditsUsed: seamlessCreditsSpent,
+        };
+      }),
+
     // CSV Import - bulk upload leads
     csvImport: protectedProcedure
       .input(z.object({

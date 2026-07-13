@@ -59,6 +59,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const unassignedLeadsQuery = trpc.leads.listUnassigned.useQuery(undefined, { enabled: showOnlyUnassigned });
   const leadsQuery = showOnlyUnassigned ? unassignedLeadsQuery : allLeadsQuery;
   const generateLeadsMutation = trpc.leads.generate.useMutation();
+  const searchSeamlessPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
+  const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
   const addLeadOverwriteMutation = trpc.leads.addManualOverwrite.useMutation();
@@ -144,6 +146,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [generateCountry, setGenerateCountry] = useState("");
   const [generateState, setGenerateState] = useState("");
   const [csvLeadSetName, setCsvLeadSetName] = useState("");
+
+  // Seamless.AI search -> select -> enrich preview flow
+  const [seamlessPreviewDialogOpen, setSeamlessPreviewDialogOpen] = useState(false);
+  const [seamlessCandidates, setSeamlessCandidates] = useState<Array<{
+    searchResultId: string;
+    ownerName: string;
+    companyName: string;
+    jobTitle?: string;
+    email?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    website?: string;
+    industry?: string;
+    linkedinUrl?: string;
+  }>>([]);
+  const [selectedSeamlessIds, setSelectedSeamlessIds] = useState<Set<string>>(new Set());
+  const [isSearchingSeamless, setIsSearchingSeamless] = useState(false);
 
   // Checkbox selection state
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
@@ -267,6 +287,77 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       toast.error(msg, { duration: 8000 });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Search Seamless.AI without spending any enrichment credits, then let the
+  // user pick which candidates to actually enrich and save as leads.
+  const handleSearchSeamless = async () => {
+    if (!instruction.trim()) {
+      toast.error("Please enter an instruction");
+      return;
+    }
+    setIsSearchingSeamless(true);
+    try {
+      const result = await searchSeamlessPreviewMutation.mutateAsync({
+        instruction,
+        count,
+        country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
+        state: generateState && generateState !== "any" ? generateState : undefined,
+      });
+
+      if (result.candidates.length === 0) {
+        const ownedMsg = result.skippedAlreadyOwned > 0
+          ? ` (${result.skippedAlreadyOwned} matched but are already in your system)`
+          : "";
+        toast.error(`No new contacts found${ownedMsg}. Try different search criteria or location.`, { duration: 8000 });
+        return;
+      }
+
+      setSeamlessCandidates(result.candidates);
+      setSelectedSeamlessIds(new Set(result.candidates.map((c) => c.searchResultId))); // default: all selected
+      setSeamlessPreviewDialogOpen(true);
+      if (result.skippedAlreadyOwned > 0) {
+        toast(`${result.skippedAlreadyOwned} matching contact(s) already in your system were skipped.`);
+      }
+    } catch (error: any) {
+      const msg = error?.message || error?.data?.message || "Failed to search Seamless.AI";
+      toast.error(msg, { duration: 8000 });
+    } finally {
+      setIsSearchingSeamless(false);
+    }
+  };
+
+  // Enrich + save only the candidates the user left checked
+  const handleEnrichSeamlessSelection = async () => {
+    const selected = seamlessCandidates.filter((c) => selectedSeamlessIds.has(c.searchResultId));
+    if (selected.length === 0) {
+      toast.error("Select at least one contact to enrich");
+      return;
+    }
+    try {
+      const result = await enrichSeamlessSelectionMutation.mutateAsync({
+        leadSetName: generateLeadSetName.trim() || undefined,
+        candidates: selected,
+      });
+
+      if (result.count === 0) {
+        toast.error((result as any).message || "None of the selected contacts could be saved.", { duration: 8000 });
+      } else {
+        const dupMsg = result.duplicatesSkipped ? ` (${result.duplicatesSkipped} duplicates skipped)` : "";
+        const droppedMsg = result.droppedForMissingContact ? ` (${result.droppedForMissingContact} dropped for missing phone/email/name)` : "";
+        toast.success(`Saved ${result.count} new lead${result.count !== 1 ? "s" : ""}!${dupMsg}${droppedMsg}`);
+        setSeamlessPreviewDialogOpen(false);
+        setSeamlessCandidates([]);
+        setSelectedSeamlessIds(new Set());
+        setInstruction("");
+        setGenerateLeadSetName("");
+      }
+      leadsQuery.refetch();
+      leadSetsQuery.refetch();
+    } catch (error: any) {
+      const msg = error?.message || error?.data?.message || "Failed to enrich selected contacts";
+      toast.error(msg, { duration: 8000 });
     }
   };
 
@@ -1228,6 +1319,77 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         </DialogContent>
       </Dialog>
 
+      {/* Seamless.AI Search Results — select which candidates to enrich and save */}
+      <Dialog open={seamlessPreviewDialogOpen} onOpenChange={setSeamlessPreviewDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5" />
+              Seamless.AI Search Results
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
+            <p className="text-sm text-muted-foreground">
+              Uncheck any contacts you don't want. Only checked contacts will be enriched (phone, email, company size) and cost credits.
+            </p>
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">
+                {selectedSeamlessIds.size} of {seamlessCandidates.length} selected
+              </span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set(seamlessCandidates.map((c) => c.searchResultId)))}>Select All</Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set())}>Deselect All</Button>
+              </div>
+            </div>
+            <div className="border rounded-md overflow-auto flex-1 max-h-[400px]">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 sticky top-0">
+                  <tr>
+                    <th className="p-2 w-10"></th>
+                    <th className="p-2 text-left font-medium">Contact</th>
+                    <th className="p-2 text-left font-medium">Title</th>
+                    <th className="p-2 text-left font-medium">Company</th>
+                    <th className="p-2 text-left font-medium">Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {seamlessCandidates.map((c) => (
+                    <tr key={c.searchResultId} className={`border-t hover:bg-muted/30 transition-colors ${!selectedSeamlessIds.has(c.searchResultId) ? 'opacity-50' : ''}`}>
+                      <td className="p-2 text-center">
+                        <Checkbox
+                          checked={selectedSeamlessIds.has(c.searchResultId)}
+                          onCheckedChange={(checked) => {
+                            const next = new Set(selectedSeamlessIds);
+                            if (checked) next.add(c.searchResultId);
+                            else next.delete(c.searchResultId);
+                            setSelectedSeamlessIds(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2">{c.ownerName || "Unknown"}</td>
+                      <td className="p-2 text-muted-foreground">{c.jobTitle || "—"}</td>
+                      <td className="p-2 text-muted-foreground">{c.companyName}</td>
+                      <td className="p-2 text-muted-foreground text-xs">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">Phone, email, and company size are not shown yet — they're only fetched for the contacts you enrich below.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={() => setSeamlessPreviewDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={enrichSeamlessSelectionMutation.isPending || selectedSeamlessIds.size === 0}
+              onClick={handleEnrichSeamlessSelection}
+            >
+              {enrichSeamlessSelectionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Enrich {selectedSeamlessIds.size} Selected
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete All Leads Confirmation Dialog */}
       <AlertDialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
         <AlertDialogContent>
@@ -1517,13 +1679,23 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       Generated leads will be added to set: <span className="font-medium">{generateLeadSetName}</span>
                     </p>
                   )}
-                  {generateSource !== "seamless_csv" && (
+                  {generateSource === "ai" && (
                     <>
                       <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
                         AI will also extract <strong>website</strong>, <strong>LinkedIn</strong>, <strong>Instagram</strong>, and <strong>Facebook</strong> profile URLs when available.
                       </p>
                       <Button onClick={handleGenerateLeads} disabled={isGenerating} className="w-full gap-2">
                         {isGenerating ? (<><Loader2 className="w-4 h-4 animate-spin" />Generating...</>) : (<><Wand2 className="w-4 h-4" />Generate Leads</>)}
+                      </Button>
+                    </>
+                  )}
+                  {generateSource === "seamless" && (
+                    <>
+                      <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+                        This searches Seamless.AI <strong>without spending any credits</strong>. You'll pick which results to enrich (phone, email, company size) next — only your selections cost credits.
+                      </p>
+                      <Button onClick={handleSearchSeamless} disabled={isSearchingSeamless} className="w-full gap-2">
+                        {isSearchingSeamless ? (<><Loader2 className="w-4 h-4 animate-spin" />Searching...</>) : (<><Wand2 className="w-4 h-4" />Search Seamless.AI</>)}
                       </Button>
                     </>
                   )}

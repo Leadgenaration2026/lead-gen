@@ -671,6 +671,97 @@ export async function parseInstructionToFiltersWithLLM(instruction: string, coun
   return filters;
 }
 
+export interface SeamlessCandidatePreview {
+  searchResultId: string;
+  ownerName: string;
+  companyName: string;
+  jobTitle?: string;
+  email?: string; // occasionally present directly on the raw search result
+  city?: string;
+  state?: string;
+  country?: string;
+  website?: string;
+  industry?: string; // usually blank pre-enrichment; enrichment fills this in later
+  linkedinUrl?: string;
+}
+
+/**
+ * Phase 1 of the search -> select -> enrich flow: search + all the same
+ * country/title filtering used by leads.generate, but stops before spending any
+ * enrichment credits. Returns lightweight preview candidates the user can review
+ * and select from; only the selected ones get passed to
+ * enrichSeamlessCandidatesToLeadData() afterward.
+ */
+export async function searchAndFilterSeamlessCandidates(
+  apiKey: string,
+  instruction: string,
+  count: number,
+  country?: string,
+  state?: string
+): Promise<{ candidates: SeamlessCandidatePreview[] }> {
+  const filters = await parseInstructionToFiltersWithLLM(instruction, country);
+  if (country) {
+    filters.contactCountry = [country];
+  }
+  if (state) {
+    filters.contactState = [state];
+  }
+
+  const result = await getSeamlessLeads(apiKey, filters, count);
+  let candidates: any[] = result.contacts;
+
+  if (country) {
+    const countryLower = country.toLowerCase();
+    const countryAliases: Record<string, string[]> = {
+      "united states": ["united states", "usa", "us", "united states of america"],
+      "united kingdom": ["united kingdom", "uk", "great britain", "england"],
+      "india": ["india"],
+    };
+    const matchTerms = countryAliases[countryLower] || [countryLower];
+    const before = candidates.length;
+    candidates = candidates.filter((c: any) => {
+      if (c.country) {
+        return matchTerms.some((term) => c.country.toLowerCase().includes(term));
+      }
+      return true;
+    });
+    console.log(`[Seamless.AI] Preview: after country filter: ${candidates.length} of ${before}`);
+  }
+
+  if (filters.jobTitle?.length) {
+    const titleRegexes = filters.jobTitle.map(
+      (t: string) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+    );
+    const before = candidates.length;
+    candidates = candidates.filter((c: any) => {
+      const title = c.title || c.jobTitle || "";
+      if (!title) return false;
+      return titleRegexes.some((re: RegExp) => re.test(title));
+    });
+    console.log(`[Seamless.AI] Preview: after strict title filter: ${candidates.length} of ${before}`);
+  }
+
+  candidates = candidates.slice(0, count);
+
+  const preview: SeamlessCandidatePreview[] = candidates
+    .filter((c: any) => c.searchResultId)
+    .map((c: any) => ({
+      searchResultId: c.searchResultId,
+      ownerName: `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.name || "",
+      companyName: c.company || "Unknown",
+      jobTitle: c.title || c.jobTitle || undefined,
+      email: c.email || undefined,
+      city: c.city || undefined,
+      state: c.state || undefined,
+      country: c.country || undefined,
+      website: c.website || undefined,
+      industry: c.industry || undefined,
+      linkedinUrl: c.linkedinUrl || undefined,
+    }));
+
+  return { candidates: preview };
+}
+
 export interface SeamlessEnrichmentResult {
   phoneNumber: string;
   email: string;
@@ -736,6 +827,70 @@ export async function enrichContacts(
     console.error("[Seamless.AI] Enrichment failed:", error.message);
     return {};
   }
+}
+
+export interface SeamlessLeadData {
+  companyName: string;
+  ownerName: string;
+  jobTitle?: string;
+  email: string;
+  phoneNumber: string;
+  website?: string;
+  industry?: string;
+  companySize?: string;
+  timezone?: string;
+  linkedinUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  seamlessId: string;
+  enrichmentCreditsUsed: number;
+}
+
+/**
+ * Phase 2 of the search -> select -> enrich flow: takes only the candidates the
+ * user actually selected (as returned by searchAndFilterSeamlessCandidates) and
+ * enriches just those via research + poll, mapping the result to the lead schema.
+ * Mirrors the mapping logic in routers.ts's leads.generate Seamless.AI branch so
+ * both flows produce identically-shaped leads.
+ */
+export async function enrichSeamlessCandidatesToLeadData(
+  apiKey: string,
+  candidates: SeamlessCandidatePreview[]
+): Promise<{ leadsData: SeamlessLeadData[]; seamlessCreditsSpent: number; droppedForMissingContact: number }> {
+  const seamlessCreditsSpent = candidates.length; // 1 research credit per contact attempted
+
+  const enrichmentMap = await enrichContacts(
+    apiKey,
+    candidates.map((c) => ({ searchResultId: c.searchResultId } as any))
+  );
+
+  let leadsData: SeamlessLeadData[] = candidates.map((c) => {
+    const enrichment = enrichmentMap[c.searchResultId] || ({} as Partial<SeamlessEnrichmentResult>);
+    return {
+      companyName: c.companyName || "Unknown",
+      ownerName: c.ownerName || "",
+      jobTitle: c.jobTitle || undefined,
+      email: c.email || enrichment.email || "",
+      phoneNumber: enrichment.phoneNumber || "",
+      website: c.website || undefined,
+      industry: c.industry || enrichment.industry || undefined,
+      companySize: enrichment.companySize || "1-10",
+      timezone: undefined,
+      linkedinUrl: c.linkedinUrl || undefined,
+      instagramUrl: undefined,
+      facebookUrl: undefined,
+      seamlessId: c.searchResultId,
+      enrichmentCreditsUsed: 1,
+    };
+  });
+
+  const before = leadsData.length;
+  // Same completeness requirement as the auto-generate flow: phone, email, and a
+  // known owner name, or the lead isn't useful.
+  leadsData = leadsData.filter((l) => l.phoneNumber && l.email && l.ownerName);
+  const droppedForMissingContact = before - leadsData.length;
+
+  return { leadsData, seamlessCreditsSpent, droppedForMissingContact };
 }
 
 export async function getSeamlessLeads(
