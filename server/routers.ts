@@ -558,9 +558,33 @@ export const appRouter = router({
               console.log(`[Seamless.AI] After strict title filter: ${candidates.length} of ${beforeTitleFilter} contacts match requested titles`);
             }
 
+            // Skip candidates already saved as leads (matched by Seamless.AI's own
+            // searchResultId) BEFORE spending any enrichment credits on them — the
+            // email-based dedup further below only runs after enrichment, which
+            // means re-finding the same contacts on a later search was wasting
+            // credits on results we were always going to discard anyway.
+            const candidateSeamlessIds = candidates.map((c: any) => c.searchResultId).filter(Boolean);
+            let skippedAlreadyOwned = 0;
+            if (candidateSeamlessIds.length > 0) {
+              const alreadyOwned = await db.getLeadsBySeamlessIds(candidateSeamlessIds, ctx.user.id);
+              const ownedIds = new Set(alreadyOwned.map((l: any) => l.seamlessId));
+              const beforeOwnedFilter = candidates.length;
+              candidates = candidates.filter((c: any) => !ownedIds.has(c.searchResultId));
+              skippedAlreadyOwned = beforeOwnedFilter - candidates.length;
+              if (skippedAlreadyOwned > 0) {
+                console.log(`[Seamless.AI] Skipped ${skippedAlreadyOwned} of ${beforeOwnedFilter} candidates already saved as leads (no credits spent on these)`);
+              }
+            }
+
             leadsData = candidates.slice(0, input.count);
 
             if (leadsData.length === 0) {
+              if (skippedAlreadyOwned > 0) {
+                throw new TRPCError({
+                  code: "NOT_FOUND",
+                  message: `Found matching contacts on Seamless.AI, but all ${skippedAlreadyOwned} are already saved as leads in your system. Try a different search criteria or location to find new leads.`,
+                });
+              }
               throw new TRPCError({
                 code: "NOT_FOUND",
                 message: `No contacts found in ${input.country || "your criteria"} on Seamless.AI. Try broadening your search (e.g., wider state or different job title).`,

@@ -532,6 +532,14 @@ export async function getLeadsByEmails(emails: string[], userId: number) {
   );
 }
 
+export async function getLeadsBySeamlessIds(seamlessIds: string[], userId: number) {
+  const database = await getDb();
+  if (!database || seamlessIds.length === 0) return [];
+  return database.select().from(leads).where(
+    and(inArray(leads.seamlessId, seamlessIds), eq(leads.userId, userId))
+  );
+}
+
 // ============ Scheduled Emails ============
 export async function createScheduledEmail(data: Omit<InsertScheduledEmail, "id" | "createdAt" | "updatedAt">) {
   const database = await getDb();
