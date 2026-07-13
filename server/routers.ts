@@ -1,11 +1,518 @@
+import { COOKIE_NAME } from "@shared/const";
+import { getSessionCookieOptions } from "./_core/cookies";
+import { systemRouter } from "./_core/systemRouter";
+import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import * as db from "./db";
+import { invokeLLM } from "./_core/llm";
+import { triggerRetellCall } from "./_core/retellAI";
+import { nanoid } from "nanoid";
+import nodemailer from "nodemailer";
+import { plainTextToHtml } from "@shared/emailFormat";
+import { getSignatureHtml, normalizePhoneNumber } from "./_core/followUpScheduler";
+import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PLAIN, getUnsubscribeLinkHtml } from "@shared/signature";
+// DISABLED: Browser automation for enrichment - using REST API instead
+// import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
+import { seamlessAIEnrichmentRouter } from "./seamlessAIEnrichmentRouter";
+import { phoneVerificationRouter } from "./phoneVerificationRouter";
+import { searchPreviewRouter } from "./searchPreviewRouter";
+import { testHardcodedSeamlessSearch } from "./testHardcodedSearch";
+import { testIsolatedFilters } from "./testIsolatedFilters";
+import { testDiagnosticPayload } from "./testDiagnosticPayload";
+import { testCompanySizeFormats } from "./testCompanySizeFormats";
+import { searchDiagnosticsRouter } from "./searchDiagnosticsRouter";
 
-            // HYBRID APPROACH: Cheap pre-filter + post-enrichment filtering
-            // 1. Search for candidates (cheap, no enrichment)
-            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count * 10);
+// Validation schemas
+const createLeadSchema = z.object({
+  companyName: z.string().min(1),
+  ownerName: z.string().min(1),
+  email: z.string().email(),
+  phoneNumber: z.string().min(1),
+  website: z.string().optional(),
+  industry: z.string().optional(),
+  linkedinUrl: z.string().optional(),
+  instagramUrl: z.string().optional(),
+  facebookUrl: z.string().optional(),
+  customData: z.any().optional(),
+});
+
+const createCampaignSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  subject: z.string().min(1),
+  emailTemplate: z.string().min(1),
+  leadIds: z.array(z.number()),
+  templateId: z.number().optional(),
+  scheduledAt: z.string().optional(), // ISO date string for scheduled launch
+  dailySendLimit: z.number().min(1).max(500).optional(), // Max emails per day (null = send all at once)
+});
+
+const generateLeadsSchema = z.object({
+  instruction: z.string().min(10),
+  count: z.number().min(1).max(1000),
+  leadSetName: z.string().optional(), // Optional: assign generated leads to a named set
+  source: z.enum(["ai", "seamless"]).optional().default("ai"),
+  country: z.string().optional(),
+  state: z.string().optional(), // US state for targeted prospecting
+});
+
+const updateUserSettingsSchema = z.object({
+  retellApiKey: z.string().optional(),
+  retellAgentId: z.string().optional(),
+  senderPhoneNumber: z.string().optional(),
+  smtpHost: z.string().optional(),
+  smtpPort: z.number().optional(),
+  smtpUsername: z.string().optional(),
+  smtpPassword: z.string().optional(),
+  senderEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  senderName: z.string().optional(),
+  calcomWebhookSecret: z.string().optional(),
+  ctaLink: z.string().optional(),
+  retellWebhookSecret: z.string().optional(),
+  seamlessApiKey: z.string().optional(),
+  bouncerApiKey: z.string().optional(),
+
+  // Social profiles
+  linkedinUrl: z.string().optional(),
+  linkedinType: z.enum(["page", "personal"]).optional(),
+  instagramUrl: z.string().optional(),
+  instagramType: z.enum(["page", "personal"]).optional(),
+  facebookUrl: z.string().optional(),
+  facebookType: z.enum(["page", "personal"]).optional(),
+  socialDailyLimit: z.number().optional(),
+  socialMessageCharLimit: z.number().optional(),
+  socialNotificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  replyToEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  notificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  claudeApiKey: z.string().optional(),
+});
+
+export const appRouter = router({
+  system: systemRouter,
+  searchDiagnostics: searchDiagnosticsRouter,
+  phoneVerification: phoneVerificationRouter,
+  auth: router({
+    me: publicProcedure.query(opts => opts.ctx.user),
+    logout: publicProcedure.mutation(({ ctx }) => {
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      return {
+        success: true,
+      } as const;
+    }),
+  }),
+
+  // Leads router
+  leads: router({
+    list: protectedProcedure
+      .input(z.object({
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(10).max(100).default(50),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const page = input?.page || 1;
+        const pageSize = input?.pageSize || 50;
+        return db.getLeadsByUserId(ctx.user.id, page, pageSize);
+      }),
+
+    // Leads not yet assigned to any campaign (for dashboard leads view)
+    listUnassigned: protectedProcedure.query(async ({ ctx }) => {
+      return db.getUnassignedLeadsByUserId(ctx.user.id);
+    }),
+
+    // All leads with engagement status for the unified management page
+    listWithStatus: protectedProcedure.query(async ({ ctx }) => {
+      const allLeads = await db.getLeadsByUserId(ctx.user.id);
+      const allCampaigns = await db.getCampaignsByUserId(ctx.user.id);
+      
+      // Get engagement data for each lead
+      const leadsWithStatus = await Promise.all(allLeads.map(async (lead) => {
+        let emailsSent = 0, emailsOpened = 0, emailsClicked = 0, callsMade = 0, replied = false, socialSent = 0;
+        
+        for (const campaign of allCampaigns) {
+          const cls = await db.getCampaignLeads(campaign.id);
+          const matchingCL = cls.find(cl => cl.leadId === lead.id);
+          if (matchingCL) {
+            if (matchingCL.emailSent) emailsSent++;
+            if (matchingCL.emailOpened) emailsOpened++;
+            if (matchingCL.emailClicked) emailsClicked++;
+            if ((matchingCL as any).replied) replied = true;
+          }
+        }
+        
+        // Get social outreach count
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq, and } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (database) {
+          const socialResults = await database.select().from(socialOutreach).where(
+            and(eq(socialOutreach.leadId, lead.id), eq(socialOutreach.status, "sent"))
+          );
+          socialSent = socialResults.length;
+        }
+        
+        return {
+          ...lead,
+          engagement: { emailsSent, emailsOpened, emailsClicked, callsMade, replied, socialSent },
+        };
+      }));
+      
+      return leadsWithStatus;
+    }),
+
+    get: protectedProcedure.input(z.number()).query(async ({ input: leadId, ctx }) => {
+      const lead = await db.getLeadById(leadId);
+      if (!lead || lead.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      return lead;
+    }),
+
+    create: protectedProcedure.input(createLeadSchema).mutation(async ({ input, ctx }) => {
+      const result = await db.createLead({
+        ...input,
+        userId: ctx.user.id,
+        status: "new",
+      });
+      // Auto-analyze website in background (non-blocking)
+      const leadId = (result as any)[0]?.insertId;
+      if (leadId) {
+        if (input.website) {
+          setImmediate(async () => {
+            try {
+              const { fullWebsiteAnalysis } = await import("./websiteAnalysis");
+              const analysis = await fullWebsiteAnalysis(
+                input.website!,
+                input.companyName,
+                input.industry || "general business"
+              );
+              await db.upsertWebsiteInsights(leadId, {
+                domain: analysis.insights.domain,
+                totalVisits: analysis.insights.totalVisits,
+                bounceRate: analysis.insights.bounceRate,
+                globalRank: analysis.insights.globalRank,
+                topKeywords: analysis.insights.topKeywords,
+                trafficSources: analysis.insights.trafficSources,
+                topLandingPages: analysis.insights.topLandingPages,
+                competitors: analysis.competitors,
+                competitorGaps: analysis.competitorGaps,
+                recentNews: analysis.recentNews,
+                industryInsights: analysis.industryInsights,
+                insightsSummary: analysis.summary,
+              });
+              console.log(`[AutoAnalyze] Website analysis complete for lead ${leadId}: ${input.website}`);
+            } catch (e: any) {
+              console.warn(`[AutoAnalyze] Failed for lead ${leadId}:`, e.message);
+            }
+          });
+        }
+        // Auto-score social media activity in background (non-blocking)
+        setImmediate(async () => {
+          try {
+            const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
+            const scoring = await scoreLeadSocialMedia(input.linkedinUrl, input.ownerName, input.companyName);
+            await db.updateLead(leadId, { socialMediaScore: scoring.score });
+            console.log(`[SocialScoring] Lead ${leadId} scored: ${scoring.score} (${scoring.signals.join(", ")})`);
+          } catch (e: any) {
+            console.warn(`[SocialScoring] Failed for lead ${leadId}:`, e.message);
+            await db.updateLead(leadId, { socialMediaScore: "low" });
+          }
+        });
+      }
+      return result;
+    }),
+
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), data: z.object({
+        companyName: z.string().optional(),
+        ownerName: z.string().optional(),
+        email: z.string().email().optional(),
+        phoneNumber: z.string().optional(),
+        website: z.string().optional(),
+        industry: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        instagramUrl: z.string().optional(),
+        facebookUrl: z.string().optional(),
+        customData: z.any().optional(),
+        status: z.enum(["new", "contacted", "qualified", "converted", "rejected"]).optional(),
+        tag: z.enum(["hot", "warm", "cold", "follow_up", "none"]).optional(),
+        timezone: z.string().optional(),
+      }) }))
+      .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.id);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await db.updateLead(input.id, input.data);
+        return db.getLeadById(input.id);
+      }),
+
+    delete: protectedProcedure.input(z.number()).mutation(async ({ input: leadId, ctx }) => {
+      const lead = await db.getLeadById(leadId);
+      if (!lead || lead.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      return db.deleteLead(leadId);
+    }),
+
+    bulkDelete: protectedProcedure
+      .input(z.object({ leadIds: z.array(z.number()).min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        // Verify all leads belong to the user
+        const leads = await Promise.all(input.leadIds.map(id => db.getLeadById(id)));
+        const validIds = leads.filter(l => l && l.userId === ctx.user.id).map(l => l!.id);
+        if (validIds.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No valid leads found" });
+        for (const id of validIds) {
+          await db.deleteLead(id);
+        }
+        return { deleted: validIds.length };
+      }),
+
+    deleteByVerificationStatus: protectedProcedure
+      .input(z.object({ statuses: z.array(z.enum(["risky", "unknown", "undeliverable"])).min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const allLeads = await db.getLeadsByUserId(ctx.user.id);
+        const toDelete = allLeads.filter((l: any) => input.statuses.includes(l.emailVerificationStatus));
+        if (toDelete.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads found with the specified verification status" });
+        for (const lead of toDelete) {
+          await db.deleteLead(lead.id);
+        }
+        return { deleted: toDelete.length };
+      }),
+
+    deleteAll: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const allLeads = await db.getLeadsByUserId(ctx.user.id);
+        if (allLeads.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads to delete" });
+        for (const lead of allLeads) {
+          await db.deleteLead(lead.id);
+        }
+        return { deleted: allLeads.length };
+      }),
+
+    enrichFromSeamless: protectedProcedure
+      .input(z.object({
+        leadIds: z.array(z.number()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { getSeamlessLeads } = await import("./seamlessAI");
+        const settings = await db.getUserSettings(ctx.user.id);
+        const seamlessApiKey = settings?.seamlessApiKey;
+        
+        if (!seamlessApiKey) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Seamless.AI API key not configured. Please add it in Settings.",
+          });
+        }
+
+        const leads = await Promise.all(
+          input.leadIds.map(id => db.getLeadById(id))
+        );
+
+        const validLeads = leads.filter(l => l && l.userId === ctx.user.id);
+        if (validLeads.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No valid leads found to enrich.",
+          });
+        }
+
+        const enrichedResults = [];
+        
+        for (const lead of validLeads) {
+          try {
+            // First try: Search by company + job title for precise match
+            let result = await getSeamlessLeads(
+              seamlessApiKey,
+              {
+                companyName: lead.companyName ? [lead.companyName] : undefined,
+                jobTitle: lead.jobTitle ? [lead.jobTitle] : undefined,
+              },
+              1
+            );
+
+            // Fallback: If no results, search by company name only
+            if (!result.contacts || result.contacts.length === 0) {
+              result = await getSeamlessLeads(
+                seamlessApiKey,
+                {
+                  companyName: lead.companyName ? [lead.companyName] : undefined,
+                },
+                1
+              );
+            }
+
+            if (result.contacts && result.contacts.length > 0) {
+              const enrichedContact = result.contacts[0];
+              
+              // Always update with enriched data - don't use fallback to old data
+              await db.updateLead(lead.id, {
+                phoneNumber: enrichedContact.phoneNumber,
+                phoneType: enrichedContact.phoneType || "unknown",
+                secondaryPhone: enrichedContact.secondaryPhone,
+                secondaryPhoneType: enrichedContact.secondaryPhoneType,
+                personalEmail: enrichedContact.personalEmail,
+                workEmail: enrichedContact.workEmail,
+                allEmails: enrichedContact.allEmails ? enrichedContact.allEmails : null,
+                companySize: enrichedContact.companySize,
+                jobTitle: enrichedContact.jobTitle,
+                industry: enrichedContact.industry,
+                website: enrichedContact.website,
+                timezone: enrichedContact.timezone,
+              });
+              
+              enrichedResults.push({
+                leadId: lead.id,
+                success: true,
+                data: enrichedContact,
+              });
+            } else {
+              enrichedResults.push({
+                leadId: lead.id,
+                success: false,
+                error: "No match found on Seamless.AI",
+              });
+            }
+          } catch (error: any) {
+            enrichedResults.push({
+              leadId: lead.id,
+              success: false,
+              error: error.message,
+            });
+          }
+        }
+
+        return {
+          enriched: enrichedResults.filter(r => r.success).length,
+          failed: enrichedResults.filter(r => !r.success).length,
+          results: enrichedResults,
+        };
+      }),
+
+    addManual: protectedProcedure
+      .input(z.object({
+        companyName: z.string().min(1),
+        ownerName: z.string().min(1),
+        jobTitle: z.string().optional(),
+        email: z.string().email(),
+        phoneNumber: z.string().min(1),
+        industry: z.string().optional(),
+        companySize: z.string().optional(),
+        website: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+        instagramUrl: z.string().optional(),
+        facebookUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await db.createLead({
+          companyName: input.companyName,
+          ownerName: input.ownerName,
+          jobTitle: input.jobTitle || undefined,
+          email: input.email,
+          phoneNumber: input.phoneNumber,
+          industry: input.industry,
+          website: input.website || undefined,
+          linkedinUrl: input.linkedinUrl || undefined,
+          instagramUrl: input.instagramUrl || undefined,
+          facebookUrl: input.facebookUrl || undefined,
+          customData: { companySize: input.companySize },
+          userId: ctx.user.id,
+          status: "new",
+        });
+        // Auto-score social media activity in background
+        const newLeadId = (result as any)[0]?.insertId;
+        if (newLeadId) {
+          setImmediate(async () => {
+            try {
+              const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
+              const scoring = await scoreLeadSocialMedia(input.linkedinUrl, input.ownerName, input.companyName);
+              await db.updateLead(newLeadId, { socialMediaScore: scoring.score });
+              console.log(`[SocialScoring] Manual lead ${newLeadId} scored: ${scoring.score}`);
+            } catch (e: any) {
+              console.warn(`[SocialScoring] Failed for manual lead ${newLeadId}:`, e.message);
+              await db.updateLead(newLeadId, { socialMediaScore: "low" });
+            }
+          });
+          // Auto-verify email via Bouncer in background
+          setImmediate(async () => {
+            try {
+              const settings = await db.getUserSettings(ctx.user.id);
+              if (!settings?.bouncerApiKey) return;
+              const { validateEmail } = await import("./bouncer");
+              const result = await validateEmail(settings.bouncerApiKey, input.email);
+              await db.updateLead(newLeadId, {
+                emailVerificationStatus: result.status as any,
+                emailVerificationData: {
+                  score: result.score,
+                  reason: result.reason,
+                  toxic: result.toxic,
+                  toxicity: result.toxicity,
+                  shouldSend: result.status !== "undeliverable",
+                  verifiedAt: new Date().toISOString(),
+                },
+              });
+              console.log(`[AutoVerify] Manual lead ${newLeadId} verified: ${result.status}`);
+            } catch (e: any) {
+              console.warn(`[AutoVerify] Failed for manual lead ${newLeadId}:`, e.message);
+            }
+          });
+        }
+        return result;
+      }),
+
+    // AI-powered lead generation from natural language
+    generate: protectedProcedure
+      .input(generateLeadsSchema)
+      .mutation(async ({ input, ctx }) => {
+        let leadsData: Array<{
+          companyName: string;
+          ownerName: string;
+          jobTitle?: string;
+          email: string;
+          phoneNumber: string;
+          website?: string;
+          industry?: string;
+          companySize?: string;
+          timezone?: string;
+          linkedinUrl?: string;
+          instagramUrl?: string;
+          facebookUrl?: string;
+        }>;
+
+        // ═══════════════════════════════════════════════
+        // SOURCE: SEAMLESS.AI (Real verified contacts)
+        // ═══════════════════════════════════════════════
+        if (input.source === "seamless") {
+          const settings = await db.getUserSettings(ctx.user.id);
+          if (!settings?.seamlessApiKey) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Seamless.AI API key not configured. Go to Settings → Seamless.ai to add your API key.",
+            });
+          }
+
+          const { parseInstructionToFilters, getSeamlessLeads } = await import("./seamlessAI");
+
+          // Parse user instruction into Seamless.AI filters using LLM
+          const filters = await parseInstructionToFilters(input.instruction, input.country);
+          
+          // ALWAYS enforce country filter when user specifies a country
+          if (input.country) {
+            filters.contactCountry = [input.country];
+          }
+          // Enforce state filter when user specifies a US state
+          if (input.state) {
+            filters.contactState = [input.state];
+          }
+          console.log("[Seamless.AI] Final filters (country enforced):", JSON.stringify(filters));
+
+          try {
+            // getSeamlessLeads now paginates through ALL available search results up to count
+            const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count);
             
-            let candidates = result.contacts;
-            
-            // 2. Post-filter by country
+            // Post-filter: only keep contacts from the specified country
             if (input.country) {
               const countryLower = input.country.toLowerCase();
               const countryAliases: Record<string, string[]> = {
@@ -15,101 +522,79 @@
               };
               const matchTerms = countryAliases[countryLower] || [countryLower];
               
-              candidates = candidates.filter((c: any) => {
+              leadsData = result.contacts.filter((c: any) => {
+                // If contact has country info, check it matches
                 if (c.country) {
                   return matchTerms.some(term => c.country!.toLowerCase().includes(term));
                 }
+                // If no country info, include it (benefit of the doubt since we filtered in search)
                 return true;
-              });
+              }).slice(0, input.count);
               
-              console.log(`[Seamless.AI] After country filter: ${candidates.length} of ${result.contacts.length} candidates`);
+              console.log(`[Seamless.AI] After country filter: ${leadsData.length} of ${result.contacts.length} contacts match ${input.country}`);
+            } else {
+              leadsData = result.contacts.slice(0, input.count);
             }
 
-            if (candidates.length === 0) {
+            if (leadsData.length === 0) {
               throw new TRPCError({
                 code: "NOT_FOUND",
                 message: `No contacts found in ${input.country || "your criteria"} on Seamless.AI. Try broadening your search (e.g., wider state or different job title).`,
               });
             }
             
-            // 3. HYBRID ENRICHMENT: Enrich in batches, filter by company size, cap at 300 credits
-            const { enrichAndFilterByCompanySize } = await import("./seamlessAI");
-            const enrichmentResult = await enrichAndFilterByCompanySize(
-              settings.seamlessApiKey,
-              candidates,
-              filters,
-              input.count,
-              300 // Max 300 candidates to enrich (cap credit cost)
-            );
+            // AUTOMATIC PHONE ENRICHMENT: Research + Poll for phone numbers
+            // This ensures generated leads come back complete with phone numbers in one action
+            console.log(`[Seamless.AI] Starting automatic phone enrichment for ${leadsData.length} contacts...`);
+            const { enrichContactsWithPhones } = await import("./seamlessAI");
+            const phoneMap = await enrichContactsWithPhones(settings.seamlessApiKey, leadsData);
+            console.log(`[Seamless.AI] Phone enrichment complete: ${Object.keys(phoneMap).length} contacts have phone numbers`);
             
-            console.log(`[Seamless.AI] Enrichment: ${enrichmentResult.enrichedContacts.length} matches, ${enrichmentResult.creditsUsed} credits used, capped: ${enrichmentResult.cappedAtLimit}`);
-            
-            if (enrichmentResult.enrichedContacts.length === 0) {
-              throw new TRPCError({
-                code: "NOT_FOUND",
-                message: enrichmentResult.message,
-              });
-            }
-            
-            // 4. Map enriched contacts to expected schema
-            leadsData = enrichmentResult.enrichedContacts.map((contact: any) => {
+            // Map Seamless.AI API response to expected schema
+            // API returns: firstName, lastName, title, company, domain, industries, liUrl, timezone, etc.
+            // We need: companyName, ownerName, jobTitle, email, phoneNumber, website, industry, companySize, etc.
+            leadsData = leadsData.map((contact: any) => {
               // Try to construct email from domain if not provided
               let email = contact.email || "";
-              if (!email && contact.companyDomain && contact.firstName && contact.lastName) {
+              if (!email && contact.domain && contact.firstName && contact.lastName) {
+                // Guess common email formats: firstname.lastname@domain, first.last@domain, etc.
                 const first = contact.firstName.toLowerCase().replace(/[^a-z0-9]/g, "");
                 const last = contact.lastName.toLowerCase().replace(/[^a-z0-9]/g, "");
-                email = `${first}.${last}@${contact.companyDomain}`;
+                email = `${first}.${last}@${contact.domain}`;
               }
               
-              // Determine company size from enriched data
+              // Determine company size from employeeSizeRange
               let companySize = "1-10";
-              if (contact.companyStaffCountRange) {
-                const range = (contact.companyStaffCountRange as string).toLowerCase();
-                if (range.includes("1") && range.includes("10")) companySize = "1-10";
-                else if (range.includes("11") || range.includes("50")) companySize = "11-50";
-                else if (range.includes("51") || range.includes("200")) companySize = "51-200";
-                else if (range.includes("201") || range.includes("500")) companySize = "201-500";
-                else if (range.includes("500") || range.includes("1000") || range.includes("10000")) companySize = "500+";
-              }
+              const sizeRange = contact.employeeSizeRange?.toLowerCase() || "";
+              if (sizeRange.includes("1") && sizeRange.includes("10")) companySize = "1-10";
+              else if (sizeRange.includes("11") || sizeRange.includes("50")) companySize = "11-50";
+              else if (sizeRange.includes("51") || sizeRange.includes("200")) companySize = "51-200";
+              else if (sizeRange.includes("201") || sizeRange.includes("500")) companySize = "201-500";
+              else if (sizeRange.includes("500") || sizeRange.includes("1000") || sizeRange.includes("10000")) companySize = "500+";
               
               return {
                 companyName: contact.company || "Unknown",
                 ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unknown",
-                jobTitle: contact.title || contact.position || undefined,
+                jobTitle: contact.title || undefined,
                 email: email,
-                phoneNumber: contact.workPhone || contact.contactPhone1 || contact.phone || "", // From enrichment
-                website: contact.companyWebsite || contact.companyUrl || contact.website || undefined,
-                industry: contact.companyIndustry || contact.industry || undefined,
+                phoneNumber: phoneMap[contact.id] || "", // Use enriched phone number from research+poll
+                website: contact.domain ? `https://${contact.domain}` : undefined,
+                industry: Array.isArray(contact.industries) ? contact.industries[0] : contact.industries || undefined,
                 companySize: companySize,
-                timezone: contact.companyTimezone || contact.timezone || undefined,
-                linkedinUrl: contact.linkedinUrl || undefined,
+                timezone: contact.timezone || undefined,
+                linkedinUrl: contact.liUrl || undefined,
                 instagramUrl: undefined,
                 facebookUrl: undefined,
                 seamlessId: contact.id, // Store Seamless.AI contact ID for phone verification
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
                 enrichmentCreditsUsed: 1, // Option A: 1 credit per lead enriched
-=======
-                enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
->>>>>>> Stashed changes
-=======
-                enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
->>>>>>> Stashed changes
-=======
-                enrichmentCreditsUsed: 1, // Option A: 1 credit per enriched lead
->>>>>>> Stashed changes
               };
             });
-            
-            // Log results
-            const withPhone = leadsData.filter((l: any) => l.phoneNumber).length;
-            const withoutPhone = leadsData.length - withPhone;
-            console.log(`[Seamless.AI] Returning ${leadsData.length} leads: ${withPhone} with phone, ${withoutPhone} without`);
-            
-            // Surface enrichment credit cost and warning to user
-            if (enrichmentResult.cappedAtLimit) {
-              console.log(`[Seamless.AI] WARNING: ${enrichmentResult.message}`);
+
+            // Log how many have emails vs don't
+            const withEmail = leadsData.filter((l: any) => l.email).length;
+            const withoutEmail = leadsData.length - withEmail;
+            if (withoutEmail > 0) {
+              console.log(`[Seamless.AI] Returning ${withEmail} leads with email, ${withoutEmail} without email (have phone/LinkedIn)`);
             }
           } catch (error: any) {
             if (error instanceof TRPCError) throw error;
@@ -283,6 +768,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               leadSetId,
               sourceListId: leadSetId || undefined,
               seamlessId: (leadData as any).seamlessId || undefined,
+              enrichmentCreditsUsed: (leadData as any).enrichmentCreditsUsed || 0,
             });
             createdLeads.push(result);
           } catch (e) {
@@ -359,30 +845,13 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
         console.log(`[AutoVerify] AI import auto-verification disabled - user must manually verify emails`);
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        // Option A: Calculate total enrichment credits used (1 per Seamless.AI lead)
-        const enrichmentCreditsUsed = input.source === "seamless" ? leadsData.length : 0;
-=======
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         // Calculate total enrichment credits used (1 per Seamless.AI lead enriched)
-        // Use leadsData.length (actual contacts enriched) not uniqueLeadsData.length (after dedup)
-        // Enrichment happens on leadsData before dedup, so credit cost is based on leadsData count
-        const enrichmentCreditsUsed = input.source === "seamless" 
+        // Use leadsData.length (actual contacts enriched) not uniqueLeadsData.length (after dedup) —
+        // enrichment happens on leadsData before dedup, so credit cost is based on leadsData count
+        const enrichmentCreditsUsed = input.source === "seamless"
           ? leadsData.length // All contacts that went through enrichContactsWithPhones()
           : 0;
-        
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
+
         return {
           success: true,
           count: createdLeads.length,
@@ -390,19 +859,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           duplicatesSkipped,
           source: input.source || "ai",
           extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
           enrichmentCreditsUsed, // Option A: 1 credit per Seamless.AI lead enriched
-=======
-          enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
->>>>>>> Stashed changes
-=======
-          enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
->>>>>>> Stashed changes
-=======
-          enrichmentCreditsUsed, // Option A: Track 1 credit per enriched lead
->>>>>>> Stashed changes
         };
       }),
 
