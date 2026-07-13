@@ -1321,7 +1321,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
       {/* Seamless.AI Search Results — select which candidates to enrich and save */}
       <Dialog open={seamlessPreviewDialogOpen} onOpenChange={setSeamlessPreviewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-[95vw] w-full sm:max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wand2 className="w-5 h-5" />
@@ -1341,24 +1341,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set())}>Deselect All</Button>
               </div>
             </div>
-            <div className="border rounded-md overflow-auto flex-1 max-h-[450px]">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 sticky top-0">
+            <div className="border rounded-md overflow-auto flex-1 max-h-[65vh]">
+              <table className="w-full text-sm whitespace-nowrap">
+                <thead className="bg-muted/50 sticky top-0 z-10">
                   <tr>
-                    <th className="p-2 w-10"></th>
-                    <th className="p-2 text-left font-medium">Contact</th>
-                    <th className="p-2 text-left font-medium">Title</th>
-                    <th className="p-2 text-left font-medium">Company</th>
-                    <th className="p-2 text-left font-medium">Industry</th>
-                    <th className="p-2 text-left font-medium">Location</th>
-                    <th className="p-2 text-left font-medium">Website</th>
-                    <th className="p-2 text-left font-medium">LinkedIn</th>
+                    <th className="p-3 w-10"></th>
+                    <th className="p-3 text-left font-medium">Contact</th>
+                    <th className="p-3 text-left font-medium">Title</th>
+                    <th className="p-3 text-left font-medium">Company</th>
+                    <th className="p-3 text-left font-medium">Industry</th>
+                    <th className="p-3 text-left font-medium">Location</th>
+                    <th className="p-3 text-left font-medium">Website</th>
+                    <th className="p-3 text-left font-medium">LinkedIn</th>
                   </tr>
                 </thead>
                 <tbody>
                   {seamlessCandidates.map((c) => (
                     <tr key={c.searchResultId} className={`border-t hover:bg-muted/30 transition-colors ${!selectedSeamlessIds.has(c.searchResultId) ? 'opacity-50' : ''}`}>
-                      <td className="p-2 text-center">
+                      <td className="p-3 text-center">
                         <Checkbox
                           checked={selectedSeamlessIds.has(c.searchResultId)}
                           onCheckedChange={(checked) => {
@@ -1369,15 +1369,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           }}
                         />
                       </td>
-                      <td className="p-2">{c.ownerName || "Unknown"}</td>
-                      <td className="p-2 text-muted-foreground">{c.jobTitle || "—"}</td>
-                      <td className="p-2 text-muted-foreground">{c.companyName}</td>
-                      <td className="p-2 text-muted-foreground">{c.industry || "—"}</td>
-                      <td className="p-2 text-muted-foreground text-xs">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
-                      <td className="p-2 text-muted-foreground text-xs">
+                      <td className="p-3 font-medium">{c.ownerName || "Unknown"}</td>
+                      <td className="p-3 text-muted-foreground">{c.jobTitle || "—"}</td>
+                      <td className="p-3 text-muted-foreground">{c.companyName}</td>
+                      <td className="p-3 text-muted-foreground">{c.industry || "—"}</td>
+                      <td className="p-3 text-muted-foreground">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="p-3 text-muted-foreground">
                         {c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
-                      <td className="p-2 text-muted-foreground text-xs">
+                      <td className="p-3 text-muted-foreground">
                         {c.linkedinUrl ? <a href={c.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
                     </tr>
