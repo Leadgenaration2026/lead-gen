@@ -515,8 +515,9 @@ export const appRouter = router({
           try {
             // getSeamlessLeads now paginates through ALL available search results up to count
             const result = await getSeamlessLeads(settings.seamlessApiKey, filters, input.count);
-            
+
             // Post-filter: only keep contacts from the specified country
+            let candidates = result.contacts;
             if (input.country) {
               const countryLower = input.country.toLowerCase();
               const countryAliases: Record<string, string[]> = {
@@ -525,20 +526,36 @@ export const appRouter = router({
                 "india": ["india"],
               };
               const matchTerms = countryAliases[countryLower] || [countryLower];
-              
-              leadsData = result.contacts.filter((c: any) => {
+
+              const beforeCountryFilter = candidates.length;
+              candidates = candidates.filter((c: any) => {
                 // If contact has country info, check it matches
                 if (c.country) {
                   return matchTerms.some(term => c.country!.toLowerCase().includes(term));
                 }
                 // If no country info, include it (benefit of the doubt since we filtered in search)
                 return true;
-              }).slice(0, input.count);
-              
-              console.log(`[Seamless.AI] After country filter: ${leadsData.length} of ${result.contacts.length} contacts match ${input.country}`);
-            } else {
-              leadsData = result.contacts.slice(0, input.count);
+              });
+
+              console.log(`[Seamless.AI] After country filter: ${candidates.length} of ${beforeCountryFilter} contacts match ${input.country}`);
             }
+
+            // Strict job title filter: Seamless.AI's own search does not reliably
+            // restrict results to the requested titles (e.g. asking for "owners and CEO"
+            // can still return accountants), so re-check every candidate's actual title
+            // client-side against the expanded title list before accepting it.
+            if (filters.jobTitle?.length) {
+              const titleRegexes = filters.jobTitle.map((t: string) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"));
+              const beforeTitleFilter = candidates.length;
+              candidates = candidates.filter((c: any) => {
+                const title = c.title || c.jobTitle || "";
+                if (!title) return false; // Can't verify — exclude rather than risk a mismatch
+                return titleRegexes.some((re: RegExp) => re.test(title));
+              });
+              console.log(`[Seamless.AI] After strict title filter: ${candidates.length} of ${beforeTitleFilter} contacts match requested titles`);
+            }
+
+            leadsData = candidates.slice(0, input.count);
 
             if (leadsData.length === 0) {
               throw new TRPCError({
@@ -560,7 +577,7 @@ export const appRouter = router({
 
               return {
                 companyName: contact.company || "Unknown",
-                ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unknown",
+                ownerName: `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || contact.name || "",
                 jobTitle: contact.title || undefined,
                 email: contact.email || enrichment.email || "",
                 phoneNumber: enrichment.phoneNumber || "", // From research+poll enrichment
@@ -576,23 +593,24 @@ export const appRouter = router({
               };
             });
 
-            // Only keep leads with both a phone number and an email — per user requirement,
-            // leads missing either are not useful and should be dropped rather than returned incomplete.
+            // Only keep leads with a phone number, an email, AND a known owner name —
+            // per user requirement, incomplete leads are not useful and should be
+            // dropped rather than returned with missing data.
             const beforeContactFilter = leadsData.length;
-            leadsData = leadsData.filter((l: any) => l.phoneNumber && l.email);
+            leadsData = leadsData.filter((l: any) => l.phoneNumber && l.email && l.ownerName);
             const droppedForMissingContact = beforeContactFilter - leadsData.length;
             if (droppedForMissingContact > 0) {
-              console.log(`[Seamless.AI] Dropped ${droppedForMissingContact} of ${beforeContactFilter} leads missing phone number or email`);
+              console.log(`[Seamless.AI] Dropped ${droppedForMissingContact} of ${beforeContactFilter} leads missing phone number, email, or owner name`);
             }
 
             if (leadsData.length === 0) {
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: `Found ${beforeContactFilter} contact(s) but none had both a phone number and email after enrichment. Try broadening your search or increasing the requested count.`,
+                message: `Found ${beforeContactFilter} contact(s) but none had a complete phone number, email, and name after enrichment. Try broadening your search or increasing the requested count.`,
               });
             }
 
-            console.log(`[Seamless.AI] Returning ${leadsData.length} leads, all with phone number and email`);
+            console.log(`[Seamless.AI] Returning ${leadsData.length} leads, all with phone number, email, and owner name`);
           } catch (error: any) {
             if (error instanceof TRPCError) throw error;
             console.error("[Seamless.AI] Error:", error.message);
