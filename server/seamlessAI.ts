@@ -698,7 +698,7 @@ export async function searchAndFilterSeamlessCandidates(
   count: number,
   country?: string,
   state?: string
-): Promise<{ candidates: SeamlessCandidatePreview[] }> {
+): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (country) {
     filters.contactCountry = [country];
@@ -709,6 +709,7 @@ export async function searchAndFilterSeamlessCandidates(
 
   const result = await getSeamlessLeads(apiKey, filters, count);
   let candidates: any[] = result.contacts;
+  const totalAvailable = result.totalResults;
 
   if (country) {
     const countryLower = country.toLowerCase();
@@ -759,7 +760,7 @@ export async function searchAndFilterSeamlessCandidates(
       linkedinUrl: c.linkedinUrl || undefined,
     }));
 
-  return { candidates: preview };
+  return { candidates: preview, totalAvailable };
 }
 
 export interface SeamlessEnrichmentResult {

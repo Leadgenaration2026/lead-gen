@@ -164,6 +164,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   }>>([]);
   const [selectedSeamlessIds, setSelectedSeamlessIds] = useState<Set<string>>(new Set());
   const [isSearchingSeamless, setIsSearchingSeamless] = useState(false);
+  const [seamlessTotalAvailable, setSeamlessTotalAvailable] = useState<number | undefined>(undefined);
 
   // Checkbox selection state
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
@@ -316,6 +317,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
       setSeamlessCandidates(result.candidates);
       setSelectedSeamlessIds(new Set(result.candidates.map((c) => c.searchResultId))); // default: all selected
+      setSeamlessTotalAvailable(result.totalAvailable);
       setSeamlessPreviewDialogOpen(true);
       if (result.skippedAlreadyOwned > 0) {
         toast(`${result.skippedAlreadyOwned} matching contact(s) already in your system were skipped.`);
@@ -1332,6 +1334,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <p className="text-sm text-muted-foreground">
               Uncheck any contacts you don't want. Only checked contacts will be enriched (phone, email, company size) and cost credits.
             </p>
+            {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
+              <p className="text-xs bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 rounded-md p-2">
+                Showing {seamlessCandidates.length} of <strong>{seamlessTotalAvailable} total</strong> matching contacts on Seamless.AI. Increase "Number of Leads" and search again to pull more.
+              </p>
+            )}
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">
                 {selectedSeamlessIds.size} of {seamlessCandidates.length} selected

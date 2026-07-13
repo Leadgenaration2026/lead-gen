@@ -927,7 +927,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         }
 
         const { searchAndFilterSeamlessCandidates } = await import("./seamlessAI");
-        const { candidates } = await searchAndFilterSeamlessCandidates(
+        const { candidates, totalAvailable } = await searchAndFilterSeamlessCandidates(
           settings.seamlessApiKey,
           input.instruction,
           input.count,
@@ -936,7 +936,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         );
 
         if (candidates.length === 0) {
-          return { candidates: [], skippedAlreadyOwned: 0 };
+          return { candidates: [], skippedAlreadyOwned: 0, totalAvailable };
         }
 
         // Skip candidates already saved as leads — no point showing them again
@@ -946,7 +946,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         const filtered = candidates.filter((c) => !ownedIds.has(c.searchResultId));
         const skippedAlreadyOwned = candidates.length - filtered.length;
 
-        return { candidates: filtered, skippedAlreadyOwned };
+        return { candidates: filtered, skippedAlreadyOwned, totalAvailable };
       }),
 
     // Enrich only the candidates the user selected from searchSeamlessPreview,
