@@ -673,11 +673,11 @@ export async function parseInstructionToFiltersWithLLM(instruction: string, coun
 
   if (llmResult.titles.length > 0) {
     filters.jobTitle = llmResult.titles;
-    // Also send the same terms as contactKeyword (matches against profile bio/skills
-    // text, per Seamless.AI's official API docs) to broaden matching beyond jobTitle's
-    // relevance-based title matching alone — this is likely closer to what Seamless.AI's
-    // own website search box uses, since there's no separate free-text search parameter.
-    filters.contactKeyword = llmResult.titles;
+    // NOTE: previously also sent these same terms as contactKeyword to try to
+    // broaden matching, but combining it with jobTitle appears to narrow results
+    // (likely AND logic between the two filter types rather than OR), causing
+    // "No contacts found" on searches that worked fine with jobTitle alone.
+    // Reverted — contactKeyword needs isolated testing before reintroducing.
     console.log(`[Seamless.AI] LLM-parsed job titles: ${JSON.stringify(llmResult.titles)}`);
   }
   if (llmResult.industries.length > 0) {
