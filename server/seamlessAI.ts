@@ -271,10 +271,10 @@ export async function searchContacts(
     linkedinUrl?: string;
     companyName?: string[];
     jobTitle?: string[];
+    contactKeyword?: string[];
     department?: string[];
     seniority?: string[];
     industry?: string[];
-    industryName?: string[];
     contactCountry?: string[];
     contactState?: string[];
     companyEmployeeCountMin?: number;
@@ -299,10 +299,13 @@ export async function searchContacts(
   const body: Record<string, any> = {};
   if (filters.companyName?.length) body.companyName = filters.companyName;
   if (filters.jobTitle?.length) body.jobTitle = filters.jobTitle;
+  if (filters.contactKeyword?.length) body.contactKeyword = filters.contactKeyword;
   if (filters.department?.length) body.department = filters.department;
   if (filters.seniority?.length) body.seniority = filters.seniority;
+  // "industry" is the real API parameter name (confirmed via docs.seamless.ai/searchcontacts);
+  // an earlier version of this code used "industryName", which isn't a real parameter and
+  // was silently ignored by the API.
   if (filters.industry?.length) body.industry = filters.industry;
-  if (filters.industryName?.length) body.industryName = filters.industryName;
   if (filters.email) body.email = filters.email;
   if (filters.city) body.city = filters.city;
   if (filters.state) body.state = filters.state;
@@ -629,7 +632,7 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   
   // Add industries if detected
   if (parsed.industries && parsed.industries.length > 0) {
-    filters.industryName = parsed.industries;
+    filters.industry = parsed.industries;
     console.log(`[Seamless.AI] Industries: ${JSON.stringify(parsed.industries)}`);
   }
   
@@ -670,10 +673,15 @@ export async function parseInstructionToFiltersWithLLM(instruction: string, coun
 
   if (llmResult.titles.length > 0) {
     filters.jobTitle = llmResult.titles;
+    // Also send the same terms as contactKeyword (matches against profile bio/skills
+    // text, per Seamless.AI's official API docs) to broaden matching beyond jobTitle's
+    // relevance-based title matching alone — this is likely closer to what Seamless.AI's
+    // own website search box uses, since there's no separate free-text search parameter.
+    filters.contactKeyword = llmResult.titles;
     console.log(`[Seamless.AI] LLM-parsed job titles: ${JSON.stringify(llmResult.titles)}`);
   }
   if (llmResult.industries.length > 0) {
-    filters.industryName = llmResult.industries;
+    filters.industry = llmResult.industries;
     console.log(`[Seamless.AI] LLM-parsed industries: ${JSON.stringify(llmResult.industries)}`);
   }
 
@@ -690,7 +698,8 @@ export interface SeamlessCandidatePreview {
   state?: string;
   country?: string;
   website?: string;
-  industry?: string; // usually blank pre-enrichment; enrichment fills this in later
+  industry?: string;
+  companySize?: string; // from employeeSizeRange — documented as available pre-enrichment
   linkedinUrl?: string;
 }
 
@@ -764,12 +773,15 @@ export async function searchAndFilterSeamlessCandidates(
       city: c.city || undefined,
       state: c.state || undefined,
       country: c.country || undefined,
-      // Confirmed via live raw /search/contacts output: website is a bare domain
-      // string field called "domain" (e.g. "pwc.com"), and LinkedIn is "liUrl" —
-      // neither matches the "website"/"linkedinUrl" names the SeamlessSearchResult
-      // type assumed. Both are available pre-enrichment at no credit cost.
+      // Confirmed against Seamless.AI's official API docs (docs.seamless.ai/searchcontacts):
+      // website is a bare domain string field called "domain" (e.g. "pwc.com"), LinkedIn
+      // is "liUrl", industry is a plural array field called "industries" (not "industry"),
+      // and company size is "employeeSizeRange" — none of these matched the field names
+      // the SeamlessSearchResult type originally assumed. All are available pre-enrichment
+      // at no credit cost.
       website: c.domain ? `https://${c.domain}` : (c.website || undefined),
-      industry: c.industry || undefined,
+      industry: Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined),
+      companySize: c.employeeSizeRange || undefined,
       linkedinUrl: c.liUrl || c.linkedinUrl || undefined,
     }));
 
@@ -888,7 +900,7 @@ export async function enrichSeamlessCandidatesToLeadData(
       phoneNumber: enrichment.phoneNumber || "",
       website: c.website || undefined,
       industry: c.industry || enrichment.industry || undefined,
-      companySize: enrichment.companySize || "1-10",
+      companySize: c.companySize || enrichment.companySize || "1-10",
       timezone: undefined,
       linkedinUrl: c.linkedinUrl || undefined,
       instagramUrl: undefined,

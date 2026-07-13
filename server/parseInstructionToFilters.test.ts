@@ -88,15 +88,15 @@ describe("parseInstructionToFilters", () => {
     it("should parse industry from instruction", () => {
       const filters = parseInstructionToFilters("technology company owners");
       
-      expect(filters.industryName).toBeDefined();
-      expect(filters.industryName).toContain("technology");
+      expect(filters.industry).toBeDefined();
+      expect(filters.industry).toContain("technology");
     });
 
     it("should parse multiple industries", () => {
       const filters = parseInstructionToFilters("finance or healthcare CEOs");
       
-      expect(filters.industryName).toBeDefined();
-      expect(filters.industryName.length).toBeGreaterThan(0);
+      expect(filters.industry).toBeDefined();
+      expect(filters.industry.length).toBeGreaterThan(0);
     });
   });
 
@@ -120,7 +120,7 @@ describe("parseInstructionToFilters", () => {
       const filters = parseInstructionToFilters("Find VP of Sales at tech companies in California");
       
       expect(filters.jobTitle).toBeDefined();
-      expect(filters.industryName).toBeDefined();
+      expect(filters.industry).toBeDefined();
     });
 
     it("should handle 'Enterprise CTOs in finance'", () => {
@@ -128,7 +128,7 @@ describe("parseInstructionToFilters", () => {
       
       expect(filters.jobTitle).toBeDefined();
       expect(filters.companyEmployeeCountMin).toBe(5001);
-      expect(filters.industryName).toContain("finance");
+      expect(filters.industry).toContain("finance");
     });
   });
 

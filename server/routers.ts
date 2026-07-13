@@ -608,12 +608,13 @@ export const appRouter = router({
                 jobTitle: contact.title || undefined,
                 email: contact.email || enrichment.email || "",
                 phoneNumber: enrichment.phoneNumber || "", // From research+poll enrichment
-                // Confirmed via live raw /search/contacts output: website is a bare
-                // domain string field called "domain" (e.g. "pwc.com"), and LinkedIn
-                // is "liUrl" — neither matches "website"/"linkedinUrl" as assumed.
+                // Confirmed against Seamless.AI's official API docs (docs.seamless.ai/searchcontacts):
+                // website is "domain" (bare string, e.g. "pwc.com"), LinkedIn is "liUrl",
+                // industry is a plural array field called "industries" (not "industry"), and
+                // company size is "employeeSizeRange" — all available pre-enrichment.
                 website: contact.domain ? `https://${contact.domain}` : (contact.website || undefined),
-                industry: contact.industry || enrichment.industry || undefined,
-                companySize: enrichment.companySize || "1-10",
+                industry: Array.isArray(contact.industries) ? contact.industries[0] : (contact.industries || contact.industry || enrichment.industry || undefined),
+                companySize: contact.employeeSizeRange || enrichment.companySize || "1-10",
                 timezone: contact.timezone || undefined,
                 linkedinUrl: contact.liUrl || contact.linkedinUrl || undefined,
                 instagramUrl: undefined,

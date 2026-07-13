@@ -160,6 +160,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     country?: string;
     website?: string;
     industry?: string;
+    companySize?: string;
     linkedinUrl?: string;
   }>>([]);
   const [selectedSeamlessIds, setSelectedSeamlessIds] = useState<Set<string>>(new Set());
@@ -1332,7 +1333,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           </DialogHeader>
           <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
             <p className="text-sm text-muted-foreground">
-              Uncheck any contacts you don't want. Only checked contacts will be enriched (phone, email, company size) and cost credits.
+              Uncheck any contacts you don't want. Only checked contacts will be enriched (phone and email lookup) and cost credits.
             </p>
             {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
               <p className="text-xs bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 rounded-md p-2">
@@ -1357,6 +1358,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     <th className="p-3 text-left font-medium">Title</th>
                     <th className="p-3 text-left font-medium">Company</th>
                     <th className="p-3 text-left font-medium">Industry</th>
+                    <th className="p-3 text-left font-medium">Company Size</th>
                     <th className="p-3 text-left font-medium">Location</th>
                     <th className="p-3 text-left font-medium">Website</th>
                     <th className="p-3 text-left font-medium">LinkedIn</th>
@@ -1380,6 +1382,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       <td className="p-3 text-muted-foreground">{c.jobTitle || "—"}</td>
                       <td className="p-3 text-muted-foreground">{c.companyName}</td>
                       <td className="p-3 text-muted-foreground">{c.industry || "—"}</td>
+                      <td className="p-3 text-muted-foreground">{c.companySize || "—"}</td>
                       <td className="p-3 text-muted-foreground">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
                       <td className="p-3 text-muted-foreground">
                         {c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
@@ -1392,7 +1395,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">Phone, email, and company size aren't fetched yet — those are only looked up (and only cost credits) for the contacts you enrich below.</p>
+            <p className="text-xs text-muted-foreground">Phone and email aren't fetched yet — those are only looked up (and only cost credits) for the contacts you enrich below. Company size shown here comes directly from Seamless.AI's search results where available.</p>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Button variant="outline" onClick={() => setSeamlessPreviewDialogOpen(false)}>Cancel</Button>
