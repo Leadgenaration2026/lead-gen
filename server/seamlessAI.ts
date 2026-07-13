@@ -570,7 +570,7 @@ async function parseInstructionWithLLM(instruction: string): Promise<LLMParsedIn
         {
           role: "system",
           content: `Extract structured search criteria from a lead-generation request for a B2B contact database. Respond with ONLY a JSON object: {"titles": ["..."], "industries": ["..."]}
-- "titles": 1-5 job titles/professions/occupations as they would appear on a business card or LinkedIn profile (e.g. ["Motivational Speaker"], or ["Owner","Founder","CEO","President"] if the request implies close synonyms like "business owners"). Always include at least one title if any role or profession is mentioned or implied.
+- "titles": 2-5 close title synonyms/variants as they would actually appear on a business card or LinkedIn profile, not just the literal words the user typed. Real profiles are inconsistently worded, so always expand to the common variants a person in that role might actually use. Examples: "motivational speaker" -> ["Motivational Speaker","Keynote Speaker","Professional Speaker","Inspirational Speaker","Speaker"]; "business owners" -> ["Owner","Founder","CEO","President","Business Owner"]. Always include at least one title if any role or profession is mentioned or implied.
 - "industries": 0-3 industry names, ONLY if explicitly mentioned in the request (e.g. "restaurant owners" -> ["Restaurant"]). Do not infer an industry that was not stated.
 No explanation, no markdown, no extra fields.`,
         },
