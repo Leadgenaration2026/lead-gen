@@ -579,7 +579,7 @@ async function parseInstructionWithLLM(instruction: string): Promise<LLMParsedIn
         {
           role: "system",
           content: `Extract structured search criteria from a lead-generation request for a B2B contact database. Respond with ONLY a JSON object: {"titles": ["..."], "industries": ["..."]}
-- "titles": 2-5 close title synonyms/variants as they would actually appear on a business card or LinkedIn profile, not just the literal words the user typed. Real profiles are inconsistently worded, so always expand to the common variants a person in that role might actually use. Examples: "motivational speaker" -> ["Motivational Speaker","Keynote Speaker","Professional Speaker","Inspirational Speaker","Speaker"]; "business owners" -> ["Owner","Founder","CEO","President","Business Owner"]. Always include at least one title if any role or profession is mentioned or implied.
+- "titles": UP TO 10 title variants (Seamless.AI's own search caps job titles at 10 per query, so use the full budget) as they would actually appear on a business card or LinkedIn profile, not just the literal words the user typed. Seamless.AI's title filter appears to match close to exact wording, so real-world title variance matters a lot — cover as much genuine phrasing diversity as you can, not just 2-3 close synonyms. Examples: "motivational speaker" -> ["Motivational Speaker","Keynote Speaker","Professional Speaker","Inspirational Speaker","Public Speaker","Speaker","Keynote Speaker & Author","International Speaker","Conference Speaker","TEDx Speaker"]; "business owners" -> ["Owner","Founder","CEO","President","Managing Director","Principal","Co-Founder","Business Owner","Proprietor","Entrepreneur"]. Always include at least one title if any role or profession is mentioned or implied.
 - "industries": 0-3 industry names, ONLY if explicitly mentioned in the request (e.g. "restaurant owners" -> ["Restaurant"]). Do not infer an industry that was not stated.
 No explanation, no markdown, no extra fields.`,
         },
@@ -596,7 +596,7 @@ No explanation, no markdown, no extra fields.`,
     content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const parsed = JSON.parse(content);
     const titles = Array.isArray(parsed.titles)
-      ? parsed.titles.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 5)
+      ? parsed.titles.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 10)
       : [];
     const industries = Array.isArray(parsed.industries)
       ? parsed.industries.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3)
