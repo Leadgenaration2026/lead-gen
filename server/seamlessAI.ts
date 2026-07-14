@@ -31,6 +31,81 @@ export const SEAMLESS_COMPANY_SIZE_OPTIONS = [
   "10,001+",
 ] as const;
 
+// Exact enum values Seamless.AI's industry search filter accepts, confirmed via
+// their official API docs (docs.seamless.ai/searchcontacts). Unlike jobTitle
+// (relevance/partial matching), this is a strict predefined list — sending a
+// value that isn't in here (e.g. "E-commerce" instead of "Internet & E-Commerce")
+// doesn't get ignored, it zeroes out the search entirely.
+export const SEAMLESS_INDUSTRY_OPTIONS = [
+  "Aerospace & Defense", "Airlines & Aviation", "Aviation & Aerospace", "Defense & Space", "Military",
+  "Agriculture", "Farming", "Horticulture", "Ranching", "Tobacco",
+  "Apparel & Fashion", "Textiles",
+  "Automotive",
+  "Chemicals & Materials", "Chemicals", "Plastics",
+  "Consumer Goods & Retail", "Consumer Goods", "Luxury Goods & Jewelry", "Retail", "Sporting Goods",
+  "Education & Training", "E-Learning", "Education Management", "Higher Education", "Libraries", "Primary/Secondary Education",
+  "Electronics & Hardware", "Computer Hardware", "Consumer Electronics", "Electrical & Electronic Manufacturing", "Semiconductors",
+  "Energy & Utilities", "Oil & Energy", "Utilities",
+  "Entertainment", "Animation", "Arts & Crafts", "Computer Games", "Fine Art", "Gambling & Casinos", "Mobile Games", "Motion Pictures & Film", "Music", "Performing Arts", "Photography", "Recreational Facilities & Services", "Sports",
+  "Environmental", "Environmental Services", "Renewables & Environment",
+  "Finance & Banking", "Banking", "Capital Markets", "Financial Services", "Investment Banking", "Investment Management", "Venture Capital & Private Equity",
+  "Food & Beverage", "Dairy", "Fishery", "Food & Beverages", "Food Production", "Restaurants", "Supermarkets", "Wine & Spirits",
+  "Government & Public Policy", "Executive Office", "Government Administration", "Government Relations", "Judiciary", "Law Enforcement", "Legislative Office", "Political Organization", "Public Policy", "Public Safety",
+  "Health & Wellness", "Alternative Medicine", "Health Wellness and Fitness", "Hospital & Health Care", "Medical Practice", "Mental Health Care", "Veterinary",
+  "Hospitality & Tourism", "Events Services", "Hospitality", "Leisure Travel & Tourism", "Museums & Institutions",
+  "Household Personal & Beauty", "Consumer Services", "Cosmetics", "Furniture", "Individual & Family Services",
+  "Insurance",
+  "Internet & E-Commerce", "Internet",
+  "Manufacturing & Engineering", "Civil Engineering", "Industrial Automation", "Machinery", "Mechanical or Industrial Engineering", "Railroad Manufacture", "Shipbuilding",
+  "Marketing & Media", "Broadcast Media", "Graphic Design", "Marketing & Advertising", "Media Production", "Newspapers", "Online Media", "Printing", "Public Relations & Communications", "Publishing", "Writing & Editing",
+  "Metals Mining & Materials", "Building Materials", "Glass Ceramics & Concrete", "Mining & Metals", "Paper & Forest Products",
+  "Non-Profit", "Fund-Raising", "Non-Profit Organization Management", "Philanthropy", "Religious Institutions",
+  "Pharmaceuticals & Medical Devices", "Biotechnology", "Medical Devices", "Nanotechnology", "Pharmaceuticals",
+  "Professional Services & Consulting", "Accounting", "Alternative Dispute Resolution", "Civic & Social Organization", "Design", "Human Resources", "International Affairs", "International Trade & Development", "Law Practice", "Legal Services", "Management Consulting", "Market Research", "Outsourcing/Offshoring", "Professional Training & Coaching", "Program Development", "Research", "Security & Investigations", "Staffing & Recruiting", "Think Tanks",
+  "Real Estate & Construction", "Architecture & Planning", "Commercial Real Estate", "Construction", "Facilities Services", "Real Estate",
+  "Software & Information Technology", "Computer & Network Security", "Computer Software", "Information Services", "Information Technology & Services", "Software Development",
+  "Telecommunications & Networking", "Computer Networking", "Telecommunications", "Wireless",
+  "Transportation & Logistics", "Logistics & Supply Chain", "Maritime", "Package/Freight Delivery", "Packaging & Containers", "Translation & Localization", "Transportation/Trucking/Railroad",
+  "Wholesale & Distribution", "Business Supplies & Equipment", "Import & Export", "Warehousing", "Wholesale",
+] as const;
+
+/**
+ * Map a free-text industry guess (from the LLM or elsewhere) to the closest
+ * real Seamless.AI industry enum value. Returns null if nothing reasonably
+ * matches, in which case the industry filter should be dropped entirely
+ * rather than sent with an invalid value (which zeroes out the search).
+ */
+export function mapToValidSeamlessIndustry(guess: string): string | null {
+  const guessLower = guess.trim().toLowerCase();
+  if (!guessLower) return null;
+
+  // Strip spaces, hyphens, and "&"/"and" so wording differences like
+  // "healthcare" vs "Health Care", or "e-commerce" vs "E-Commerce", don't
+  // block an otherwise-obvious match.
+  const normalize = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[\s-]/g, "");
+  const guessNormalized = normalize(guessLower);
+
+  // Exact match first
+  const exact = SEAMLESS_INDUSTRY_OPTIONS.find((opt) => opt.toLowerCase() === guessLower);
+  if (exact) return exact;
+
+  // Substring match either direction (e.g. "software" -> "Computer Software")
+  const substringMatch = SEAMLESS_INDUSTRY_OPTIONS.find(
+    (opt) => opt.toLowerCase().includes(guessLower) || guessLower.includes(opt.toLowerCase())
+  );
+  if (substringMatch) return substringMatch;
+
+  // Normalized substring match (e.g. "healthcare" -> "Hospital & Health Care",
+  // "e-commerce" -> "Internet & E-Commerce")
+  const normalizedMatch = SEAMLESS_INDUSTRY_OPTIONS.find((opt) => {
+    const optNormalized = normalize(opt);
+    return optNormalized.includes(guessNormalized) || guessNormalized.includes(optNormalized);
+  });
+  if (normalizedMatch) return normalizedMatch;
+
+  return null;
+}
+
 export interface SeamlessSearchResult {
   id: string;
   // The real Seamless.AI /search/contacts response identifies each result by
@@ -654,10 +729,17 @@ export function parseInstructionToFilters(instruction: string, country?: string)
   // Parsed company size is available in parsed.companySize but not applied to filters.
   // (Parsing logic in titleExpansionMap.ts is preserved for future UI dropdown use)
   
-  // Add industries if detected
+  // Add industries if detected — mapped to Seamless.AI's exact enum values (see
+  // mapToValidSeamlessIndustry), since an unrecognized value zeroes out the
+  // entire search rather than being ignored.
   if (parsed.industries && parsed.industries.length > 0) {
-    filters.industry = parsed.industries;
-    console.log(`[Seamless.AI] Industries: ${JSON.stringify(parsed.industries)}`);
+    const validIndustries = parsed.industries
+      .map((guess) => mapToValidSeamlessIndustry(guess))
+      .filter((v): v is string => v !== null);
+    if (validIndustries.length > 0) {
+      filters.industry = [...new Set(validIndustries)];
+      console.log(`[Seamless.AI] Industries mapped to valid enum: ${JSON.stringify(filters.industry)}`);
+    }
   }
   
   // Add countries (use provided country or parsed countries)
@@ -705,8 +787,19 @@ export async function parseInstructionToFiltersWithLLM(instruction: string, coun
     console.log(`[Seamless.AI] LLM-parsed job titles: ${JSON.stringify(llmResult.titles)}`);
   }
   if (llmResult.industries.length > 0) {
-    filters.industry = llmResult.industries;
-    console.log(`[Seamless.AI] LLM-parsed industries: ${JSON.stringify(llmResult.industries)}`);
+    // The LLM guesses free-text industry names (e.g. "E-commerce"), but Seamless.AI's
+    // industry filter only accepts an exact predefined enum (e.g. "Internet & E-Commerce")
+    // and zeroes out the entire search if given an unrecognized value — it does not
+    // just ignore it. Map each guess to the closest real enum value, or drop it.
+    const validIndustries = llmResult.industries
+      .map((guess) => mapToValidSeamlessIndustry(guess))
+      .filter((v): v is string => v !== null);
+    if (validIndustries.length > 0) {
+      filters.industry = [...new Set(validIndustries)];
+      console.log(`[Seamless.AI] LLM-parsed industries mapped to valid enum: ${JSON.stringify(filters.industry)} (from: ${JSON.stringify(llmResult.industries)})`);
+    } else {
+      console.log(`[Seamless.AI] LLM-parsed industries had no valid enum match, dropping industry filter: ${JSON.stringify(llmResult.industries)}`);
+    }
   }
 
   return filters;

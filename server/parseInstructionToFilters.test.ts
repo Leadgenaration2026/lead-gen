@@ -89,7 +89,7 @@ describe("parseInstructionToFilters", () => {
       const filters = parseInstructionToFilters("technology company owners");
       
       expect(filters.industry).toBeDefined();
-      expect(filters.industry).toContain("technology");
+      expect(filters.industry).toContain("Software & Information Technology");
     });
 
     it("should parse multiple industries", () => {
@@ -128,7 +128,7 @@ describe("parseInstructionToFilters", () => {
       
       expect(filters.jobTitle).toBeDefined();
       expect(filters.companyEmployeeCountMin).toBe(5001);
-      expect(filters.industry).toContain("finance");
+      expect(filters.industry).toContain("Finance & Banking");
     });
   });
 
