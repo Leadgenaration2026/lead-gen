@@ -1441,7 +1441,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
       {/* Seamless.AI Search Results — select which candidates to enrich and save */}
       <Dialog open={seamlessPreviewDialogOpen} onOpenChange={setSeamlessPreviewDialogOpen}>
-        <DialogContent className="max-w-[95vw] w-full sm:max-w-6xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-[98vw] w-full sm:max-w-7xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wand2 className="w-5 h-5" />
@@ -1521,19 +1521,19 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             </div>
             <div className="border rounded-md overflow-auto flex-1 max-h-[65vh]">
               <table className="w-full text-sm table-fixed">
-                <thead className="bg-muted/50 sticky top-0 z-10">
+                <thead>
                   <tr>
-                    <th className="p-3 w-10"></th>
-                    <th className="p-3 text-left font-medium w-32">Contact</th>
-                    <th className="p-3 text-left font-medium w-24">Engagement</th>
-                    <th className="p-3 text-left font-medium w-48">Title</th>
-                    <th className="p-3 text-left font-medium w-32">Company</th>
-                    <th className="p-3 text-left font-medium w-24">Industry</th>
-                    <th className="p-3 text-left font-medium w-24">Company Size</th>
-                    <th className="p-3 text-left font-medium w-32">Location</th>
-                    <th className="p-3 text-left font-medium w-16">Website</th>
-                    <th className="p-3 text-left font-medium w-16">LinkedIn</th>
-                    <th className="p-3 w-10"></th>
+                    <th className="p-3 w-10 sticky top-0 z-10 bg-muted/95 backdrop-blur"></th>
+                    <th className="p-3 text-left font-medium w-36 sticky top-0 z-10 bg-muted/95 backdrop-blur">Contact</th>
+                    <th className="p-3 text-left font-medium w-24 sticky top-0 z-10 bg-muted/95 backdrop-blur">Engagement</th>
+                    <th className="p-3 text-left font-medium w-56 sticky top-0 z-10 bg-muted/95 backdrop-blur">Title</th>
+                    <th className="p-3 text-left font-medium w-40 sticky top-0 z-10 bg-muted/95 backdrop-blur">Company</th>
+                    <th className="p-3 text-left font-medium w-40 sticky top-0 z-10 bg-muted/95 backdrop-blur">Industry</th>
+                    <th className="p-3 text-left font-medium w-24 sticky top-0 z-10 bg-muted/95 backdrop-blur">Company Size</th>
+                    <th className="p-3 text-left font-medium w-40 sticky top-0 z-10 bg-muted/95 backdrop-blur">Location</th>
+                    <th className="p-3 text-left font-medium w-16 sticky top-0 z-10 bg-muted/95 backdrop-blur">Website</th>
+                    <th className="p-3 text-left font-medium w-16 sticky top-0 z-10 bg-muted/95 backdrop-blur">LinkedIn</th>
+                    <th className="p-3 w-10 sticky top-0 z-10 bg-muted/95 backdrop-blur"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1553,7 +1553,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           }}
                         />
                       </td>
-                      <td className="p-3 font-medium align-top truncate" title={c.ownerName || "Unknown"}>{c.ownerName || "Unknown"}</td>
+                      <td className="p-3 font-medium align-top break-words">{c.ownerName || "Unknown"}</td>
                       <td className="p-3 align-top">
                         {isScoring ? (
                           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -1572,11 +1572,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => scoreEngagementForCandidates([c])}>Score</Button>
                         )}
                       </td>
-                      <td className="p-3 text-muted-foreground align-top truncate" title={c.jobTitle || ""}>{c.jobTitle || "—"}</td>
-                      <td className="p-3 text-muted-foreground align-top truncate" title={c.companyName}>{c.companyName}</td>
-                      <td className="p-3 text-muted-foreground align-top truncate" title={c.industry || ""}>{c.industry || "—"}</td>
-                      <td className="p-3 text-muted-foreground align-top truncate">{c.companySize || "—"}</td>
-                      <td className="p-3 text-muted-foreground align-top truncate" title={[c.city, c.state, c.country].filter(Boolean).join(", ")}>{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top break-words">{c.jobTitle || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top break-words">{c.companyName}</td>
+                      <td className="p-3 text-muted-foreground align-top break-words">{c.industry || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top break-words">{c.companySize || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top break-words">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
                       <td className="p-3 text-muted-foreground align-top">
                         {c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
