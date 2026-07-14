@@ -198,9 +198,16 @@ export async function computeEngagementMetrics(
     try {
       const websiteUrl = website.startsWith("http") ? website : `https://${website}`;
       const response = await fetch(websiteUrl, {
-        signal: AbortSignal.timeout(3000),
+        // 3s was too aggressive and false-flagged real sites that are just slow to
+        // respond (no CDN edge affinity from a server-side fetch, WAF challenges,
+        // etc.) as unreachable.
+        signal: AbortSignal.timeout(8000),
         redirect: "follow",
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
       });
 
       // Only count as loading if we get a real 2xx response
@@ -221,7 +228,17 @@ export async function computeEngagementMetrics(
           "namecheap", "register.com", "afternic"
         ];
 
-        const isParked = parkedIndicators.some(indicator => htmlLower.includes(indicator));
+        // Real, content-rich sites can innocently contain one of these phrases
+        // somewhere in the page (e.g. a blog post about a "coming soon" feature,
+        // a help article mentioning "page not found"). Only trust a substring
+        // match against the whole body on genuinely short pages; otherwise
+        // require the phrase to be in the <title> tag, which is where real
+        // parked-domain pages almost always put it.
+        const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+        const titleLower = (titleMatch?.[1] || "").toLowerCase();
+        const isParkedByTitle = parkedIndicators.some((indicator) => titleLower.includes(indicator));
+        const isParkedByShortContent = contentLength < 3000 && parkedIndicators.some((indicator) => htmlLower.includes(indicator));
+        const isParked = isParkedByTitle || isParkedByShortContent;
         const isTooShort = contentLength < 500; // Real websites have more than 500 chars of HTML
         const hasNoBody = !htmlLower.includes("<body") || (htmlLower.includes("<body") && html.replace(/<[^>]*>/g, "").trim().length < 50);
 

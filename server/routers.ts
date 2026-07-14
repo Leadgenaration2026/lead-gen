@@ -1082,7 +1082,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         const { computeEngagementMetrics } = await import("./engagementScoring");
         const results: Record<string, { score: number; metrics: any }> = {};
 
-        const batchSize = 3;
+        // These are independent I/O-bound lookups (LinkedIn + website fetch per
+        // candidate), so higher parallelism is safe from our side — the batch
+        // size/delay here is just being polite to the underlying data API, not
+        // working around a CPU bottleneck.
+        const batchSize = 6;
         for (let i = 0; i < input.candidates.length; i += batchSize) {
           const batch = input.candidates.slice(i, i + batchSize);
           await Promise.all(batch.map(async (c) => {
@@ -1094,7 +1098,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             }
           }));
           if (i + batchSize < input.candidates.length) {
-            await new Promise((r) => setTimeout(r, 500));
+            await new Promise((r) => setTimeout(r, 300));
           }
         }
 

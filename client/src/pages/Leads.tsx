@@ -336,10 +336,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       if (result.skippedAlreadyOwned > 0) {
         toast(`${result.skippedAlreadyOwned} matching contact(s) already in your system were skipped.`);
       }
-      // Auto-score engagement for the first page of results in the background —
+      // Auto-score engagement for the first several results in the background —
       // this needs a real LinkedIn + website lookup per candidate, so scoring
       // everything from a large search up front would make the popup slow.
-      scoreEngagementForCandidates(result.candidates.slice(0, 20));
+      // Kept small (10) so the initial auto-score feels fast; "Score More"
+      // covers the rest.
+      scoreEngagementForCandidates(result.candidates.slice(0, 10));
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to search Seamless.AI";
       toast.error(msg, { duration: 8000 });
@@ -1465,7 +1467,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     variant="ghost"
                     size="sm"
                     disabled={scoringEngagementIds.size > 0}
-                    onClick={() => scoreEngagementForCandidates(seamlessCandidates.filter((c) => !seamlessEngagementScores[c.searchResultId]).slice(0, 20))}
+                    onClick={() => scoreEngagementForCandidates(seamlessCandidates.filter((c) => !seamlessEngagementScores[c.searchResultId]).slice(0, 10))}
                   >
                     {scoringEngagementIds.size > 0 ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
                     Score More
@@ -1474,19 +1476,19 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               </div>
             </div>
             <div className="border rounded-md overflow-auto flex-1 max-h-[65vh]">
-              <table className="w-full text-sm whitespace-nowrap">
+              <table className="w-full text-sm table-fixed">
                 <thead className="bg-muted/50 sticky top-0 z-10">
                   <tr>
                     <th className="p-3 w-10"></th>
-                    <th className="p-3 text-left font-medium">Contact</th>
-                    <th className="p-3 text-left font-medium">Engagement</th>
-                    <th className="p-3 text-left font-medium">Title</th>
-                    <th className="p-3 text-left font-medium">Company</th>
-                    <th className="p-3 text-left font-medium">Industry</th>
-                    <th className="p-3 text-left font-medium">Company Size</th>
-                    <th className="p-3 text-left font-medium">Location</th>
-                    <th className="p-3 text-left font-medium">Website</th>
-                    <th className="p-3 text-left font-medium">LinkedIn</th>
+                    <th className="p-3 text-left font-medium w-32">Contact</th>
+                    <th className="p-3 text-left font-medium w-24">Engagement</th>
+                    <th className="p-3 text-left font-medium w-48">Title</th>
+                    <th className="p-3 text-left font-medium w-32">Company</th>
+                    <th className="p-3 text-left font-medium w-24">Industry</th>
+                    <th className="p-3 text-left font-medium w-24">Company Size</th>
+                    <th className="p-3 text-left font-medium w-32">Location</th>
+                    <th className="p-3 text-left font-medium w-16">Website</th>
+                    <th className="p-3 text-left font-medium w-16">LinkedIn</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1495,7 +1497,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     const isScoring = scoringEngagementIds.has(c.searchResultId);
                     return (
                     <tr key={c.searchResultId} className={`border-t hover:bg-muted/30 transition-colors ${!selectedSeamlessIds.has(c.searchResultId) ? 'opacity-50' : ''}`}>
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center align-top">
                         <Checkbox
                           checked={selectedSeamlessIds.has(c.searchResultId)}
                           onCheckedChange={(checked) => {
@@ -1506,8 +1508,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           }}
                         />
                       </td>
-                      <td className="p-3 font-medium">{c.ownerName || "Unknown"}</td>
-                      <td className="p-3">
+                      <td className="p-3 font-medium align-top truncate" title={c.ownerName || "Unknown"}>{c.ownerName || "Unknown"}</td>
+                      <td className="p-3 align-top">
                         {isScoring ? (
                           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                         ) : engagement ? (
@@ -1525,15 +1527,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => scoreEngagementForCandidates([c])}>Score</Button>
                         )}
                       </td>
-                      <td className="p-3 text-muted-foreground">{c.jobTitle || "—"}</td>
-                      <td className="p-3 text-muted-foreground">{c.companyName}</td>
-                      <td className="p-3 text-muted-foreground">{c.industry || "—"}</td>
-                      <td className="p-3 text-muted-foreground">{c.companySize || "—"}</td>
-                      <td className="p-3 text-muted-foreground">{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
-                      <td className="p-3 text-muted-foreground">
+                      <td className="p-3 text-muted-foreground align-top truncate" title={c.jobTitle || ""}>{c.jobTitle || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top truncate" title={c.companyName}>{c.companyName}</td>
+                      <td className="p-3 text-muted-foreground align-top truncate" title={c.industry || ""}>{c.industry || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top truncate">{c.companySize || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top truncate" title={[c.city, c.state, c.country].filter(Boolean).join(", ")}>{[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}</td>
+                      <td className="p-3 text-muted-foreground align-top">
                         {c.website ? <a href={c.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
-                      <td className="p-3 text-muted-foreground">
+                      <td className="p-3 text-muted-foreground align-top">
                         {c.linkedinUrl ? <a href={c.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
                     </tr>
