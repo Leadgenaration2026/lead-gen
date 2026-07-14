@@ -2113,14 +2113,29 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               </DialogContent>
             </Dialog>
             {!seamlessPreviewDialogOpen && seamlessCandidates.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full mt-2 text-violet-600 hover:text-violet-700"
-                onClick={() => setSeamlessPreviewDialogOpen(true)}
-              >
-                Resume Seamless.AI Results ({seamlessCandidates.length} pending)
-              </Button>
+              <div className="flex items-center gap-1 mt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 text-violet-600 hover:text-violet-700"
+                  onClick={() => setSeamlessPreviewDialogOpen(true)}
+                >
+                  Resume Seamless.AI Results ({seamlessCandidates.length} pending)
+                </Button>
+                <button
+                  onClick={() => {
+                    setSeamlessCandidates([]);
+                    setSelectedSeamlessIds(new Set());
+                    setSeamlessEngagementScores({});
+                    setScoringEngagementIds(new Set());
+                    toast("Discarded pending Seamless.AI results");
+                  }}
+                  className="text-muted-foreground hover:text-red-600 p-1"
+                  title="Discard these pending results"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </CardContent>
         </Card>
