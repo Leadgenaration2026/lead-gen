@@ -1,26 +1,33 @@
 /**
  * Engagement Scoring System (Unified)
- * 
- * Scores leads based on their LinkedIn activity and website presence.
- * Uses the built-in Manus LinkedIn Data API for reliable LinkedIn data.
- * 
- * Higher score = more active/influential = should be contacted first.
- * 
+ *
+ * Scores leads based on LinkedIn PROFILE signals (badges, endorsements, career
+ * history, headline seniority/authority keywords) and real website liveness —
+ * NOT actual activity like posts, likes, comments, or follower counts. The
+ * LinkedIn data source this app uses (Manus's built-in LinkedIn Data API) only
+ * returns static profile fields; it does not expose post/engagement activity
+ * data at all, so this score should be read as "profile strength + authority
+ * signals + real web presence," not "how active they are on LinkedIn."
+ *
+ * Higher score = stronger/more authoritative profile + real web presence =
+ * likely a better-qualified lead to contact first.
+ *
  * Score breakdown (0-100):
- * - LinkedIn activity: up to 75 points
+ * - LinkedIn profile signals: up to 75 points
  *   - Has LinkedIn profile at all: +15
  *   - Creator badge: +12
  *   - Top Voice badge: +12
  *   - Premium account: +8
  *   - High endorsements (>50): +10
  *   - Multiple positions (3+): +6
- *   - Leadership role in headline: +7
+ *   - Leadership role in headline (keyword match): +7
  *   - Detailed profile (summary >100 chars): +5
  * - Website presence: up to 25 points (ONLY if website actually loads)
  *   - Has a real, functioning website (not parked/expired/placeholder): +15
  *   - Website has real social media links (in href attributes): +5
  *   - Website confirmed loading successfully: +5
  *   - NOTE: Parked domains, expired sites, placeholder pages = 0 points
+ *   - NOTE: this checks liveness only, not recency/freshness of content
  */
 
 import * as db from "./db";
@@ -103,7 +110,7 @@ async function searchLinkedInByName(name: string, company?: string): Promise<str
 
 /**
  * Calculate engagement score (0-100) from collected metrics
- * Based on LinkedIn activity + Website presence only
+ * Based on LinkedIn profile signals + website liveness only
  */
 function calculateScore(metrics: EngagementMetrics): number {
   let score = 0;
@@ -133,23 +140,27 @@ function calculateScore(metrics: EngagementMetrics): number {
 }
 
 /**
- * Score a single lead's engagement based on their LinkedIn profile and website.
- * Updates the lead's engagementScore and engagementData in the database.
+ * Core scoring computation, independent of whether the lead is already saved
+ * to the database. Used both by scoreLeadEngagement() (saved leads) and by
+ * the Seamless.AI search preview (unsaved candidates, scored before the user
+ * decides whether to enrich/save them).
  */
-export async function scoreLeadEngagement(leadId: number): Promise<{ score: number; metrics: EngagementMetrics }> {
-  const lead = await db.getLeadById(leadId);
-  if (!lead) throw new Error(`Lead ${leadId} not found`);
-
+export async function computeEngagementMetrics(
+  linkedinUrl?: string | null,
+  ownerName?: string | null,
+  companyName?: string | null,
+  website?: string | null
+): Promise<{ score: number; metrics: EngagementMetrics }> {
   const metrics: EngagementMetrics = {
     scoredAt: new Date().toISOString(),
   };
 
   // 1. Score LinkedIn (primary signal — uses reliable built-in API)
-  let username = lead.linkedinUrl ? extractLinkedInUsername(lead.linkedinUrl) : null;
-  
+  let username = linkedinUrl ? extractLinkedInUsername(linkedinUrl) : null;
+
   // If no LinkedIn URL, try searching by name
-  if (!username && lead.ownerName) {
-    username = await searchLinkedInByName(lead.ownerName, lead.companyName);
+  if (!username && ownerName) {
+    username = await searchLinkedInByName(ownerName, companyName || undefined);
   }
 
   if (username) {
@@ -182,10 +193,10 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
   }
 
   // 2. Score Website (secondary signal) — strict validation
-  if (lead.website) {
+  if (website) {
     metrics.website = { exists: false, loadsSuccessfully: false, hasSocialLinks: false };
     try {
-      const websiteUrl = lead.website.startsWith("http") ? lead.website : `https://${lead.website}`;
+      const websiteUrl = website.startsWith("http") ? website : `https://${website}`;
       const response = await fetch(websiteUrl, {
         signal: AbortSignal.timeout(3000),
         redirect: "follow",
@@ -248,6 +259,18 @@ export async function scoreLeadEngagement(leadId: number): Promise<{ score: numb
   }
 
   const score = calculateScore(metrics);
+  return { score, metrics };
+}
+
+/**
+ * Score a single lead's engagement based on their LinkedIn profile and website.
+ * Updates the lead's engagementScore and engagementData in the database.
+ */
+export async function scoreLeadEngagement(leadId: number): Promise<{ score: number; metrics: EngagementMetrics }> {
+  const lead = await db.getLeadById(leadId);
+  if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+  const { score, metrics } = await computeEngagementMetrics(lead.linkedinUrl, lead.ownerName, lead.companyName, lead.website);
 
   // Update lead in database
   await db.updateLeadEngagement(leadId, score, metrics);

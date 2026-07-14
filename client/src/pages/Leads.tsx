@@ -61,6 +61,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const searchSeamlessPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
   const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
+  const scoreSeamlessEngagementMutation = trpc.leads.scoreSeamlessCandidatesEngagement.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
   const addLeadOverwriteMutation = trpc.leads.addManualOverwrite.useMutation();
@@ -168,6 +169,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [isSearchingSeamless, setIsSearchingSeamless] = useState(false);
   const [seamlessTotalAvailable, setSeamlessTotalAvailable] = useState<number | undefined>(undefined);
   const [seamlessSearchCredits, setSeamlessSearchCredits] = useState<number | undefined>(undefined);
+  const [seamlessEngagementScores, setSeamlessEngagementScores] = useState<Record<string, { score: number; metrics: any }>>({});
+  const [scoringEngagementIds, setScoringEngagementIds] = useState<Set<string>>(new Set());
+  const [seamlessDetailIndex, setSeamlessDetailIndex] = useState<number | null>(null);
+  const [selectFirstNInput, setSelectFirstNInput] = useState("");
 
   // Checkbox selection state
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
@@ -279,6 +284,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.success(`Generated ${result.count} new leads!${dupMsg}${seamlessMsg}`);
         setInstruction("");
         setGenerateLeadSetName("");
+        // New leads sort newest-first and land on page 1 — jump there so they're
+        // visible immediately instead of only after manually navigating back.
+        setCurrentPage(1);
       } else {
         toast.success(`Lead generation complete!`);
         setInstruction("");
@@ -323,10 +331,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSelectedSeamlessIds(new Set(result.candidates.map((c) => c.searchResultId))); // default: all selected
       setSeamlessTotalAvailable(result.totalAvailable);
       setSeamlessSearchCredits(result.estimatedSearchCredits);
+      setSeamlessEngagementScores({});
       setSeamlessPreviewDialogOpen(true);
       if (result.skippedAlreadyOwned > 0) {
         toast(`${result.skippedAlreadyOwned} matching contact(s) already in your system were skipped.`);
       }
+      // Auto-score engagement for the first page of results in the background —
+      // this needs a real LinkedIn + website lookup per candidate, so scoring
+      // everything from a large search up front would make the popup slow.
+      scoreEngagementForCandidates(result.candidates.slice(0, 20));
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to search Seamless.AI";
       toast.error(msg, { duration: 8000 });
@@ -335,7 +348,61 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
+  // Score engagement (LinkedIn + website) for a batch of preview candidates that
+  // haven't been scored yet. Runs in the background — doesn't block the UI.
+  const scoreEngagementForCandidates = async (candidates: typeof seamlessCandidates) => {
+    const toScore = candidates.filter(
+      (c) => !seamlessEngagementScores[c.searchResultId] && !scoringEngagementIds.has(c.searchResultId)
+    );
+    if (toScore.length === 0) return;
+
+    setScoringEngagementIds((prev) => new Set([...prev, ...toScore.map((c) => c.searchResultId)]));
+    try {
+      const result = await scoreSeamlessEngagementMutation.mutateAsync({
+        candidates: toScore.map((c) => ({
+          searchResultId: c.searchResultId,
+          linkedinUrl: c.linkedinUrl,
+          ownerName: c.ownerName,
+          companyName: c.companyName,
+          website: c.website,
+        })),
+      });
+      setSeamlessEngagementScores((prev) => ({ ...prev, ...result.results }));
+    } catch (error: any) {
+      console.warn("Engagement scoring failed:", error?.message);
+    } finally {
+      setScoringEngagementIds((prev) => {
+        const next = new Set(prev);
+        toScore.forEach((c) => next.delete(c.searchResultId));
+        return next;
+      });
+    }
+  };
+
   // Enrich + save only the candidates the user left checked
+  // Navigate the engagement-score detail view, auto-scoring the target candidate
+  // if it hasn't been scored yet.
+  const goToSeamlessDetail = (newIndex: number) => {
+    if (newIndex < 0 || newIndex >= seamlessCandidates.length) return;
+    setSeamlessDetailIndex(newIndex);
+    const next = seamlessCandidates[newIndex];
+    if (next && !seamlessEngagementScores[next.searchResultId] && !scoringEngagementIds.has(next.searchResultId)) {
+      scoreEngagementForCandidates([next]);
+    }
+  };
+
+  // Left/right arrow keys move through candidates while the detail view is open
+  useEffect(() => {
+    if (seamlessDetailIndex === null) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goToSeamlessDetail(seamlessDetailIndex - 1);
+      else if (e.key === "ArrowRight") goToSeamlessDetail(seamlessDetailIndex + 1);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seamlessDetailIndex, seamlessCandidates, seamlessEngagementScores, scoringEngagementIds]);
+
   const handleEnrichSeamlessSelection = async () => {
     const selected = seamlessCandidates.filter((c) => selectedSeamlessIds.has(c.searchResultId));
     if (selected.length === 0) {
@@ -359,6 +426,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setSelectedSeamlessIds(new Set());
         setInstruction("");
         setGenerateLeadSetName("");
+        // New leads sort newest-first and land on page 1 — jump there so they're
+        // visible immediately instead of only after manually navigating back.
+        setCurrentPage(1);
       }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
@@ -1363,9 +1433,44 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               <span className="font-medium">
                 {selectedSeamlessIds.size} of {seamlessCandidates.length} selected
               </span>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set(seamlessCandidates.map((c) => c.searchResultId)))}>Select All</Button>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set())}>Deselect All</Button>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 20"
+                    value={selectFirstNInput}
+                    onChange={(e) => setSelectFirstNInput(e.target.value)}
+                    className="h-8 w-20 text-xs"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const n = parseInt(selectFirstNInput, 10);
+                      if (!n || n < 1) {
+                        toast.error("Enter a number of leads to select");
+                        return;
+                      }
+                      setSelectedSeamlessIds(new Set(seamlessCandidates.slice(0, n).map((c) => c.searchResultId)));
+                    }}
+                  >
+                    Select First N
+                  </Button>
+                </div>
+                {seamlessCandidates.some((c) => !seamlessEngagementScores[c.searchResultId] && !scoringEngagementIds.has(c.searchResultId)) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={scoringEngagementIds.size > 0}
+                    onClick={() => scoreEngagementForCandidates(seamlessCandidates.filter((c) => !seamlessEngagementScores[c.searchResultId]).slice(0, 20))}
+                  >
+                    {scoringEngagementIds.size > 0 ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                    Score More
+                  </Button>
+                )}
               </div>
             </div>
             <div className="border rounded-md overflow-auto flex-1 max-h-[65vh]">
@@ -1374,6 +1479,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <tr>
                     <th className="p-3 w-10"></th>
                     <th className="p-3 text-left font-medium">Contact</th>
+                    <th className="p-3 text-left font-medium">Engagement</th>
                     <th className="p-3 text-left font-medium">Title</th>
                     <th className="p-3 text-left font-medium">Company</th>
                     <th className="p-3 text-left font-medium">Industry</th>
@@ -1384,7 +1490,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   </tr>
                 </thead>
                 <tbody>
-                  {seamlessCandidates.map((c) => (
+                  {seamlessCandidates.map((c, idx) => {
+                    const engagement = seamlessEngagementScores[c.searchResultId];
+                    const isScoring = scoringEngagementIds.has(c.searchResultId);
+                    return (
                     <tr key={c.searchResultId} className={`border-t hover:bg-muted/30 transition-colors ${!selectedSeamlessIds.has(c.searchResultId) ? 'opacity-50' : ''}`}>
                       <td className="p-3 text-center">
                         <Checkbox
@@ -1398,6 +1507,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                         />
                       </td>
                       <td className="p-3 font-medium">{c.ownerName || "Unknown"}</td>
+                      <td className="p-3">
+                        {isScoring ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        ) : engagement ? (
+                          <button
+                            onClick={() => setSeamlessDetailIndex(idx)}
+                            className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold cursor-pointer hover:ring-2 hover:ring-offset-1 ${
+                              engagement.score >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
+                              engagement.score >= 30 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
+                              "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                            }`}
+                          >
+                            {engagement.score}
+                          </button>
+                        ) : (
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => scoreEngagementForCandidates([c])}>Score</Button>
+                        )}
+                      </td>
                       <td className="p-3 text-muted-foreground">{c.jobTitle || "—"}</td>
                       <td className="p-3 text-muted-foreground">{c.companyName}</td>
                       <td className="p-3 text-muted-foreground">{c.industry || "—"}</td>
@@ -1410,11 +1537,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                         {c.linkedinUrl ? <a href={c.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">Phone and email aren't fetched yet — those are only looked up (and only cost credits) for the contacts you enrich below. Company size shown here comes directly from Seamless.AI's search results where available.</p>
+            <p className="text-xs text-muted-foreground">Phone and email aren't fetched yet — those are only looked up (and only cost credits) for the contacts you enrich below. Company size shown here comes directly from Seamless.AI's search results where available. Engagement score reflects LinkedIn profile strength + real website presence (not post/like activity, which Seamless.AI's data does not provide) — click a score to see the full breakdown.</p>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Button variant="outline" onClick={() => setSeamlessPreviewDialogOpen(false)}>Cancel</Button>
@@ -1426,6 +1554,97 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               Enrich {selectedSeamlessIds.size} Selected
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Engagement score detail view — navigate left/right through candidates without closing the popup */}
+      <Dialog open={seamlessDetailIndex !== null} onOpenChange={(open) => { if (!open) setSeamlessDetailIndex(null); }}>
+        <DialogContent className="max-w-md">
+          {seamlessDetailIndex !== null && seamlessCandidates[seamlessDetailIndex] && (() => {
+            const candidate = seamlessCandidates[seamlessDetailIndex];
+            const engagement = seamlessEngagementScores[candidate.searchResultId];
+            const metrics = engagement?.metrics;
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center justify-between">
+                    <span>{candidate.ownerName || "Unknown"}</span>
+                    <span className="text-xs font-normal text-muted-foreground">{seamlessDetailIndex + 1} of {seamlessCandidates.length}</span>
+                  </DialogTitle>
+                  <DialogDescription>{candidate.jobTitle || "—"} at {candidate.companyName}</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {scoringEngagementIds.has(candidate.searchResultId) ? (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" /> Scoring engagement...
+                    </div>
+                  ) : engagement ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">Engagement Score</span>
+                        <span className={`text-sm font-bold ${
+                          engagement.score >= 50 ? "text-green-600" :
+                          engagement.score >= 30 ? "text-yellow-600" :
+                          "text-gray-600"
+                        }`}>{engagement.score}/100</span>
+                      </div>
+                      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${
+                          engagement.score >= 50 ? "bg-green-500" :
+                          engagement.score >= 30 ? "bg-yellow-500" :
+                          "bg-gray-400"
+                        }`} style={{ width: `${engagement.score}%` }} />
+                      </div>
+                      <div className="space-y-1.5 pt-1 border-t">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">LinkedIn (up to 75 pts)</p>
+                        {metrics?.linkedin ? (
+                          <div className="space-y-0.5">
+                            {metrics.linkedin.hasProfile && <div className="flex justify-between text-xs"><span>Has LinkedIn profile</span><span className="text-green-600 font-medium">+15</span></div>}
+                            {metrics.linkedin.isCreator && <div className="flex justify-between text-xs"><span>Creator badge</span><span className="text-green-600 font-medium">+12</span></div>}
+                            {metrics.linkedin.isTopVoice && <div className="flex justify-between text-xs"><span>Top Voice badge</span><span className="text-green-600 font-medium">+12</span></div>}
+                            {metrics.linkedin.isPremium && <div className="flex justify-between text-xs"><span>Premium account</span><span className="text-green-600 font-medium">+8</span></div>}
+                            {metrics.linkedin.endorsements > 50 && <div className="flex justify-between text-xs"><span>High endorsements ({metrics.linkedin.endorsements})</span><span className="text-green-600 font-medium">+10</span></div>}
+                            {metrics.linkedin.positions >= 3 && <div className="flex justify-between text-xs"><span>Multiple positions ({metrics.linkedin.positions})</span><span className="text-green-600 font-medium">+6</span></div>}
+                            {metrics.linkedin.hasLeadershipRole && <div className="flex justify-between text-xs"><span>Leadership role</span><span className="text-green-600 font-medium">+7</span></div>}
+                            {metrics.linkedin.hasDetailedProfile && <div className="flex justify-between text-xs"><span>Detailed profile</span><span className="text-green-600 font-medium">+5</span></div>}
+                            {metrics.linkedin.headline && <div className="text-xs text-muted-foreground mt-1 italic truncate">"{metrics.linkedin.headline}"</div>}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No LinkedIn data available</p>
+                        )}
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide pt-1">Website (up to 25 pts)</p>
+                        {metrics?.website?.loadsSuccessfully ? (
+                          <div className="space-y-0.5">
+                            <div className="flex justify-between text-xs"><span>Real website confirmed</span><span className="text-green-600 font-medium">+15</span></div>
+                            {metrics.website.hasSocialLinks && <div className="flex justify-between text-xs"><span>Social links on site</span><span className="text-green-600 font-medium">+5</span></div>}
+                            <div className="flex justify-between text-xs"><span>Loads successfully</span><span className="text-green-600 font-medium">+5</span></div>
+                          </div>
+                        ) : metrics?.website?.exists ? (
+                          <div className="flex justify-between text-xs"><span className="text-red-500">Website doesn't load / parked domain</span><span className="text-red-500 font-medium">+0</span></div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No website found</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-6">
+                      <p className="text-sm text-muted-foreground">Not scored yet</p>
+                      <Button size="sm" onClick={() => scoreEngagementForCandidates([candidate])}>Score Now</Button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t">
+                  <Button variant="outline" size="sm" disabled={seamlessDetailIndex === 0} onClick={() => goToSeamlessDetail(seamlessDetailIndex - 1)}>
+                    ← Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground">Use ← → arrow keys too</span>
+                  <Button variant="outline" size="sm" disabled={seamlessDetailIndex === seamlessCandidates.length - 1} onClick={() => goToSeamlessDetail(seamlessDetailIndex + 1)}>
+                    Next →
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

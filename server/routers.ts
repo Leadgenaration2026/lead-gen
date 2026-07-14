@@ -212,16 +212,17 @@ export const appRouter = router({
             }
           });
         }
-        // Auto-score social media activity in background (non-blocking)
+        // Auto-score engagement in background (non-blocking) — uses the real
+        // engagementScoring.ts scorer (LinkedIn profile signals + website liveness),
+        // which sets both engagementScore/engagementData and socialMediaScore
+        // together, so this lead never ends up with a placeholder score.
         setImmediate(async () => {
           try {
-            const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
-            const scoring = await scoreLeadSocialMedia(input.linkedinUrl, input.ownerName, input.companyName);
-            await db.updateLead(leadId, { socialMediaScore: scoring.score });
-            console.log(`[SocialScoring] Lead ${leadId} scored: ${scoring.score} (${scoring.signals.join(", ")})`);
+            const { scoreLeadEngagement } = await import("./engagementScoring");
+            await scoreLeadEngagement(leadId);
+            console.log(`[Engagement] Lead ${leadId} scored`);
           } catch (e: any) {
-            console.warn(`[SocialScoring] Failed for lead ${leadId}:`, e.message);
-            await db.updateLead(leadId, { socialMediaScore: "low" });
+            console.warn(`[Engagement] Failed for lead ${leadId}:`, e.message);
           }
         });
       }
@@ -426,18 +427,16 @@ export const appRouter = router({
           userId: ctx.user.id,
           status: "new",
         });
-        // Auto-score social media activity in background
+        // Auto-score engagement in background
         const newLeadId = (result as any)[0]?.insertId;
         if (newLeadId) {
           setImmediate(async () => {
             try {
-              const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
-              const scoring = await scoreLeadSocialMedia(input.linkedinUrl, input.ownerName, input.companyName);
-              await db.updateLead(newLeadId, { socialMediaScore: scoring.score });
-              console.log(`[SocialScoring] Manual lead ${newLeadId} scored: ${scoring.score}`);
+              const { scoreLeadEngagement } = await import("./engagementScoring");
+              await scoreLeadEngagement(newLeadId);
+              console.log(`[Engagement] Manual lead ${newLeadId} scored`);
             } catch (e: any) {
-              console.warn(`[SocialScoring] Failed for manual lead ${newLeadId}:`, e.message);
-              await db.updateLead(newLeadId, { socialMediaScore: "low" });
+              console.warn(`[Engagement] Failed for manual lead ${newLeadId}:`, e.message);
             }
           });
           // Auto-verify email via Bouncer in background
@@ -868,28 +867,18 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           }
         });
 
-        // Auto-score social media activity for AI-generated leads in background
+        // Auto-score engagement for AI-generated leads in background
         setImmediate(async () => {
           try {
-            const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
+            const { scoreLeadsBatch } = await import("./engagementScoring");
             const allLeads = await db.getLeadsByUserId(ctx.user.id);
-            for (let i = 0; i < uniqueLeadsData.length; i += 3) {
-              const batch = uniqueLeadsData.slice(i, i + 3);
-              await Promise.all(batch.map(async (leadData) => {
-                const matchingLead = allLeads.find(l => l.email === leadData.email);
-                if (!matchingLead) return;
-                try {
-                  const scoring = await scoreLeadSocialMedia(leadData.linkedinUrl, leadData.ownerName, leadData.companyName);
-                  await db.updateLead(matchingLead.id, { socialMediaScore: scoring.score });
-                } catch (e: any) {
-                  await db.updateLead(matchingLead.id, { socialMediaScore: "low" });
-                }
-              }));
-              if (i + 3 < uniqueLeadsData.length) await new Promise(r => setTimeout(r, 500));
-            }
-            console.log(`[SocialScoring] AI-generated leads batch scored`);
+            const matchingIds = uniqueLeadsData
+              .map((leadData) => allLeads.find((l) => l.email === leadData.email)?.id)
+              .filter((id): id is number => !!id);
+            await scoreLeadsBatch(matchingIds);
+            console.log(`[Engagement] AI-generated leads batch scored`);
           } catch (e: any) {
-            console.warn("[SocialScoring] AI batch scoring failed:", e.message);
+            console.warn("[Engagement] AI batch scoring failed:", e.message);
           }
         });
 
@@ -1073,6 +1062,45 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         };
       }),
 
+    // Score engagement (LinkedIn profile signals + website liveness) for unsaved
+    // Seamless.AI preview candidates, before the user decides whether to enrich/
+    // save them. Uses the raw linkedinUrl/website already present pre-enrichment
+    // (no Seamless.AI credits involved) — a separate, real LinkedIn + website
+    // lookup per candidate, so callers should batch this (e.g. first ~20 visible
+    // results) rather than requesting all candidates from a large search at once.
+    scoreSeamlessCandidatesEngagement: protectedProcedure
+      .input(z.object({
+        candidates: z.array(z.object({
+          searchResultId: z.string(),
+          linkedinUrl: z.string().optional(),
+          ownerName: z.string().optional(),
+          companyName: z.string().optional(),
+          website: z.string().optional(),
+        })).min(1).max(50),
+      }))
+      .mutation(async ({ input }) => {
+        const { computeEngagementMetrics } = await import("./engagementScoring");
+        const results: Record<string, { score: number; metrics: any }> = {};
+
+        const batchSize = 3;
+        for (let i = 0; i < input.candidates.length; i += batchSize) {
+          const batch = input.candidates.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (c) => {
+            try {
+              const { score, metrics } = await computeEngagementMetrics(c.linkedinUrl, c.ownerName, c.companyName, c.website);
+              results[c.searchResultId] = { score, metrics };
+            } catch (e: any) {
+              console.warn(`[Engagement] Preview scoring failed for ${c.searchResultId}:`, e.message);
+            }
+          }));
+          if (i + batchSize < input.candidates.length) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+
+        return { results };
+      }),
+
     // CSV Import - bulk upload leads
     csvImport: protectedProcedure
       .input(z.object({
@@ -1187,29 +1215,16 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         
         console.log(`[CSV Import] Completed: ${createdLeads.length} imported, ${duplicates.length} duplicates, ${errors.length} errors`);
         
-        // Auto-score social media activity for imported leads in background
+        // Auto-score engagement for imported leads in background
         const importedIds = createdLeads.filter(Boolean).map(Number);
         if (importedIds.length > 0) {
           setImmediate(async () => {
             try {
-              const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
-              for (let i = 0; i < importedIds.length; i += 3) {
-                const batch = importedIds.slice(i, i + 3);
-                await Promise.all(batch.map(async (lid) => {
-                  try {
-                    const lead = await db.getLeadById(lid);
-                    if (!lead) return;
-                    const scoring = await scoreLeadSocialMedia(lead.linkedinUrl, lead.ownerName, lead.companyName);
-                    await db.updateLead(lid, { socialMediaScore: scoring.score });
-                  } catch (e: any) {
-                    await db.updateLead(lid, { socialMediaScore: "low" });
-                  }
-                }));
-                if (i + 3 < importedIds.length) await new Promise(r => setTimeout(r, 500));
-              }
-              console.log(`[SocialScoring] CSV import batch scored ${importedIds.length} leads`);
+              const { scoreLeadsBatch } = await import("./engagementScoring");
+              await scoreLeadsBatch(importedIds);
+              console.log(`[Engagement] CSV import batch scored ${importedIds.length} leads`);
             } catch (e: any) {
-              console.warn(`[SocialScoring] CSV batch scoring failed:`, e.message);
+              console.warn(`[Engagement] CSV batch scoring failed:`, e.message);
             }
           });
 
@@ -1293,29 +1308,16 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
           }
         }
-        // Auto-score social media activity for overwritten leads in background
+        // Auto-score engagement for overwritten leads in background
         const upsertedIds = upsertedLeads.filter(Boolean).map(Number);
         if (upsertedIds.length > 0) {
           setImmediate(async () => {
             try {
-              const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
-              for (let i = 0; i < upsertedIds.length; i += 3) {
-                const batch = upsertedIds.slice(i, i + 3);
-                await Promise.all(batch.map(async (lid) => {
-                  try {
-                    const lead = await db.getLeadById(lid);
-                    if (!lead) return;
-                    const scoring = await scoreLeadSocialMedia(lead.linkedinUrl, lead.ownerName, lead.companyName);
-                    await db.updateLead(lid, { socialMediaScore: scoring.score });
-                  } catch (e: any) {
-                    await db.updateLead(lid, { socialMediaScore: "low" });
-                  }
-                }));
-                if (i + 3 < upsertedIds.length) await new Promise(r => setTimeout(r, 500));
-              }
-              console.log(`[SocialScoring] CSV overwrite batch scored ${upsertedIds.length} leads`);
+              const { scoreLeadsBatch } = await import("./engagementScoring");
+              await scoreLeadsBatch(upsertedIds);
+              console.log(`[Engagement] CSV overwrite batch scored ${upsertedIds.length} leads`);
             } catch (e: any) {
-              console.warn(`[SocialScoring] CSV overwrite batch scoring failed:`, e.message);
+              console.warn(`[Engagement] CSV overwrite batch scoring failed:`, e.message);
             }
           });
 
@@ -1687,64 +1689,6 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         };
       }),
 
-    // Score social media activity for a single lead
-    scoreSocialMedia: protectedProcedure
-      .input(z.number())
-      .mutation(async ({ input: leadId, ctx }) => {
-        const lead = await db.getLeadById(leadId);
-        if (!lead || lead.userId !== ctx.user.id) {
-          throw new TRPCError({ code: "NOT_FOUND" });
-        }
-        const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
-        const result = await scoreLeadSocialMedia(lead.linkedinUrl, lead.ownerName, lead.companyName);
-        await db.updateLead(leadId, { socialMediaScore: result.score });
-        return { leadId, score: result.score, signals: result.signals };
-      }),
-
-    // Score social media activity for multiple leads (batch)
-    scoreSocialMediaBatch: protectedProcedure
-      .input(z.object({
-        leadIds: z.array(z.number()),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        const userLeads = await db.getLeadsByUserId(ctx.user.id);
-        const userLeadIds = new Set(userLeads.map(l => l.id));
-        const validIds = input.leadIds.filter(id => userLeadIds.has(id));
-        
-        if (validIds.length === 0) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "No valid leads to score" });
-        }
-
-        const { scoreLeadSocialMedia } = await import("./socialMediaScoring");
-        const results: Array<{ leadId: number; score: string; signals: string[] }> = [];
-        
-        // Process in batches of 3 to avoid rate limiting
-        for (let i = 0; i < validIds.length; i += 3) {
-          const batch = validIds.slice(i, i + 3);
-          const batchResults = await Promise.all(
-            batch.map(async (leadId) => {
-              const lead = userLeads.find(l => l.id === leadId);
-              if (!lead) return null;
-              try {
-                const result = await scoreLeadSocialMedia(lead.linkedinUrl, lead.ownerName, lead.companyName);
-                await db.updateLead(leadId, { socialMediaScore: result.score });
-                return { leadId, score: result.score, signals: result.signals };
-              } catch (e: any) {
-                console.warn(`[SocialScoring] Failed for lead ${leadId}:`, e.message);
-                await db.updateLead(leadId, { socialMediaScore: "low" });
-                return { leadId, score: "low", signals: ["Scoring failed"] };
-              }
-            })
-          );
-          results.push(...batchResults.filter(Boolean) as any);
-          // Small delay between batches
-          if (i + 3 < validIds.length) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        }
-        
-        return { scored: results.length, results };
-      }),
   }),
 
   // Campaigns router
