@@ -1335,11 +1335,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <p className="text-sm text-muted-foreground">
               Uncheck any contacts you don't want. Only checked contacts will be enriched (phone and email lookup) and cost credits.
             </p>
-            {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
-              <p className="text-xs bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 rounded-md p-2">
-                Showing {seamlessCandidates.length} of <strong>{seamlessTotalAvailable} total</strong> matching contacts on Seamless.AI. Increase "Number of Leads" and search again to pull more.
-              </p>
-            )}
+            <div className="flex items-center gap-4 bg-blue-50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-300 rounded-md p-3 text-sm">
+              <div>
+                Available on Seamless.AI: <strong className="text-base">{typeof seamlessTotalAvailable === "number" ? seamlessTotalAvailable.toLocaleString() : "—"}</strong>
+              </div>
+              <div className="text-blue-400 dark:text-blue-700">|</div>
+              <div>
+                Extracted now: <strong className="text-base">{seamlessCandidates.length.toLocaleString()}</strong>
+              </div>
+              {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
+                <span className="text-xs text-blue-700 dark:text-blue-400">Increase "Number of Leads" and search again to pull more.</span>
+              )}
+            </div>
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">
                 {selectedSeamlessIds.size} of {seamlessCandidates.length} selected

@@ -187,10 +187,17 @@ async function seamlessRequest(
   const response = await fetch(url, options);
   const responseText = await response.text();
   const contentType = response.headers.get("content-type");
-  
+
   console.log(`[Seamless.AI] Response status: ${response.status}`);
   const elapsedTime = Date.now() - startTime;
   console.log(`[Seamless.AI] Content-Type: ${contentType}`);
+  // Per Seamless.AI's official docs, every response includes an X-PublicAPI-Credits
+  // header reporting actual credit usage — log it so real per-call cost can be
+  // confirmed directly instead of inferred from before/after dashboard numbers.
+  const creditsHeader = response.headers.get("x-publicapi-credits");
+  if (creditsHeader !== null) {
+    console.log(`[Seamless.AI] X-PublicAPI-Credits: ${creditsHeader} (${method} ${path})`);
+  }
   if (responseText) {
     console.log(`[Seamless.AI] Response body (first 500 chars):`, responseText.substring(0, 500));
   }
