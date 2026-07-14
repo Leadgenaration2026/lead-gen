@@ -62,6 +62,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const searchSeamlessPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
   const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const scoreSeamlessEngagementMutation = trpc.leads.scoreSeamlessCandidatesEngagement.useMutation();
+  const excludeSeamlessContactsMutation = trpc.leads.excludeSeamlessContacts.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
   const addLeadOverwriteMutation = trpc.leads.addManualOverwrite.useMutation();
@@ -320,9 +321,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       });
 
       if (result.candidates.length === 0) {
-        const ownedMsg = result.skippedAlreadyOwned > 0
-          ? ` (${result.skippedAlreadyOwned} matched but are already in your system)`
-          : "";
+        const reasons = [
+          result.skippedAlreadyOwned > 0 ? `${result.skippedAlreadyOwned} already in your system` : null,
+          result.skippedExcluded > 0 ? `${result.skippedExcluded} previously deleted by you` : null,
+        ].filter(Boolean);
+        const ownedMsg = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
         toast.error(`No new contacts found${ownedMsg}. Try different search criteria or location.`, { duration: 8000 });
         return;
       }
@@ -333,8 +336,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSeamlessSearchCredits(result.estimatedSearchCredits);
       setSeamlessEngagementScores({});
       setSeamlessPreviewDialogOpen(true);
-      if (result.skippedAlreadyOwned > 0) {
-        toast(`${result.skippedAlreadyOwned} matching contact(s) already in your system were skipped.`);
+      const skipMessages = [
+        result.skippedAlreadyOwned > 0 ? `${result.skippedAlreadyOwned} already in your system` : null,
+        result.skippedExcluded > 0 ? `${result.skippedExcluded} previously deleted by you` : null,
+      ].filter(Boolean);
+      if (skipMessages.length > 0) {
+        toast(`Skipped ${skipMessages.join(" and ")}.`);
       }
       // Auto-score engagement for the first several results in the background —
       // this needs a real LinkedIn + website lookup per candidate, so scoring
@@ -463,6 +470,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   };
 
   // Permanently discard a candidate the user doesn't want, without enriching it.
+  // Recorded server-side so it never shows up again in a future search.
   const handleRemoveSeamlessCandidate = (searchResultId: string) => {
     const remaining = seamlessCandidates.filter((c) => c.searchResultId !== searchResultId);
     setSeamlessCandidates(remaining);
@@ -476,6 +484,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       delete next[searchResultId];
       return next;
     });
+    excludeSeamlessContactsMutation.mutate({ searchResultIds: [searchResultId] });
     if (remaining.length === 0) {
       setSeamlessPreviewDialogOpen(false);
     }
@@ -2124,11 +2133,14 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </Button>
                 <button
                   onClick={() => {
+                    excludeSeamlessContactsMutation.mutate({
+                      searchResultIds: seamlessCandidates.map((c) => c.searchResultId),
+                    });
                     setSeamlessCandidates([]);
                     setSelectedSeamlessIds(new Set());
                     setSeamlessEngagementScores({});
                     setScoringEngagementIds(new Set());
-                    toast("Discarded pending Seamless.AI results");
+                    toast("Discarded pending Seamless.AI results — they won't show up in future searches");
                   }}
                   className="text-muted-foreground hover:text-red-600 p-1"
                   title="Discard these pending results"

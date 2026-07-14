@@ -540,6 +540,62 @@ export async function getLeadsBySeamlessIds(seamlessIds: string[], userId: numbe
   );
 }
 
+// Tracks Seamless.AI contacts a user has explicitly deleted/discarded from a
+// search preview (not saved as leads), so future searches never show them
+// again. This project's schema changes require manually running
+// `drizzle-kit generate && migrate` against the live database, which isn't
+// something this environment has credentials to do -- so this table is
+// created lazily (idempotent, isolated from the existing `leads` table)
+// the first time it's needed, using the same DB connection the app already has.
+let excludedSeamlessTableReady = false;
+async function ensureExcludedSeamlessContactsTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (excludedSeamlessTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS excludedSeamlessContacts (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      seamlessId VARCHAR(255) NOT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      UNIQUE KEY excludedSeamlessContacts_user_seamless (userId, seamlessId)
+    )
+  `);
+  excludedSeamlessTableReady = true;
+}
+
+export async function excludeSeamlessContacts(userId: number, seamlessIds: string[]) {
+  const database = await getDb();
+  if (!database || seamlessIds.length === 0) return;
+  try {
+    await ensureExcludedSeamlessContactsTable(database);
+    const values = sql.join(
+      seamlessIds.map((id) => sql`(${userId}, ${id})`),
+      sql`, `
+    );
+    await database.execute(sql`INSERT IGNORE INTO excludedSeamlessContacts (userId, seamlessId) VALUES ${values}`);
+  } catch (error) {
+    console.error("[excludeSeamlessContacts] Failed:", error);
+  }
+}
+
+export async function getExcludedSeamlessContactIds(userId: number, seamlessIds: string[]): Promise<Set<string>> {
+  const database = await getDb();
+  if (!database || seamlessIds.length === 0) return new Set();
+  try {
+    await ensureExcludedSeamlessContactsTable(database);
+    const idList = sql.join(seamlessIds.map((id) => sql`${id}`), sql`, `);
+    const result: any = await database.execute(
+      sql`SELECT seamlessId FROM excludedSeamlessContacts WHERE userId = ${userId} AND seamlessId IN (${idList})`
+    );
+    // mysql2's raw execute() can return either `rows` directly or a
+    // `[rows, fields]` tuple depending on driver/version — handle both.
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    return new Set(rows.map((r: any) => r.seamlessId));
+  } catch (error) {
+    console.error("[getExcludedSeamlessContactIds] Failed:", error);
+    return new Set();
+  }
+}
+
 // ============ Scheduled Emails ============
 export async function createScheduledEmail(data: Omit<InsertScheduledEmail, "id" | "createdAt" | "updatedAt">) {
   const database = await getDb();

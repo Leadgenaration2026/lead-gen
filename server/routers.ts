@@ -936,17 +936,37 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         );
 
         if (candidates.length === 0) {
-          return { candidates: [], skippedAlreadyOwned: 0, totalAvailable, estimatedSearchCredits };
+          return { candidates: [], skippedAlreadyOwned: 0, skippedExcluded: 0, totalAvailable, estimatedSearchCredits };
         }
 
         // Skip candidates already saved as leads — no point showing them again
         const seamlessIds = candidates.map((c) => c.searchResultId).filter(Boolean);
         const alreadyOwned = seamlessIds.length > 0 ? await db.getLeadsBySeamlessIds(seamlessIds, ctx.user.id) : [];
         const ownedIds = new Set(alreadyOwned.map((l: any) => l.seamlessId));
-        const filtered = candidates.filter((c) => !ownedIds.has(c.searchResultId));
+        let filtered = candidates.filter((c) => !ownedIds.has(c.searchResultId));
         const skippedAlreadyOwned = candidates.length - filtered.length;
 
-        return { candidates: filtered, skippedAlreadyOwned, totalAvailable, estimatedSearchCredits };
+        // Skip candidates the user previously deleted/discarded from a search
+        // preview — they explicitly said no to these, so never show them again.
+        const remainingIds = filtered.map((c) => c.searchResultId).filter(Boolean);
+        const excludedIds = remainingIds.length > 0 ? await db.getExcludedSeamlessContactIds(ctx.user.id, remainingIds) : new Set<string>();
+        const beforeExcludedFilter = filtered.length;
+        filtered = filtered.filter((c) => !excludedIds.has(c.searchResultId));
+        const skippedExcluded = beforeExcludedFilter - filtered.length;
+
+        return { candidates: filtered, skippedAlreadyOwned, skippedExcluded, totalAvailable, estimatedSearchCredits };
+      }),
+
+    // Permanently mark Seamless.AI contacts as excluded so future searches
+    // never show them again (used when the user deletes/discards candidates
+    // from a search preview without enriching them).
+    excludeSeamlessContacts: protectedProcedure
+      .input(z.object({
+        searchResultIds: z.array(z.string()).min(1).max(1000),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await db.excludeSeamlessContacts(ctx.user.id, input.searchResultIds);
+        return { success: true };
       }),
 
     // Enrich only the candidates the user selected from searchSeamlessPreview,
