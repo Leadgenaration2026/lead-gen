@@ -1117,8 +1117,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         matchesListFilter = !lead.leadSetId;
       } else if (filterLeadSet !== "all") {
         matchesListFilter = lead.leadSetId === parseInt(filterLeadSet);
+      } else {
+        // Both filters at their default "show everything" state. Once a lead
+        // has been tagged, it should only be found by explicitly selecting
+        // that tag (or "Unassigned"/a specific imported list) — not show up
+        // in this general default view too.
+        matchesListFilter = !lead.leadSetId;
       }
-      // If filterLeadSet === "all" and filterSourceListId === "all", show all leads
       const matchesIndustry =
         filterIndustry === "all" || lead.industry === filterIndustry;
       
