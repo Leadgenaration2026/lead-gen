@@ -373,6 +373,15 @@ export async function searchContacts(
         console.log("\n[DEBUG] FULL FIRST RAW RESULT (all fields):");
         console.log(JSON.stringify(response.data[0], null, 2));
       }
+      // Full top-level response shape (minus the data array, which can be huge) —
+      // "Total Results" above is reading response.supplementalData?.totalResults,
+      // but if that's always undefined the code silently falls back to just the
+      // count of results actually returned, which looks identical to "total
+      // matches the requested count" even when far more actually exist. Log the
+      // full envelope so the real total-count field name can be confirmed.
+      const { data: _omitted, ...responseEnvelope } = response;
+      console.log("\n[DEBUG] FULL RESPONSE ENVELOPE (excluding data array):");
+      console.log(JSON.stringify(responseEnvelope, null, 2));
     }
     
     let pageData: SeamlessSearchResult[] = response.data || [];
