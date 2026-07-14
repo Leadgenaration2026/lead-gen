@@ -925,6 +925,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         count: z.number().min(1).max(1000),
         country: z.string().optional(),
         state: z.string().optional(),
+        companySize: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
@@ -941,7 +942,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           input.instruction,
           input.count,
           input.country,
-          input.state
+          input.state,
+          input.companySize
         );
 
         if (candidates.length === 0) {

@@ -16,6 +16,21 @@ import { logSeamlessAIRequest } from "./seamlessAIDebug";
 
 const SEAMLESS_API_BASE = "https://api.seamless.ai/api/client/v1";
 
+// Exact enum values Seamless.AI's companySize search filter accepts, confirmed via
+// their official API docs (docs.seamless.ai/searchcontacts). This is the real
+// employee-count filter — a predefined range string, not a numeric min/max pair.
+export const SEAMLESS_COMPANY_SIZE_OPTIONS = [
+  "0 - 1 (Self-employed)",
+  "2 - 10",
+  "11 - 50",
+  "51 - 200",
+  "201 - 500",
+  "501 - 1,000",
+  "1,001 - 5,000",
+  "5,001 - 10,000",
+  "10,001+",
+] as const;
+
 export interface SeamlessSearchResult {
   id: string;
   // The real Seamless.AI /search/contacts response identifies each result by
@@ -290,6 +305,7 @@ export async function searchContacts(
     industry?: string[];
     contactCountry?: string[];
     contactState?: string[];
+    companySize?: string[];
     companyEmployeeCountMin?: number;
     companyEmployeeCountMax?: number;
     limit?: number;
@@ -325,10 +341,12 @@ export async function searchContacts(
   if (filters.country) body.country = filters.country;
   if (filters.contactCountry?.length) body.contactCountry = filters.contactCountry;
   if (filters.contactState?.length) body.contactState = filters.contactState;
-  // NOTE: Seamless.AI API does NOT support employee count filtering
-  // We will do post-filtering instead
-  // if (filters.companyEmployeeCountMin !== undefined) body.companyEmployeeCountMin = filters.companyEmployeeCountMin;
-  // if (filters.companyEmployeeCountMax !== undefined) body.companyEmployeeCountMax = filters.companyEmployeeCountMax;
+  // Confirmed via Seamless.AI's official docs: the real employee-count filter is
+  // "companySize", an array of specific predefined range strings (e.g. "201 - 500"),
+  // not a numeric min/max pair — companyEmployeeCountMin/Max below are unrelated to
+  // this and are not real API parameters (kept only for the separate free-text size
+  // parsing feature, not applied to search).
+  if (filters.companySize?.length) body.companySize = filters.companySize;
   if (filters.firstName) body.firstName = filters.firstName;
   if (filters.lastName) body.lastName = filters.lastName;
   body.limit = pageSize;
@@ -721,7 +739,8 @@ export async function searchAndFilterSeamlessCandidates(
   instruction: string,
   count: number,
   country?: string,
-  state?: string
+  state?: string,
+  companySize?: string
 ): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (country) {
@@ -729,6 +748,9 @@ export async function searchAndFilterSeamlessCandidates(
   }
   if (state) {
     filters.contactState = [state];
+  }
+  if (companySize) {
+    filters.companySize = [companySize];
   }
 
   const result = await getSeamlessLeads(apiKey, filters, count);

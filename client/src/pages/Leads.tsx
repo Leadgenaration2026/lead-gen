@@ -145,6 +145,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [generateSource, setGenerateSource] = useState<"ai" | "seamless" | "seamless_csv">("ai");
   const [generateCountry, setGenerateCountry] = useState("");
   const [generateState, setGenerateState] = useState("");
+  const [generateCompanySize, setGenerateCompanySize] = useState("");
   const [csvLeadSetName, setCsvLeadSetName] = useState("");
 
   // Seamless.AI search -> select -> enrich preview flow
@@ -307,6 +308,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         count,
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
+        companySize: generateCompanySize && generateCompanySize !== "any" ? generateCompanySize : undefined,
       });
 
       if (result.candidates.length === 0) {
@@ -1687,6 +1689,28 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                             <SelectItem value="West Virginia">West Virginia</SelectItem>
                             <SelectItem value="Wisconsin">Wisconsin</SelectItem>
                             <SelectItem value="Wyoming">Wyoming</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {generateSource === "seamless" && (
+                      <div>
+                        <label className="text-sm font-medium">Company Size</label>
+                        <Select value={generateCompanySize || "any"} onValueChange={setGenerateCompanySize}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Any Size" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="any">Any Size</SelectItem>
+                            <SelectItem value="0 - 1 (Self-employed)">0 - 1 (Self-employed)</SelectItem>
+                            <SelectItem value="2 - 10">2 - 10</SelectItem>
+                            <SelectItem value="11 - 50">11 - 50</SelectItem>
+                            <SelectItem value="51 - 200">51 - 200</SelectItem>
+                            <SelectItem value="201 - 500">201 - 500</SelectItem>
+                            <SelectItem value="501 - 1,000">501 - 1,000</SelectItem>
+                            <SelectItem value="1,001 - 5,000">1,001 - 5,000</SelectItem>
+                            <SelectItem value="5,001 - 10,000">5,001 - 10,000</SelectItem>
+                            <SelectItem value="10,001+">10,001+</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
