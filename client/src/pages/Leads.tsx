@@ -2368,7 +2368,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <SelectValue placeholder="Filter by phone" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Leads</SelectItem>
+                  <SelectItem value="all">Any Contact Status</SelectItem>
                   <SelectItem value="has-phone">Has Email & Phone</SelectItem>
                   <SelectItem value="no-phone">Missing Email or Phone</SelectItem>
                 </SelectContent>
