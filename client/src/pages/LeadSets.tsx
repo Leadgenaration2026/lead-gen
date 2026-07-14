@@ -289,7 +289,7 @@ export default function LeadSetsPage() {
                                 <span className="text-sm"><span className="font-medium">{pending}</span> pending</span>
                               </div>
                               <div className="ml-auto">
-                                <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/leads?set=${set.id}`); }}>
+                                <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/all-leads?setId=${set.id}`); }}>
                                   View Leads in All Leads
                                 </Button>
                               </div>
@@ -363,7 +363,7 @@ export default function LeadSetsPage() {
                             <span className="text-sm"><span className="font-medium">{pending}</span> pending</span>
                           </div>
                           <div className="ml-auto">
-                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate("/leads?set=unassigned"); }}>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate("/all-leads?setId=unassigned"); }}>
                               View Unassigned in All Leads
                             </Button>
                           </div>
