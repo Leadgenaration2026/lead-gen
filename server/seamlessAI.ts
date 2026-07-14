@@ -125,7 +125,13 @@ interface SeamlessSearchResponse {
   data: SeamlessSearchResult[];
   supplementalData?: {
     nextToken?: string;
-    totalResults?: number;
+    // Confirmed via live response envelope: the real field is "total", not
+    // "totalResults" — the latter was always undefined, silently falling back
+    // to just the count of results actually retrieved (looked identical to
+    // "that's all there is" even when millions more existed).
+    total?: number;
+    isMore?: boolean;
+    perPage?: number;
   };
 }
 
@@ -357,33 +363,15 @@ export async function searchContacts(
     
     if (pageCount === 1) {
       console.log("\n[DEBUG] FIRST API RESPONSE:");
-      console.log("Total Results:", response.supplementalData?.totalResults);
+      console.log("Total Results:", response.supplementalData?.total);
       console.log("Data Length:", response.data?.length || 0);
       console.log("Has Next Token:", !!response.supplementalData?.nextToken);
       console.log("\n[DEBUG] FIRST 3 RESULTS (checking company sizes):");
       (response.data || []).slice(0, 3).forEach((result: any, idx: number) => {
         console.log(`  Result ${idx + 1}: ${result.firstName} ${result.lastName} @ ${result.company} (employees: ${result.companyEmployeeCount || 'N/A'})`);
       });
-      // Full raw shape of the first raw search result, to confirm the real field
-      // names for LinkedIn/website/etc. on /search/contacts (pre-enrichment) —
-      // several fields on this endpoint have turned out to use different names
-      // than the ones the SeamlessSearchResult type assumed (e.g. searchResultId
-      // vs id), so log everything rather than guess again.
-      if (response.data?.[0]) {
-        console.log("\n[DEBUG] FULL FIRST RAW RESULT (all fields):");
-        console.log(JSON.stringify(response.data[0], null, 2));
-      }
-      // Full top-level response shape (minus the data array, which can be huge) —
-      // "Total Results" above is reading response.supplementalData?.totalResults,
-      // but if that's always undefined the code silently falls back to just the
-      // count of results actually returned, which looks identical to "total
-      // matches the requested count" even when far more actually exist. Log the
-      // full envelope so the real total-count field name can be confirmed.
-      const { data: _omitted, ...responseEnvelope } = response;
-      console.log("\n[DEBUG] FULL RESPONSE ENVELOPE (excluding data array):");
-      console.log(JSON.stringify(responseEnvelope, null, 2));
     }
-    
+
     let pageData: SeamlessSearchResult[] = response.data || [];
 
     // Option A: No automatic company-size filtering during search.
@@ -391,10 +379,12 @@ export async function searchContacts(
     // Company sizes are shown per-lead for manual review/filtering by user.
 
     allResults.push(...pageData);
-    
-    // Track total available results from API
-    if (response.supplementalData?.totalResults !== undefined) {
-      totalResults = response.supplementalData.totalResults;
+
+    // Track total available results from API — confirmed via live response
+    // envelope that the real field is "total" (e.g. { total: 15280941, isMore:
+    // true, perPage: 50 }), not "totalResults" as previously assumed.
+    if (response.supplementalData?.total !== undefined) {
+      totalResults = response.supplementalData.total;
     }
     
     // Get nextToken for pagination
