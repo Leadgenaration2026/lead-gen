@@ -1106,9 +1106,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         lead.email?.toLowerCase().includes(searchQuery.toLowerCase());
       let matchesListFilter = true;
       if (filterSourceListId !== "all") {
-        // Check both sourceListId (new) and leadSetId (old) for backward compatibility
         const listId = parseInt(filterSourceListId);
-        matchesListFilter = lead.sourceListId === listId || lead.leadSetId === listId;
+        // Once a lead has been assigned a tag (leadSetId), it should only show
+        // up under that tag filter, not keep appearing in the imported list it
+        // originally came from. The `!lead.sourceListId` branch is a backward-
+        // compatibility fallback for older records created before sourceListId
+        // existed, where leadSetId doubled as the list identifier.
+        matchesListFilter = (lead.sourceListId === listId && !lead.leadSetId) || (!lead.sourceListId && lead.leadSetId === listId);
       } else if (filterLeadSet === "unassigned") {
         matchesListFilter = !lead.leadSetId;
       } else if (filterLeadSet !== "all") {
