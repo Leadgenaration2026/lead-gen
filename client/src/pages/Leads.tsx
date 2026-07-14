@@ -72,7 +72,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const deleteListMutation = trpc.leadSets.delete.useMutation();
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
-  const enrichFromSeamlessMutation = trpc.leads.enrichFromSeamless.useMutation();
   // DISABLED: Browser automation mutations - using REST API instead
   // const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
   // const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
@@ -124,6 +123,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [assignAllDialogOpen, setAssignAllDialogOpen] = useState(false);
   const [assignAllListId, setAssignAllListId] = useState<number | null>(null);
   const [assignAllTagId, setAssignAllTagId] = useState<string>("");
+  const [assignAllCountInput, setAssignAllCountInput] = useState<string>("");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [csvFileName, setCsvFileName] = useState("");
@@ -973,7 +973,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           setTimeout(() => leadsQuery.refetch(), 3000);
         } catch (err: any) {
           console.error("Auto-scoring error:", err);
-          toast.info("Leads imported. Click 'Score Social Engagement' to rank by activity.");
+          toast.info("Leads imported, but engagement scoring failed to start automatically.");
         }
       }
     } catch (error: any) {
@@ -2453,29 +2453,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </Button>
               )}
               <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const ids = selectedLeadIds.size > 0 ? Array.from(selectedLeadIds) : filteredLeads.map((l: any) => l.id);
-                  if (ids.length === 0) { toast.error("No leads to score"); return; }
-                  toast.info(`Scoring engagement for ${ids.length} leads (LinkedIn + Website)... This may take a moment.`);
-                  try {
-                    const result = await scoreEngagementBatchMutation.mutateAsync({ leadIds: ids });
-                    toast.success(result.message || `Scoring ${result.total} leads in background...`, { duration: 8000 });
-                    // Refetch after a delay to see updated scores
-                    setTimeout(() => leadsQuery.refetch(), 3000);
-                  } catch (err: any) {
-                    console.error("Engagement scoring error:", err);
-                    toast.error(err?.message || err?.data?.message || "Failed to score engagement", { duration: 8000 });
-                  }
-                }}
-                disabled={scoreEngagementBatchMutation.isPending}
-                className="gap-1.5"
-              >
-                {scoreEngagementBatchMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}
-                Score Social Engagement
-              </Button>
-              <Button
                 variant={sortBy === "engagement_desc" ? "default" : "outline"}
                 size="sm"
                 onClick={() => {
@@ -2516,27 +2493,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               >
                 {verifyEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                 Verify Emails
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const ids = selectedLeadIds.size > 0 ? Array.from(selectedLeadIds) : filteredLeads.map((l: any) => l.id);
-                  if (ids.length === 0) { toast.error("No leads to enrich"); return; }
-                  toast.info(`Finding details for ${ids.length} leads on Seamless.AI... This may take up to 4 minutes.`);
-                  try {
-                    const result = await enrichFromSeamlessMutation.mutateAsync({ leadIds: ids });
-                    toast.success(`Enriched ${result.enriched} leads with phone numbers and company size (${result.failed} not found)`);
-                    leadsQuery.refetch();
-                  } catch (err: any) {
-                    toast.error(err.message || "Failed to enrich leads");
-                  }
-                }}
-                disabled={enrichFromSeamlessMutation.isPending}
-                className="gap-1.5"
-              >
-                {enrichFromSeamlessMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                Find Details
               </Button>
               <Button
                 variant="outline"
@@ -3125,10 +3081,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       <Dialog open={assignAllDialogOpen} onOpenChange={setAssignAllDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign All Leads to Tag</DialogTitle>
+            <DialogTitle>Assign Leads to Tag</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Select a tag to assign all untagged leads from this list:</p>
+            <p className="text-sm text-muted-foreground">Select a tag to assign untagged leads from this list:</p>
             <Select value={assignAllTagId} onValueChange={setAssignAllTagId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a tag" />
@@ -3141,14 +3097,30 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 ))}
               </SelectContent>
             </Select>
+            <div>
+              <label className="text-sm font-medium">Number of leads (optional)</label>
+              <Input
+                type="number"
+                min="1"
+                placeholder="Leave blank to assign all"
+                value={assignAllCountInput}
+                onChange={(e) => setAssignAllCountInput(e.target.value)}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Assigns the first N untagged leads from this list, oldest first. Leave blank to assign every untagged lead.</p>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignAllDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setAssignAllDialogOpen(false); setAssignAllCountInput(""); }}>Cancel</Button>
             <Button onClick={async () => {
               if (!assignAllTagId) return;
               try {
                 const listId = assignAllListId;
-                const leads = (leadsQuery.data || []).filter((l: any) => l.sourceListId === listId && !l.leadSetId);
+                let leads = (leadsQuery.data || []).filter((l: any) => l.sourceListId === listId && !l.leadSetId);
+                const n = parseInt(assignAllCountInput, 10);
+                if (n > 0) {
+                  leads = leads.slice(0, n);
+                }
                 await assignLeadsToSetMutation.mutateAsync({
                   leadIds: leads.map((l: any) => l.id),
                   leadSetId: parseInt(assignAllTagId)
@@ -3157,10 +3129,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 leadsQuery.refetch();
                 setAssignAllDialogOpen(false);
                 setAssignAllTagId("");
+                setAssignAllCountInput("");
               } catch (err: any) {
                 toast.error(err.message || "Failed to assign leads");
               }
-            }}>Assign All</Button>
+            }}>{assignAllCountInput && parseInt(assignAllCountInput, 10) > 0 ? `Assign First ${assignAllCountInput}` : "Assign All"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

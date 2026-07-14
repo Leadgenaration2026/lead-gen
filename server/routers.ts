@@ -1044,6 +1044,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         }
 
         const createdLeads = [];
+        const createdLeadIds: number[] = [];
         for (const leadData of uniqueLeadsData) {
           try {
             const result = await db.createLead({
@@ -1067,9 +1068,26 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               enrichmentCreditsUsed: leadData.enrichmentCreditsUsed || 0,
             });
             createdLeads.push(result);
+            const newLeadId = (result as any)[0]?.insertId;
+            if (newLeadId) createdLeadIds.push(newLeadId);
           } catch (e) {
             console.error("Failed to create lead:", e);
           }
+        }
+
+        // Auto-score engagement (LinkedIn profile signals + website liveness) in
+        // the background so the score is populated on the leads list without
+        // needing a separate manual step.
+        if (createdLeadIds.length > 0) {
+          setImmediate(async () => {
+            try {
+              const { scoreLeadsBatch } = await import("./engagementScoring");
+              await scoreLeadsBatch(createdLeadIds);
+              console.log(`[Engagement] Seamless.AI selection batch scored ${createdLeadIds.length} leads`);
+            } catch (e: any) {
+              console.warn("[Engagement] Seamless.AI selection batch scoring failed:", e.message);
+            }
+          });
         }
 
         return {

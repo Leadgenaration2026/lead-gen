@@ -28,19 +28,19 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
-  { icon: Search, label: "Search Leads", path: "/search-preview" },
-  { icon: Users, label: "All Leads", path: "/all-leads" },
-  { icon: FolderOpen, label: "Lead Sets", path: "/lead-sets" },
-  { icon: Mail, label: "Email Composer", path: "/email-composer" },
-  { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
-  { icon: FileText, label: "Templates", path: "/templates" },
-  { icon: BarChart3, label: "Analytics", path: "/analytics" },
-  { icon: Clock, label: "Follow-ups", path: "/follow-up-reports" },
-  { icon: CalendarDays, label: "Scheduled", path: "/scheduled-emails" },
-  { icon: MessageSquare, label: "Social Outreach", path: "/social-outreach" },
-  { icon: MessageSquare, label: "Message Queue", path: "/message-queue" },
-  { icon: Settings, label: "Settings", path: "/settings" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", color: "text-blue-500", activeBg: "data-[active=true]:bg-blue-50 dark:data-[active=true]:bg-blue-950/30" },
+  { icon: Search, label: "Search Leads", path: "/search-preview", color: "text-lime-500", activeBg: "data-[active=true]:bg-lime-50 dark:data-[active=true]:bg-lime-950/30" },
+  { icon: Users, label: "All Leads", path: "/all-leads", color: "text-violet-500", activeBg: "data-[active=true]:bg-violet-50 dark:data-[active=true]:bg-violet-950/30" },
+  { icon: FolderOpen, label: "Lead Sets", path: "/lead-sets", color: "text-amber-500", activeBg: "data-[active=true]:bg-amber-50 dark:data-[active=true]:bg-amber-950/30" },
+  { icon: Mail, label: "Email Composer", path: "/email-composer", color: "text-sky-500", activeBg: "data-[active=true]:bg-sky-50 dark:data-[active=true]:bg-sky-950/30" },
+  { icon: Megaphone, label: "Campaigns", path: "/campaigns", color: "text-pink-500", activeBg: "data-[active=true]:bg-pink-50 dark:data-[active=true]:bg-pink-950/30" },
+  { icon: FileText, label: "Templates", path: "/templates", color: "text-indigo-500", activeBg: "data-[active=true]:bg-indigo-50 dark:data-[active=true]:bg-indigo-950/30" },
+  { icon: BarChart3, label: "Analytics", path: "/analytics", color: "text-emerald-500", activeBg: "data-[active=true]:bg-emerald-50 dark:data-[active=true]:bg-emerald-950/30" },
+  { icon: Clock, label: "Follow-ups", path: "/follow-up-reports", color: "text-orange-500", activeBg: "data-[active=true]:bg-orange-50 dark:data-[active=true]:bg-orange-950/30" },
+  { icon: CalendarDays, label: "Scheduled", path: "/scheduled-emails", color: "text-cyan-500", activeBg: "data-[active=true]:bg-cyan-50 dark:data-[active=true]:bg-cyan-950/30" },
+  { icon: MessageSquare, label: "Social Outreach", path: "/social-outreach", color: "text-rose-500", activeBg: "data-[active=true]:bg-rose-50 dark:data-[active=true]:bg-rose-950/30" },
+  { icon: MessageSquare, label: "Message Queue", path: "/message-queue", color: "text-teal-500", activeBg: "data-[active=true]:bg-teal-50 dark:data-[active=true]:bg-teal-950/30" },
+  { icon: Settings, label: "Settings", path: "/settings", color: "text-slate-500", activeBg: "data-[active=true]:bg-slate-50 dark:data-[active=true]:bg-slate-800/30" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -199,10 +199,10 @@ function DashboardLayoutContent({
                       isActive={isActive}
                       onClick={() => setLocation(item.path)}
                       tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
+                      className={`h-10 transition-all font-normal ${item.activeBg}`}
                     >
                       <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                        className={`h-4 w-4 ${item.color}`}
                       />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
