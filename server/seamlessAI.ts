@@ -722,7 +722,7 @@ export async function searchAndFilterSeamlessCandidates(
   count: number,
   country?: string,
   state?: string
-): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number }> {
+): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (country) {
     filters.contactCountry = [country];
@@ -734,6 +734,15 @@ export async function searchAndFilterSeamlessCandidates(
   const result = await getSeamlessLeads(apiKey, filters, count);
   let candidates: any[] = result.contacts;
   const totalAvailable = result.totalResults;
+  // Confirmed live via credit-balance tracking: search costs 1 credit per 10 raw
+  // results returned (5 credits per 50-result page), separate from and in addition
+  // to enrichment's 1 credit per contact. This is real Seamless.AI billing behavior,
+  // not documented anywhere we could find, and not a bug in our own request logic
+  // (verified the pagination loop makes exactly the minimum number of calls needed).
+  // Estimated from the raw count fetched, before our own country/title filtering,
+  // since credits are charged on what Seamless.AI actually returned, not on what we
+  // keep afterward.
+  const estimatedSearchCredits = Math.ceil(candidates.length / 10);
 
   if (country) {
     const countryLower = country.toLowerCase();
@@ -791,7 +800,7 @@ export async function searchAndFilterSeamlessCandidates(
       linkedinUrl: c.liUrl || c.linkedinUrl || undefined,
     }));
 
-  return { candidates: preview, totalAvailable };
+  return { candidates: preview, totalAvailable, estimatedSearchCredits };
 }
 
 export interface SeamlessEnrichmentResult {

@@ -166,6 +166,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [selectedSeamlessIds, setSelectedSeamlessIds] = useState<Set<string>>(new Set());
   const [isSearchingSeamless, setIsSearchingSeamless] = useState(false);
   const [seamlessTotalAvailable, setSeamlessTotalAvailable] = useState<number | undefined>(undefined);
+  const [seamlessSearchCredits, setSeamlessSearchCredits] = useState<number | undefined>(undefined);
 
   // Checkbox selection state
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
@@ -319,6 +320,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSeamlessCandidates(result.candidates);
       setSelectedSeamlessIds(new Set(result.candidates.map((c) => c.searchResultId))); // default: all selected
       setSeamlessTotalAvailable(result.totalAvailable);
+      setSeamlessSearchCredits(result.estimatedSearchCredits);
       setSeamlessPreviewDialogOpen(true);
       if (result.skippedAlreadyOwned > 0) {
         toast(`${result.skippedAlreadyOwned} matching contact(s) already in your system were skipped.`);
@@ -1335,7 +1337,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <p className="text-sm text-muted-foreground">
               Uncheck any contacts you don't want. Only checked contacts will be enriched (phone and email lookup) and cost credits.
             </p>
-            <div className="flex items-center gap-4 bg-blue-50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-300 rounded-md p-3 text-sm">
+            <div className="flex items-center gap-4 bg-blue-50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-300 rounded-md p-3 text-sm flex-wrap">
               <div>
                 Available on Seamless.AI: <strong className="text-base">{typeof seamlessTotalAvailable === "number" ? seamlessTotalAvailable.toLocaleString() : "—"}</strong>
               </div>
@@ -1343,6 +1345,14 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               <div>
                 Extracted now: <strong className="text-base">{seamlessCandidates.length.toLocaleString()}</strong>
               </div>
+              {typeof seamlessSearchCredits === "number" && (
+                <>
+                  <div className="text-blue-400 dark:text-blue-700">|</div>
+                  <div>
+                    Search cost: <strong className="text-base">{seamlessSearchCredits}</strong> credit{seamlessSearchCredits !== 1 ? "s" : ""}
+                  </div>
+                </>
+              )}
               {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
                 <span className="text-xs text-blue-700 dark:text-blue-400">Increase "Number of Leads" and search again to pull more.</span>
               )}
