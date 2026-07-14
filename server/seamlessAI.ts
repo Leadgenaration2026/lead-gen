@@ -197,13 +197,13 @@ async function seamlessRequest(
   console.log(`[Seamless.AI] Response status: ${response.status}`);
   const elapsedTime = Date.now() - startTime;
   console.log(`[Seamless.AI] Content-Type: ${contentType}`);
-  // Per Seamless.AI's official docs, every response includes an X-PublicAPI-Credits
-  // header reporting actual credit usage — log it so real per-call cost can be
-  // confirmed directly instead of inferred from before/after dashboard numbers.
-  const creditsHeader = response.headers.get("x-publicapi-credits");
-  if (creditsHeader !== null) {
-    console.log(`[Seamless.AI] X-PublicAPI-Credits: ${creditsHeader} (${method} ${path})`);
-  }
+  // Confirmed live: no "x-publicapi-credits" header is actually sent, despite being
+  // documented. Log every header the response actually has instead of guessing another
+  // specific name — this reveals the real credit-usage header (if any exists under a
+  // different name) or confirms none is sent at all for this endpoint.
+  const allHeaders: Record<string, string> = {};
+  response.headers.forEach((value, key) => { allHeaders[key] = value; });
+  console.log(`[Seamless.AI] ALL RESPONSE HEADERS (${method} ${path}):`, JSON.stringify(allHeaders, null, 2));
   if (responseText) {
     console.log(`[Seamless.AI] Response body (first 500 chars):`, responseText.substring(0, 500));
   }
