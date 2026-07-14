@@ -423,20 +423,61 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         const dupMsg = result.duplicatesSkipped ? ` (${result.duplicatesSkipped} duplicates skipped)` : "";
         const droppedMsg = result.droppedForMissingContact ? ` (${result.droppedForMissingContact} dropped for missing phone/email/name)` : "";
         toast.success(`Saved ${result.count} new lead${result.count !== 1 ? "s" : ""}!${dupMsg}${droppedMsg}`);
-        setSeamlessPreviewDialogOpen(false);
-        setSeamlessCandidates([]);
-        setSelectedSeamlessIds(new Set());
-        setInstruction("");
-        setGenerateLeadSetName("");
         // New leads sort newest-first and land on page 1 — jump there so they're
         // visible immediately instead of only after manually navigating back.
         setCurrentPage(1);
       }
+
+      // Remove only the candidates that were just submitted for enrichment —
+      // they already consumed credits (whether they became a lead or got
+      // dropped/deduped), so leaving them selectable again risks accidentally
+      // re-enriching and re-charging for the same contacts. Everything else
+      // stays in the list so you can keep working through a large search
+      // without re-searching (and paying search credits again).
+      const attemptedIds = new Set(selected.map((c) => c.searchResultId));
+      const remaining = seamlessCandidates.filter((c) => !attemptedIds.has(c.searchResultId));
+      setSeamlessCandidates(remaining);
+      setSelectedSeamlessIds((prev) => {
+        const next = new Set(prev);
+        attemptedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setSeamlessEngagementScores((prev) => {
+        const next = { ...prev };
+        attemptedIds.forEach((id) => delete next[id]);
+        return next;
+      });
+
+      if (remaining.length === 0) {
+        setSeamlessPreviewDialogOpen(false);
+        setInstruction("");
+        setGenerateLeadSetName("");
+      }
+
       leadsQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to enrich selected contacts";
       toast.error(msg, { duration: 8000 });
+    }
+  };
+
+  // Permanently discard a candidate the user doesn't want, without enriching it.
+  const handleRemoveSeamlessCandidate = (searchResultId: string) => {
+    const remaining = seamlessCandidates.filter((c) => c.searchResultId !== searchResultId);
+    setSeamlessCandidates(remaining);
+    setSelectedSeamlessIds((prev) => {
+      const next = new Set(prev);
+      next.delete(searchResultId);
+      return next;
+    });
+    setSeamlessEngagementScores((prev) => {
+      const next = { ...prev };
+      delete next[searchResultId];
+      return next;
+    });
+    if (remaining.length === 0) {
+      setSeamlessPreviewDialogOpen(false);
     }
   };
 
@@ -1492,6 +1533,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     <th className="p-3 text-left font-medium w-32">Location</th>
                     <th className="p-3 text-left font-medium w-16">Website</th>
                     <th className="p-3 text-left font-medium w-16">LinkedIn</th>
+                    <th className="p-3 w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1541,6 +1583,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       <td className="p-3 text-muted-foreground align-top">
                         {c.linkedinUrl ? <a href={c.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline" onClick={(e) => e.stopPropagation()}>Link</a> : "—"}
                       </td>
+                      <td className="p-3 text-center align-top">
+                        <button
+                          onClick={() => handleRemoveSeamlessCandidate(c.searchResultId)}
+                          className="text-muted-foreground hover:text-red-600"
+                          title="Remove this contact from the list"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                     );
                   })}
@@ -1550,7 +1601,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <p className="text-xs text-muted-foreground">Phone and email aren't fetched yet — those are only looked up (and only cost credits) for the contacts you enrich below. Company size shown here comes directly from Seamless.AI's search results where available. Engagement score reflects LinkedIn profile strength + real website presence (not post/like activity, which Seamless.AI's data does not provide) — click a score to see the full breakdown.</p>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <Button variant="outline" onClick={() => setSeamlessPreviewDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setSeamlessPreviewDialogOpen(false)}>Close (keep results)</Button>
             <Button
               disabled={enrichSeamlessSelectionMutation.isPending || selectedSeamlessIds.size === 0}
               onClick={handleEnrichSeamlessSelection}
@@ -2061,6 +2112,16 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </div>
               </DialogContent>
             </Dialog>
+            {!seamlessPreviewDialogOpen && seamlessCandidates.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-2 text-violet-600 hover:text-violet-700"
+                onClick={() => setSeamlessPreviewDialogOpen(true)}
+              >
+                Resume Seamless.AI Results ({seamlessCandidates.length} pending)
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
