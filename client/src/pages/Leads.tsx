@@ -1431,21 +1431,23 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <span className="text-xs text-blue-700 dark:text-blue-400">Increase "Number of Leads" and search again to pull more.</span>
               )}
             </div>
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-sm flex-wrap gap-y-2">
               <span className="font-medium">
                 {selectedSeamlessIds.size} of {seamlessCandidates.length} selected
               </span>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set(seamlessCandidates.map((c) => c.searchResultId)))}>Select All</Button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set())}>Deselect All</Button>
+              <div className="flex items-center flex-wrap gap-3">
                 <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set(seamlessCandidates.map((c) => c.searchResultId)))}>Select All</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedSeamlessIds(new Set())}>Deselect All</Button>
+                </div>
+                <div className="flex items-center gap-1.5 border-l pl-3">
                   <Input
                     type="number"
                     min="1"
                     placeholder="e.g. 20"
                     value={selectFirstNInput}
                     onChange={(e) => setSelectFirstNInput(e.target.value)}
-                    className="h-8 w-20 text-xs"
+                    className="h-8 w-24 text-xs"
                   />
                   <Button
                     variant="ghost"
@@ -1466,6 +1468,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="border-l pl-3 rounded-l-none"
                     disabled={scoringEngagementIds.size > 0}
                     onClick={() => scoreEngagementForCandidates(seamlessCandidates.filter((c) => !seamlessEngagementScores[c.searchResultId]).slice(0, 10))}
                   >
