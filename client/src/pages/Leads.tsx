@@ -433,6 +433,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         // New leads sort newest-first and land on page 1 — jump there so they're
         // visible immediately instead of only after manually navigating back.
         setCurrentPage(1);
+        // Engagement scoring runs as a background job after this response
+        // returns (real LinkedIn + website lookups per lead take real time),
+        // so an immediate refetch below will still show "Pending". Re-check a
+        // few times over the next half-minute to pick up the score once it's
+        // actually done, without the user needing to manually refresh.
+        [4000, 10000, 20000, 30000].forEach((delay) => setTimeout(() => leadsQuery.refetch(), delay));
       }
 
       // Remove only the candidates that were just submitted for enrichment —

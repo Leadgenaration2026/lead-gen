@@ -1044,7 +1044,6 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         }
 
         const createdLeads = [];
-        const createdLeadIds: number[] = [];
         for (const leadData of uniqueLeadsData) {
           try {
             const result = await db.createLead({
@@ -1068,8 +1067,6 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               enrichmentCreditsUsed: leadData.enrichmentCreditsUsed || 0,
             });
             createdLeads.push(result);
-            const newLeadId = (result as any)[0]?.insertId;
-            if (newLeadId) createdLeadIds.push(newLeadId);
           } catch (e) {
             console.error("Failed to create lead:", e);
           }
@@ -1077,13 +1074,22 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
         // Auto-score engagement (LinkedIn profile signals + website liveness) in
         // the background so the score is populated on the leads list without
-        // needing a separate manual step.
-        if (createdLeadIds.length > 0) {
+        // needing a separate manual step. Re-query by seamlessId (an already
+        // proven, reliable lookup — used for the "already owned" dedup check
+        // above) rather than trying to extract an insert ID from db.createLead()'s
+        // return value, whose exact shape isn't something this environment can
+        // verify without a live database to test against.
+        const createdSeamlessIds = uniqueLeadsData.map((l: any) => l.seamlessId).filter(Boolean);
+        if (createdSeamlessIds.length > 0) {
           setImmediate(async () => {
             try {
-              const { scoreLeadsBatch } = await import("./engagementScoring");
-              await scoreLeadsBatch(createdLeadIds);
-              console.log(`[Engagement] Seamless.AI selection batch scored ${createdLeadIds.length} leads`);
+              const justCreated = await db.getLeadsBySeamlessIds(createdSeamlessIds, ctx.user.id);
+              const idsToScore = justCreated.map((l: any) => l.id);
+              if (idsToScore.length > 0) {
+                const { scoreLeadsBatch } = await import("./engagementScoring");
+                await scoreLeadsBatch(idsToScore);
+                console.log(`[Engagement] Seamless.AI selection batch scored ${idsToScore.length} leads`);
+              }
             } catch (e: any) {
               console.warn("[Engagement] Seamless.AI selection batch scoring failed:", e.message);
             }
