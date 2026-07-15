@@ -25,6 +25,15 @@ export default function SettingsPage() {
   const deleteRotationalMutation = trpc.rotationalEmails.delete.useMutation();
   const testRotationalMutation = trpc.rotationalEmails.testAccount.useMutation();
   const sendTestToAllMutation = trpc.email.sendTestToAllAccounts.useMutation();
+  const heartbeatStatusQuery = trpc.settings.getFollowUpHeartbeatStatus.useQuery();
+  const enableHeartbeatMutation = trpc.settings.enableFollowUpHeartbeat.useMutation({
+    onSuccess: () => { toast.success("Automated follow-ups enabled!"); heartbeatStatusQuery.refetch(); },
+    onError: (err) => toast.error(err.message || "Failed to enable automated follow-ups"),
+  });
+  const disableHeartbeatMutation = trpc.settings.disableFollowUpHeartbeat.useMutation({
+    onSuccess: () => { toast.success("Automated follow-ups paused."); heartbeatStatusQuery.refetch(); },
+    onError: (err) => toast.error(err.message || "Failed to pause automated follow-ups"),
+  });
 
   const [formData, setFormData] = useState({
     retellApiKey: "",
@@ -469,6 +478,70 @@ export default function SettingsPage() {
                   Save Retell.AI Settings
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="w-5 h-5" />
+                Follow-Up Automation
+              </CardTitle>
+              <CardDescription>
+                Controls the recurring background job that sends due follow-up emails, places due follow-up calls, and sends one-off scheduled emails. Without this enabled, nothing scheduled will actually go out.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {heartbeatStatusQuery.isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Checking status...
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    {heartbeatStatusQuery.data?.enabled ? (
+                      <Badge className="bg-green-100 text-green-800 border-green-200 gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Running
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="gap-1">
+                        <XCircle className="w-3 h-3" /> Not running
+                      </Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground">Checks every 15 minutes</span>
+                  </div>
+                  {heartbeatStatusQuery.data?.nextExecutionAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Next run: {new Date(heartbeatStatusQuery.data.nextExecutionAt).toLocaleString()}
+                    </p>
+                  )}
+                  {heartbeatStatusQuery.data?.error && (
+                    <p className="text-xs text-red-600">{heartbeatStatusQuery.data.error}</p>
+                  )}
+                  <div className="pt-2">
+                    {heartbeatStatusQuery.data?.enabled ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => disableHeartbeatMutation.mutate()}
+                        disabled={disableHeartbeatMutation.isPending}
+                        className="gap-2"
+                      >
+                        {disableHeartbeatMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        Pause Automated Follow-Ups
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => enableHeartbeatMutation.mutate()}
+                        disabled={enableHeartbeatMutation.isPending}
+                        className="gap-2"
+                      >
+                        {enableHeartbeatMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                        Enable Automated Follow-Ups
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

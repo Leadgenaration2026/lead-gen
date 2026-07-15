@@ -23,6 +23,10 @@ import { testDiagnosticPayload } from "./testDiagnosticPayload";
 import { testCompanySizeFormats } from "./testCompanySizeFormats";
 import { searchDiagnosticsRouter } from "./searchDiagnosticsRouter";
 
+// Name of the recurring heartbeat job that processes due follow-up emails,
+// follow-up calls, and one-off scheduled emails.
+const FOLLOW_UP_HEARTBEAT_NAME = "process-scheduled-emails";
+
 // Validation schemas
 const createLeadSchema = z.object({
   companyName: z.string().min(1),
@@ -2509,6 +2513,65 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
     getClaudeUsage: protectedProcedure.query(async ({ ctx }) => {
       return await db.getClaudeApiUsageThisMonth(ctx.user.id);
+    }),
+
+    // Recurring heartbeat that processes due follow-up emails, follow-up calls,
+    // and one-off scheduled emails (POSTs to /api/scheduled/process-emails).
+    // Without this job registered, nothing is ever scheduled/sent automatically —
+    // campaigns.launch only creates the DB rows describing what's due and when.
+    getFollowUpHeartbeatStatus: protectedProcedure.query(async ({ ctx }) => {
+      try {
+        const { parse: parseCookie } = await import("cookie");
+        const { COOKIE_NAME } = await import("@shared/const");
+        const { listHeartbeatJobs } = await import("./_core/heartbeat");
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const { jobs } = await listHeartbeatJobs(sessionToken);
+        const job = jobs.find((j) => j.name === FOLLOW_UP_HEARTBEAT_NAME);
+        return {
+          exists: !!job,
+          enabled: !!job?.isEnable,
+          cronExpression: job?.cronExpression || null,
+          nextExecutionAt: job?.nextExecutionAt || null,
+          lastExecutedAt: job?.lastExecutedAt || null,
+        };
+      } catch (err: any) {
+        return { exists: false, enabled: false, cronExpression: null, nextExecutionAt: null, lastExecutedAt: null, error: err.message || "Failed to check heartbeat status" };
+      }
+    }),
+
+    enableFollowUpHeartbeat: protectedProcedure.mutation(async ({ ctx }) => {
+      const { parse: parseCookie } = await import("cookie");
+      const { COOKIE_NAME } = await import("@shared/const");
+      const { listHeartbeatJobs, createHeartbeatJob, updateHeartbeatJob } = await import("./_core/heartbeat");
+      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      const { jobs } = await listHeartbeatJobs(sessionToken);
+      const existing = jobs.find((j) => j.name === FOLLOW_UP_HEARTBEAT_NAME);
+      if (existing) {
+        if (!existing.isEnable) {
+          await updateHeartbeatJob(existing.taskUid, { enable: true }, sessionToken);
+        }
+        return { success: true };
+      }
+      await createHeartbeatJob({
+        name: FOLLOW_UP_HEARTBEAT_NAME,
+        cron: "0 */15 * * * *", // every 15 minutes
+        path: "/api/scheduled/process-emails",
+        description: "Processes due follow-up emails, follow-up calls, and one-off scheduled emails",
+      }, sessionToken);
+      return { success: true };
+    }),
+
+    disableFollowUpHeartbeat: protectedProcedure.mutation(async ({ ctx }) => {
+      const { parse: parseCookie } = await import("cookie");
+      const { COOKIE_NAME } = await import("@shared/const");
+      const { listHeartbeatJobs, updateHeartbeatJob } = await import("./_core/heartbeat");
+      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      const { jobs } = await listHeartbeatJobs(sessionToken);
+      const existing = jobs.find((j) => j.name === FOLLOW_UP_HEARTBEAT_NAME);
+      if (existing?.isEnable) {
+        await updateHeartbeatJob(existing.taskUid, { enable: false }, sessionToken);
+      }
+      return { success: true };
     }),
   }),
 
