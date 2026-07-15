@@ -2184,8 +2184,9 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           }
         }
 
-        // Schedule 7 follow-up emails for each lead that was sent today (async, don't block)
-        const { scheduleFollowUpEmails } = await import("./_core/followUpScheduler");
+        // Schedule 7 follow-up emails + the fallback follow-up call cadence for each
+        // lead that was sent today (async, don't block)
+        const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./_core/followUpScheduler");
         const followUpSettings = await db.getUserSettings(ctx.user.id);
         const ctaLink = followUpSettings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
         for (const campaignLead of toSendToday) {
@@ -2205,6 +2206,15 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             ).catch((err: any) => {
               console.error(`[CampaignLaunch] Failed to schedule follow-ups for lead ${leadForFollowUp.id}:`, err);
             });
+
+            // Without this, a lead who never opens/clicks any email would never get a
+            // fallback call at all — the open/click-triggered call is the only other
+            // call path in the app.
+            if (leadForFollowUp.phoneNumber) {
+              scheduleFollowUpCalls(campaignLead.id, leadForFollowUp.phoneNumber).catch((err: any) => {
+                console.error(`[CampaignLaunch] Failed to schedule follow-up calls for lead ${leadForFollowUp.id}:`, err);
+              });
+            }
           }
         }
 
@@ -2665,22 +2675,22 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             const allSocialOutreach = await database.select().from(socialOutreach).where(
               and(eq(socialOutreach.userId, ctx.user.id), inArray(socialOutreach.leadId, leadIds))
             );
+            // Note: "accepted" (connection accepted by the recipient) isn't tracked
+            // anywhere — the schema's status enum is only pending/sent/failed/skipped —
+            // so totalAccepted/accepted always report 0 here rather than pretending to
+            // measure something the app doesn't detect.
             for (const so of allSocialOutreach) {
               const platform = (so as any).platform as "linkedin" | "instagram" | "facebook";
               const status = (so as any).status;
               if (status === "sent") {
                 socialOutreachStats.totalSent++;
+                if (socialOutreachStats.byPlatform[platform]) {
+                  socialOutreachStats.byPlatform[platform].sent++;
+                }
+              } else if (status === "pending") {
                 socialOutreachStats.totalPending++;
                 if (socialOutreachStats.byPlatform[platform]) {
-                  socialOutreachStats.byPlatform[platform].sent++;
                   socialOutreachStats.byPlatform[platform].pending++;
-                }
-              } else if (status === "accepted") {
-                socialOutreachStats.totalSent++;
-                socialOutreachStats.totalAccepted++;
-                if (socialOutreachStats.byPlatform[platform]) {
-                  socialOutreachStats.byPlatform[platform].sent++;
-                  socialOutreachStats.byPlatform[platform].accepted++;
                 }
               }
             }
@@ -3651,18 +3661,17 @@ Respond in this exact JSON format:
         const database = await db.getDb();
         if (database) {
           const allOutreach = await database.select().from(socialOutreach).where(eq(socialOutreach.userId, ctx.user.id));
+          // Note: "accepted" isn't tracked anywhere (the schema's status enum is only
+          // pending/sent/failed/skipped), so it always reports 0 rather than pretending
+          // to measure something the app doesn't detect.
           for (const so of allOutreach) {
             const platform = (so as any).platform as "linkedin" | "instagram" | "facebook";
             const status = (so as any).status;
-            if (status === "sent" || status === "accepted") {
+            if (status === "sent") {
               socialTotals.sent++;
               if (socialTotals[platform]) socialTotals[platform].sent++;
-              if (status === "accepted") {
-                socialTotals.accepted++;
-                if (socialTotals[platform]) socialTotals[platform].accepted++;
-              } else {
-                socialTotals.pending++;
-              }
+            } else if (status === "pending") {
+              socialTotals.pending++;
             }
           }
         }
@@ -4145,6 +4154,29 @@ Website: ${lead.website || "N/A"}` },
         });
 
         return { success: true, profileUrl, message: input.message, characterCount: input.message.length };
+      }),
+
+    // Mark a queued (pending) social outreach message as actually sent.
+    // Used by the Message Queue page once the user has copied the message and
+    // sent it themselves on the platform (there's no direct API integration).
+    markSent: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id, ctx }) => {
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+        const [existing] = await database.select().from(socialOutreach).where(eq(socialOutreach.id, id));
+        if (!existing || (existing as any).userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        await database.update(socialOutreach)
+          .set({ status: "sent", sentAt: new Date() } as any)
+          .where(eq(socialOutreach.id, id));
+
+        return { success: true };
       }),
 
     // List all social outreach for a lead

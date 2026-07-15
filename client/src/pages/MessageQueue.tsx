@@ -35,6 +35,9 @@ export default function MessageQueue() {
 
   const messagesQuery = trpc.social.listAll.useQuery({ limit: 200 });
   const leadsQuery = trpc.leads.list.useQuery();
+  const markSentMutation = trpc.social.markSent.useMutation({
+    onSuccess: () => messagesQuery.refetch(),
+  });
 
   const messages = useMemo(() => {
     let items = messagesQuery.data || [];
@@ -80,9 +83,14 @@ export default function MessageQueue() {
     }
   };
 
-  const handleCopyAndOpen = (id: number, message: string, profileUrl: string | null) => {
+  const handleCopyAndOpen = (id: number, message: string, profileUrl: string | null, status: string) => {
     handleCopyMessage(id, message);
     setTimeout(() => handleOpenProfile(profileUrl), 300);
+    // Copying + opening the profile is the moment the user is about to actually
+    // send this on the platform, so mark it sent (if it isn't already).
+    if (status !== "sent") {
+      markSentMutation.mutate(id);
+    }
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -293,7 +301,7 @@ export default function MessageQueue() {
                               variant="default"
                               size="sm"
                               className="h-7 text-xs gap-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                              onClick={() => handleCopyAndOpen(msg.id, msg.message, msg.profileUrl)}
+                              onClick={() => handleCopyAndOpen(msg.id, msg.message, msg.profileUrl, msg.status)}
                             >
                               {copiedId === msg.id ? <CheckCircle2 className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                               {copiedId === msg.id ? "Copied!" : "Copy & Open Profile"}
@@ -314,6 +322,16 @@ export default function MessageQueue() {
                                 onClick={() => handleOpenProfile(msg.profileUrl)}
                               >
                                 <ExternalLink className="w-3 h-3" /> Profile
+                              </Button>
+                            )}
+                            {msg.status !== "sent" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs gap-1 text-green-700"
+                                onClick={() => markSentMutation.mutate(msg.id)}
+                              >
+                                <Send className="w-3 h-3" /> Mark as Sent
                               </Button>
                             )}
                             <span className="text-xs text-muted-foreground ml-auto">

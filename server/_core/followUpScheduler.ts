@@ -307,9 +307,11 @@ export async function processScheduledFollowUpEmails() {
                 const charLimit = settings.socialMessageCharLimit || 300;
                 const todayStart = new Date();
                 todayStart.setHours(0, 0, 0, 0);
-                const { gte } = await import("drizzle-orm");
+                const { gte, inArray } = await import("drizzle-orm");
+                // Count today's queued+sent messages (by createdAt, since queued ones
+                // have no sentAt yet) to keep the daily generation volume capped.
                 const todaySent = await database.select().from(socialOutreach).where(
-                  and(eq(socialOutreach.userId, campaign.userId), eq(socialOutreach.status, "sent"), gte(socialOutreach.sentAt, todayStart))
+                  and(eq(socialOutreach.userId, campaign.userId), inArray(socialOutreach.status, ["sent", "pending"]), gte(socialOutreach.createdAt, todayStart))
                 );
 
                 // Only send if under daily limit
@@ -320,13 +322,13 @@ export async function processScheduledFollowUpEmails() {
                   if ((lead as any).facebookUrl) platforms.push("facebook");
 
                   for (const platform of platforms) {
-                    // Check if already sent connection request
+                    // Check if a connection request was already queued/sent
                     const existing = await database.select().from(socialOutreach).where(
                       and(
                         eq(socialOutreach.leadId, lead.id),
                         eq(socialOutreach.platform, platform),
                         eq(socialOutreach.messageType, "connection_request"),
-                        eq(socialOutreach.status, "sent")
+                        inArray(socialOutreach.status, ["sent", "pending"])
                       )
                     );
                     if (existing.length > 0) continue;
@@ -346,6 +348,9 @@ export async function processScheduledFollowUpEmails() {
                     if (message) {
                       const profileUrl = platform === "linkedin" ? lead.linkedinUrl :
                         platform === "instagram" ? lead.instagramUrl : (lead as any).facebookUrl;
+                      // Queued, not sent yet — there's no API integration to actually post
+                      // this on the platform, so it waits in the Message Queue for the
+                      // user to copy and send it themselves.
                       await database.insert(socialOutreach).values({
                         userId: campaign.userId,
                         leadId: lead.id,
@@ -353,12 +358,11 @@ export async function processScheduledFollowUpEmails() {
                         platform,
                         messageType: "connection_request",
                         message,
-                        status: "sent",
-                        sentAt: new Date(),
+                        status: "pending",
                         profileUrl: profileUrl || "",
                         characterCount: message.length,
                       });
-                      console.log(`[FollowUpScheduler] Sent ${platform} connection request to ${lead.ownerName} (${message.length} chars)`);
+                      console.log(`[FollowUpScheduler] Queued ${platform} connection request for ${lead.ownerName} (${message.length} chars)`);
                       // Send notification email if configured
                       if (settings.socialNotificationEmail) {
                         try {

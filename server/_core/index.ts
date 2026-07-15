@@ -330,6 +330,7 @@ async function startServer() {
       }
 
       let sentCount = 0;
+      const successfullySentCampaignLeadIds = new Set<number>();
       const baseUrl = req.headers["x-forwarded-proto"]
         ? `${req.headers["x-forwarded-proto"]}://${req.headers["x-forwarded-host"] || req.headers.host}`
         : `${req.protocol}://${req.get("host")}`;
@@ -431,6 +432,7 @@ async function startServer() {
             threadId: sendResult.messageId || null,
           });
           sentCount++;
+          successfullySentCampaignLeadIds.add(campaignLead.id);
         } catch (err: any) {
           console.error(`[Daily Send] Failed for campaignLead ${campaignLead.id}:`, err?.message);
           if (err?.code === 'EAUTH') break; // Stop on auth errors
@@ -452,10 +454,12 @@ async function startServer() {
         } catch { /* ignore cleanup errors */ }
       }
 
-      // Schedule follow-ups for today's batch
-      const { scheduleFollowUpEmails } = await import("./followUpScheduler");
+      // Schedule follow-ups (emails + fallback call cadence) for today's batch —
+      // only for leads whose email actually sent, not ones skipped/failed above.
+      const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./followUpScheduler");
       const ctaLinkForFollowUp = "https://calendly.com/nitin-virtualassistant/30min";
       for (const campaignLead of toSendToday) {
+        if (!successfullySentCampaignLeadIds.has(campaignLead.id)) continue;
         const lead = await db.getLeadById(campaignLead.leadId);
         if (lead) {
           scheduleFollowUpEmails(
@@ -471,6 +475,12 @@ async function startServer() {
           ).catch((err: any) => {
             console.error(`[Daily Send] Failed to schedule follow-ups for lead ${lead.id}:`, err);
           });
+
+          if (lead.phoneNumber) {
+            scheduleFollowUpCalls(campaignLead.id, lead.phoneNumber).catch((err: any) => {
+              console.error(`[Daily Send] Failed to schedule follow-up calls for lead ${lead.id}:`, err);
+            });
+          }
         }
       }
 
