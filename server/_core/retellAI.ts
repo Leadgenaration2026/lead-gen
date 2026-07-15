@@ -126,8 +126,13 @@ export async function triggerRetellCall(
  */
 export async function handleRetellWebhook(payload: any) {
   try {
-    const { call_id, status, end_reason, call_analysis } = payload;
-    console.log(`[RetellAI] Webhook received - call_id: ${call_id}, status: ${status}, end_reason: ${end_reason}`);
+    // Retell's webhook body is { event, call: { call_id, call_status, disconnection_reason, ... } } —
+    // the call fields are nested under `call`, not at the top level.
+    const call = payload?.call || {};
+    const call_id = call.call_id;
+    const status = call.call_status;
+    const end_reason = call.disconnection_reason;
+    console.log(`[RetellAI] Webhook received - event: ${payload?.event}, call_id: ${call_id}, status: ${status}, end_reason: ${end_reason}`);
 
     if (!call_id) {
       console.error("[RetellAI] Missing call_id in webhook payload");
@@ -155,15 +160,16 @@ export async function handleRetellWebhook(payload: any) {
     console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${mappedStatus}`);
 
     // If call was answered/completed, cancel remaining follow-ups
-    // Retell uses "ended" with end_reason to indicate call completion
-    if (status === "ended" && (end_reason === "agent_hangup" || end_reason === "customer_hangup")) {
+    // Retell uses "ended" with disconnection_reason to indicate call completion
+    if (status === "ended" && (end_reason === "agent_hangup" || end_reason === "user_hangup")) {
       // Call was answered - this is a positive engagement
       await db.cancelPendingFollowUps(callLog.campaignLeadId);
       console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
     }
 
     // FALLBACK: If call failed to connect, retry with secondary phone number
-    const failedReasons = ["no_answer", "voicemail_reached", "machine_detected", "dial_busy", "dial_no_answer", "dial_failed"];
+    // (values per Retell's disconnection_reason enum)
+    const failedReasons = ["dial_no_answer", "voicemail_reached", "dial_busy", "dial_failed", "invalid_destination"];
     if (status === "ended" && failedReasons.includes(end_reason)) {
       await retryWithSecondaryPhone(callLog, end_reason);
     }
@@ -173,17 +179,24 @@ export async function handleRetellWebhook(payload: any) {
 }
 
 /**
- * Map Retell.AI status + end_reason to our internal call status
+ * Map Retell.AI call_status + disconnection_reason to our internal call status.
+ * Retell's call_status enum is: registered, not_connected, ongoing, ended, error.
  */
 function mapRetellStatus(status: string, endReason: string): string {
   if (status === "ended") {
-    if (endReason === "agent_hangup" || endReason === "customer_hangup") return "completed";
-    if (endReason === "no_answer" || endReason === "dial_no_answer") return "no_answer";
-    if (endReason === "voicemail_reached" || endReason === "machine_detected") return "no_answer";
+    if (endReason === "agent_hangup" || endReason === "user_hangup") return "completed";
+    if (endReason === "dial_no_answer") return "no_answer";
+    if (endReason === "voicemail_reached") return "no_answer";
     if (endReason === "dial_busy" || endReason === "dial_failed") return "failed";
     return "failed";
   }
-  return status;
+  // "ongoing" maps to our "in_progress" so the already-answered/active-call guards
+  // (which check for "in_progress") correctly skip re-triggering a call mid-conversation.
+  if (status === "ongoing") return "in_progress";
+  if (status === "not_connected" || status === "error") return "failed";
+  // "registered" (call queued, not yet connected) has no distinct value in our
+  // callLogs/followUpCalls status enum — keep it as "initiated".
+  return "initiated";
 }
 
 /**

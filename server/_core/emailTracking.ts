@@ -254,12 +254,81 @@ export function registerEmailTrackingRoutes(app: Express) {
    * Reply detection webhook
    * POST /api/webhooks/reply
    * Called when a lead replies to an email (via email forwarding rules or Zapier)
-   * Body: { email: string } or { campaignLeadId: number }
-   * This is a POSITIVE response — lead replied to nitin@virtualassistant-group.com
+   *
+   * Two payload shapes are supported:
+   * 1. Simple direct-ID/email form: { email: string } or { campaignLeadId: number } —
+   *    treated as an unconditional positive reply (used by simple integrations that
+   *    already know this is a genuine reply, e.g. manual testing or a basic Zapier zap).
+   * 2. Full reply form: { fromEmail, subject, body, headers, inReplyToMessageId, ... } —
+   *    routed through processIncomingReply() to classify genuine replies vs.
+   *    auto-replies/bounces/newsletters before stopping follow-ups (used by an
+   *    email-forwarding/IMAP-monitor integration that relays the raw reply content).
    */
   app.post("/api/webhooks/reply", async (req: Request, res: Response) => {
     try {
-      const { email, campaignLeadId, responseStatus } = req.body;
+      const { email, campaignLeadId, responseStatus, fromEmail, subject, body, headers } = req.body;
+      const hasClassificationContext = subject || body || headers;
+
+      if (hasClassificationContext) {
+        const senderEmail = fromEmail || email;
+        if (!senderEmail) {
+          return res.status(400).json({ error: "fromEmail or email is required" });
+        }
+
+        const ownerSettings = await db.getUserSettings(1);
+        const resolvedToEmail = req.body.toEmail || ownerSettings?.replyToEmail || "nitin@virtualassistant-group.com";
+
+        console.log(`[ReplyDetection] Reply webhook received from: ${senderEmail}, to: ${resolvedToEmail}, subject: ${subject}`);
+
+        const { processIncomingReply } = await import("../replyDetection");
+        const result = await processIncomingReply({
+          fromEmail: senderEmail,
+          toEmail: resolvedToEmail,
+          subject: subject || "",
+          body: body || "",
+          headers: headers || {},
+          inReplyToMessageId: req.body.inReplyToMessageId,
+          replyMessageId: req.body.replyMessageId,
+          userId: 1, // Owner user ID
+        });
+
+        console.log(`[ReplyDetection] Classification: ${result.classification} (${result.confidence}% confidence) - ${result.reason}`);
+        if (result.followUpsStopped) {
+          console.log(`[ReplyDetection] Follow-ups stopped! Emails cancelled: ${result.emailsCancelled}, Calls cancelled: ${result.callsCancelled}`);
+        }
+
+        await db.createWebhookEvent({
+          userId: 1,
+          webhookType: "email_reply",
+          status: result.classification === "genuine" ? "success" : "ignored",
+          sourceEmail: senderEmail,
+          campaignLeadId: undefined,
+          payload: {
+            classification: result.classification,
+            confidence: result.confidence,
+            reason: result.reason,
+            followUpsStopped: result.followUpsStopped,
+            emailsCancelled: result.emailsCancelled,
+            callsCancelled: result.callsCancelled,
+            leadId: result.leadId,
+            campaignId: result.campaignId,
+          },
+          ipAddress: req.ip || req.socket.remoteAddress || undefined,
+        });
+
+        return res.json({
+          success: true,
+          classification: result.classification,
+          confidence: result.confidence,
+          reason: result.reason,
+          followUpsStopped: result.followUpsStopped,
+          emailsCancelled: result.emailsCancelled,
+          callsCancelled: result.callsCancelled,
+          leadMatched: !!result.leadId,
+        });
+      }
+
+      // Simple form: no subject/body/headers provided, treat as an unconditional positive reply
       console.log(`[EmailTracking] Reply webhook received - email: ${email}, campaignLeadId: ${campaignLeadId}`);
 
       let loggedCampaignLeadId: number | undefined;
@@ -300,7 +369,7 @@ export function registerEmailTrackingRoutes(app: Express) {
           userId: 1,
           webhookType: "email_reply",
           status: "failed",
-          sourceEmail: req.body?.email,
+          sourceEmail: req.body?.email || req.body?.fromEmail,
           payload: req.body,
           errorMessage: error instanceof Error ? error.message : "Unknown error",
           ipAddress: req.ip || req.socket.remoteAddress || undefined,
@@ -572,109 +641,4 @@ export function registerEmailTrackingRoutes(app: Express) {
     }
   });
 
-  /**
-   * Email Reply Webhook
-   * POST /api/webhooks/reply
-   * Called by email forwarding service (Zapier, Make, custom IMAP monitor)
-   * when a reply is received at the configured reply-to email address
-   * 
-   * Body: {
-   *   fromEmail: string,        // The sender's email (the lead who replied)
-   *   toEmail?: string,         // The recipient (defaults to settings.replyToEmail)
-   *   subject?: string,         // Reply subject line
-   *   body?: string,            // Reply body text
-   *   inReplyToMessageId?: string,  // In-Reply-To header value
-   *   replyMessageId?: string,  // Message-ID of the reply
-   *   headers?: Record<string, string>  // Full email headers for classification
-   * }
-   */
-  app.post("/api/webhooks/reply", async (req: Request, res: Response) => {
-    try {
-      const {
-        fromEmail,
-        toEmail,
-        subject = "",
-        body = "",
-        inReplyToMessageId,
-        replyMessageId,
-        headers = {},
-        email, // Alternative field name for fromEmail
-      } = req.body;
-
-      const senderEmail = fromEmail || email;
-      if (!senderEmail) {
-        return res.status(400).json({ error: "fromEmail or email is required" });
-      }
-
-      // Get user settings for dynamic reply-to email
-      const ownerSettings = await db.getUserSettings(1);
-      const resolvedToEmail = toEmail || ownerSettings?.replyToEmail || "nitin@virtualassistant-group.com";
-
-      console.log(`[ReplyDetection] Reply webhook received from: ${senderEmail}, to: ${resolvedToEmail}, subject: ${subject}`);
-
-      // Import the reply detection module
-      const { processIncomingReply } = await import("../replyDetection");
-
-      // Process the reply (classify + stop follow-ups if genuine)
-      const result = await processIncomingReply({
-        fromEmail: senderEmail,
-        toEmail: resolvedToEmail,
-        subject,
-        body,
-        headers,
-        inReplyToMessageId,
-        replyMessageId,
-        userId: 1, // Owner user ID
-      });
-
-      console.log(`[ReplyDetection] Classification: ${result.classification} (${result.confidence}% confidence) - ${result.reason}`);
-      if (result.followUpsStopped) {
-        console.log(`[ReplyDetection] Follow-ups stopped! Emails cancelled: ${result.emailsCancelled}, Calls cancelled: ${result.callsCancelled}`);
-      }
-
-      // Log webhook event
-      await db.createWebhookEvent({
-        userId: 1,
-        webhookType: "email_reply",
-        status: result.classification === "genuine" ? "success" : "ignored",
-        sourceEmail: senderEmail,
-        campaignLeadId: undefined,
-        payload: {
-          classification: result.classification,
-          confidence: result.confidence,
-          reason: result.reason,
-          followUpsStopped: result.followUpsStopped,
-          emailsCancelled: result.emailsCancelled,
-          callsCancelled: result.callsCancelled,
-          leadId: result.leadId,
-          campaignId: result.campaignId,
-        },
-        ipAddress: req.ip || req.socket.remoteAddress || undefined,
-      });
-
-      res.json({
-        success: true,
-        classification: result.classification,
-        confidence: result.confidence,
-        reason: result.reason,
-        followUpsStopped: result.followUpsStopped,
-        emailsCancelled: result.emailsCancelled,
-        callsCancelled: result.callsCancelled,
-        leadMatched: !!result.leadId,
-      });
-    } catch (error) {
-      console.error("[ReplyDetection] Error processing reply webhook:", error);
-      try {
-        await db.createWebhookEvent({
-          userId: 1,
-          webhookType: "email_reply",
-          status: "failed",
-          payload: req.body,
-          errorMessage: error instanceof Error ? error.message : "Unknown error",
-          ipAddress: req.ip || req.socket.remoteAddress || undefined,
-        });
-      } catch (_) {}
-      res.status(500).json({ error: "Failed to process reply" });
-    }
-  });
 }

@@ -1962,6 +1962,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         let sentCount = 0;
         let skippedInvalid = 0;
         let skippedUndeliverable = 0;
+        const successfullySentCampaignLeadIds = new Set<number>();
 
         // Auto-block: collect leads with Bouncer "undeliverable" status
         const undeliverableLeadIds = new Set<number>();
@@ -2132,6 +2133,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             });
 
             sentCount++;
+            successfullySentCampaignLeadIds.add(campaignLead.id);
           } catch (error: any) {
             console.error(`[Campaign Launch] Failed to send email to campaignLead ${campaignLead.id}:`, error?.message, error?.code);
             // If it's an auth error, throw immediately to stop the campaign
@@ -2187,7 +2189,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const followUpSettings = await db.getUserSettings(ctx.user.id);
         const ctaLink = followUpSettings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
         for (const campaignLead of toSendToday) {
-          if (!campaignLead.emailSent) continue; // Only schedule follow-ups for actually sent emails
+          if (!successfullySentCampaignLeadIds.has(campaignLead.id)) continue; // Only schedule follow-ups for actually sent emails
           const leadForFollowUp = await db.getLeadById(campaignLead.leadId);
           if (leadForFollowUp) {
             scheduleFollowUpEmails(
@@ -2527,10 +2529,22 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           // Get initial call logs
           const initialCallLogs = await db.getCallLogsByCampaignLead(cl.id);
 
-          // Calculate email stats
+          // Calculate email stats.
+          // Follow-ups get cancelled (status set to "failed" — there's no distinct
+          // "cancelled" value in the schema) when the lead replies, unsubscribes, or
+          // answers a call. Those are good/neutral outcomes, not real send failures,
+          // so exclude them from the failure count using the same signals cancelPendingFollowUps
+          // is triggered by, or the report would show your best leads as "failed" emails.
+          const followUpsWereCancelled = !!(
+            cl.replied ||
+            cl.unsubscribed ||
+            initialCallLogs.some((c: any) => c.status === "completed") ||
+            followUpCallsList.some((c: any) => c.status === "completed")
+          );
           const emailsDone = followUpEmailsList.filter((e: any) => ["sent", "opened", "clicked"].includes(e.status));
           const emailsPending = followUpEmailsList.filter((e: any) => ["draft", "scheduled"].includes(e.status));
-          const emailsFailed = followUpEmailsList.filter((e: any) => e.status === "failed");
+          const emailsFailed = followUpEmailsList.filter((e: any) => e.status === "failed" && !followUpsWereCancelled);
+          const emailsCancelled = followUpsWereCancelled ? followUpEmailsList.filter((e: any) => e.status === "failed") : [];
 
           // Calculate call stats
           const callsDone = followUpCallsList.filter((c: any) => ["completed", "in_progress", "no_answer", "voicemail", "failed"].includes(c.status));
@@ -2614,6 +2628,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               emailsSent: emailsDone.length,
               emailsPending: emailsPending.length,
               emailsFailed: emailsFailed.length,
+              emailsCancelled: emailsCancelled.length,
               totalFollowUpCalls: followUpCallsList.length,
               callsMade: callsDone.length,
               callsPending: callsPending.length,
