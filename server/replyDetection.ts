@@ -283,6 +283,8 @@ export async function stopFollowUpsForLead(params: {
   campaignId?: number;
   campaignLeadId?: number;
   userId: number;
+  /** What to record the stoppage as on campaignLeads. Defaults to "replied". */
+  reason?: "replied" | "unsubscribed";
 }): Promise<{ emailsCancelled: number; callsCancelled: number }> {
   const database = await db.getDb();
   let emailsCancelled = 0;
@@ -339,11 +341,20 @@ export async function stopFollowUpsForLead(params: {
     );
   callsCancelled = (callResult as any)[0]?.affectedRows || 0;
 
-  // Update campaign lead status to mark as replied
-  await database
-    .update(campaignLeads)
-    .set({ replied: 1 as any, repliedAt: new Date().toISOString() })
-    .where(inArray(campaignLeads.id, campaignLeadIds));
+  // Update campaign lead status. An unsubscribe request must be recorded as
+  // unsubscribed (not "replied") so the lead is correctly suppressed if
+  // they're ever added to a future campaign.
+  if (params.reason === "unsubscribed") {
+    await database
+      .update(campaignLeads)
+      .set({ unsubscribed: 1 as any, unsubscribedAt: new Date().toISOString() })
+      .where(inArray(campaignLeads.id, campaignLeadIds));
+  } else {
+    await database
+      .update(campaignLeads)
+      .set({ replied: 1 as any, repliedAt: new Date().toISOString() })
+      .where(inArray(campaignLeads.id, campaignLeadIds));
+  }
 
   return { emailsCancelled, callsCancelled };
 }
@@ -517,6 +528,7 @@ export async function processIncomingReply(params: {
     const stopResult = await stopFollowUpsForLead({
       leadId,
       userId: params.userId,
+      reason: "unsubscribed",
     });
 
     emailsCancelled = stopResult.emailsCancelled;
