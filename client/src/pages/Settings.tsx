@@ -85,6 +85,18 @@ export default function SettingsPage() {
   const [claudeKeyTouched, setClaudeKeyTouched] = useState(false);
   const [showClaudeKey, setShowClaudeKey] = useState(false);
 
+  // IMAP inbox sync state
+  const [imapHost, setImapHost] = useState("imap.gmail.com");
+  const [imapPort, setImapPort] = useState(993);
+  const [imapUsername, setImapUsername] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
+  const [imapPasswordTouched, setImapPasswordTouched] = useState(false);
+  const [imapTestResult, setImapTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const testImapMutation = trpc.inbox.testImapConnection.useMutation({
+    onSuccess: (result) => setImapTestResult(result),
+    onError: (err) => setImapTestResult({ success: false, error: err.message }),
+  });
+
   // Social profiles state
   const [socialProfiles, setSocialProfiles] = useState({
     linkedinUrl: "",
@@ -146,6 +158,13 @@ export default function SettingsPage() {
       setClaudeApiKey("");
       setClaudeKeyTouched(false);
 
+      setImapHost((settingsQuery.data as any).imapHost || "imap.gmail.com");
+      setImapPort((settingsQuery.data as any).imapPort || 993);
+      setImapUsername((settingsQuery.data as any).imapUsername || "");
+      setImapPassword("");
+      setImapPasswordTouched(false);
+      setImapTestResult(null);
+
       setSocialProfiles({
         linkedinUrl: (settingsQuery.data as any).linkedinUrl || "",
         linkedinType: (settingsQuery.data as any).linkedinType || "personal",
@@ -183,6 +202,35 @@ export default function SettingsPage() {
     } catch (error: any) {
       toast.error(error?.message || "Failed to save settings");
     }
+  };
+
+  // Save only IMAP inbox-sync fields
+  const handleSaveImap = async () => {
+    try {
+      const payload: Record<string, any> = {
+        imapHost,
+        imapPort,
+        imapUsername,
+      };
+      if (imapPasswordTouched && imapPassword) {
+        payload.imapPassword = imapPassword;
+      }
+      await updateSettingsMutation.mutateAsync(payload);
+      toast.success("IMAP settings saved!");
+      settingsQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to save IMAP settings");
+    }
+  };
+
+  const handleTestImap = () => {
+    setImapTestResult(null);
+    testImapMutation.mutate({
+      host: imapHost,
+      port: imapPort,
+      username: imapUsername,
+      ...(imapPasswordTouched && imapPassword ? { password: imapPassword } : {}),
+    });
   };
 
   // Save only SMTP/Email fields
@@ -542,6 +590,68 @@ export default function SettingsPage() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                Reply Inbox (IMAP)
+              </CardTitle>
+              <CardDescription>
+                Connect the mailbox replies come to (nitin@virtualassistant-group.com) so the app can read incoming replies, show them in the Inbox tab, and automatically stop follow-ups. For Gmail/Google Workspace, enable IMAP in Gmail settings and use an App Password (not your regular login password) — 2-Step Verification must be on to generate one.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>IMAP Host</Label>
+                  <Input placeholder="imap.gmail.com" value={imapHost} onChange={(e) => setImapHost(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>IMAP Port</Label>
+                  <Input type="number" placeholder="993" value={imapPort} onChange={(e) => setImapPort(parseInt(e.target.value) || 993)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Email Address</Label>
+                <Input placeholder="nitin@virtualassistant-group.com" value={imapUsername} onChange={(e) => setImapUsername(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  App Password
+                  {settingsQuery.data?.hasImapPassword && (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  type="password"
+                  placeholder={settingsQuery.data?.hasImapPassword ? "••••••••  (leave blank to keep current)" : "16-character app password"}
+                  value={imapPassword}
+                  onChange={(e) => { setImapPassword(e.target.value); setImapPasswordTouched(true); }}
+                />
+              </div>
+              {imapTestResult && (
+                <div className={`text-xs p-2 rounded-md ${imapTestResult.success ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                  {imapTestResult.success ? "✓ Connected successfully!" : `✗ ${imapTestResult.error || "Connection failed"}`}
+                </div>
+              )}
+              <div className="pt-2 flex items-center gap-2">
+                <Button onClick={handleSaveImap} disabled={updateSettingsMutation.isPending} className="gap-2">
+                  {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save IMAP Settings
+                </Button>
+                <Button variant="outline" onClick={handleTestImap} disabled={testImapMutation.isPending || !imapHost || !imapUsername} className="gap-2">
+                  {testImapMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Test Connection
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Once saved, go to the <strong>Inbox</strong> tab in the sidebar to enable automatic checking and see incoming replies.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

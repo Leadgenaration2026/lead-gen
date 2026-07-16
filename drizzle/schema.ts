@@ -357,6 +357,12 @@ export const userSettings = mysqlTable("userSettings", {
 	replyToEmail: varchar({ length: 320 }),
 	notificationEmail: varchar({ length: 320 }),
 	claudeApiKey: varchar({ length: 500 }),
+	imapHost: varchar({ length: 255 }),
+	imapPort: int(),
+	imapUsername: varchar({ length: 255 }),
+	imapPassword: varchar({ length: 255 }),
+	imapLastUid: int(),
+	imapLastSyncedAt: timestamp({ mode: 'string' }),
 },
 (table) => [
 	index("userSettings_userId_unique").on(table.userId),

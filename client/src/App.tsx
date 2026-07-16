@@ -22,6 +22,7 @@ import SettingsPage from "./pages/Settings";
 import SocialOutreach from "./pages/SocialOutreach";
 import MessageQueue from "./pages/MessageQueue";
 import SearchPreview from "./pages/SearchPreview";
+import Inbox from "./pages/Inbox";
 
 // Wrapper to add DashboardLayout to pages
 function WithLayout({ component: Component }: { component: React.ComponentType }) {
@@ -48,6 +49,7 @@ function Router() {
       <Route path={"/all-leads"}>{() => <WithLayout component={AllLeads} />}</Route>
       <Route path={"/campaigns/:id"}>{() => <WithLayout component={CampaignDetail} />}</Route>
       <Route path={"/campaigns"}>{() => <WithLayout component={Campaigns} />}</Route>
+      <Route path={"/inbox"}>{() => <WithLayout component={Inbox} />}</Route>
       <Route path={"/settings"}>{() => <WithLayout component={SettingsPage} />}</Route>
       <Route path={"/social-outreach"}>{() => <WithLayout component={SocialOutreach} />}</Route>
       <Route path={"/message-queue"}>{() => <WithLayout component={MessageQueue} />}</Route>

@@ -303,10 +303,34 @@ export async function getCallLogsByCampaignLead(campaignLeadId: number) {
   return db.select().from(callLogs).where(eq(callLogs.campaignLeadId, campaignLeadId));
 }
 
+// Lazily adds the IMAP inbox-sync columns to the existing userSettings table
+// (no migration tool access in this environment, so schema.ts is updated
+// alongside this idempotent ALTER TABLE run once per process lifetime).
+let userSettingsImapColumnsReady = false;
+async function ensureUserSettingsImapColumns(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (userSettingsImapColumnsReady) return;
+  // Best-effort: getUserSettings/upsertUserSettings are called from nearly
+  // every procedure in the app, so a failure here (e.g. unsupported "ADD
+  // COLUMN IF NOT EXISTS" syntax on some MySQL versions) must not take down
+  // every settings-dependent feature — just skip and retry next call.
+  try {
+    await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS imapHost VARCHAR(255)`);
+    await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS imapPort INT`);
+    await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS imapUsername VARCHAR(255)`);
+    await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS imapPassword VARCHAR(255)`);
+    await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS imapLastUid INT`);
+    await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS imapLastSyncedAt TIMESTAMP NULL`);
+    userSettingsImapColumnsReady = true;
+  } catch (error) {
+    console.error("[ensureUserSettingsImapColumns] Failed to add IMAP columns:", error);
+  }
+}
+
 // User settings queries
 export async function getUserSettings(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await ensureUserSettingsImapColumns(db);
   const result = await db.select().from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
   return result[0];
 }
@@ -315,7 +339,8 @@ export async function upsertUserSettings(data: InsertUserSettings) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   if (!data.userId) throw new Error("userId is required");
-  
+  await ensureUserSettingsImapColumns(db);
+
   const existing = await getUserSettings(data.userId);
   if (existing) {
     return db.update(userSettings).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(userSettings.userId, data.userId));
@@ -871,6 +896,34 @@ export async function findCampaignLeadsByEmail(email: string) {
     );
   
   return results;
+}
+
+// ============ Inbox / Email Replies ============
+
+export async function getEmailRepliesByUser(userId: number, limit: number = 100) {
+  const database = await getDb();
+  if (!database) return [];
+  const { emailReplies } = await import("../drizzle/schema");
+  const { desc } = await import("drizzle-orm");
+  return database.select().from(emailReplies).where(eq(emailReplies.userId, userId)).orderBy(desc(emailReplies.receivedAt)).limit(limit);
+}
+
+export async function getReplyStatsByUser(userId: number) {
+  const database = await getDb();
+  if (!database) return { total: 0, genuine: 0, autoReply: 0, newsletter: 0, spam: 0, bounce: 0, unsubscribe: 0, followUpsStopped: 0 };
+  const { emailReplies } = await import("../drizzle/schema");
+  const rows = await database.select().from(emailReplies).where(eq(emailReplies.userId, userId));
+  const stats = { total: rows.length, genuine: 0, autoReply: 0, newsletter: 0, spam: 0, bounce: 0, unsubscribe: 0, followUpsStopped: 0 };
+  for (const r of rows as any[]) {
+    if (r.classification === "genuine") stats.genuine++;
+    else if (r.classification === "auto_reply") stats.autoReply++;
+    else if (r.classification === "newsletter") stats.newsletter++;
+    else if (r.classification === "spam") stats.spam++;
+    else if (r.classification === "bounce") stats.bounce++;
+    else if (r.classification === "unsubscribe") stats.unsubscribe++;
+    if (r.followUpsStopped) stats.followUpsStopped++;
+  }
+  return stats;
 }
 
 // ============ Webhook Events ============

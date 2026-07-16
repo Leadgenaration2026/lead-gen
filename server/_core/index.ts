@@ -96,6 +96,31 @@ async function startServer() {
       });
     }
   });
+  // Scheduled inbox sync endpoint (called by heartbeat cron)
+  // Polls the configured IMAP mailbox for new replies from known leads and
+  // feeds them into the reply-classification pipeline.
+  app.post("/api/scheduled/sync-inbox", async (req, res) => {
+    try {
+      const { sdk } = await import("./sdk");
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron) {
+        return res.status(403).json({ error: "cron-only" });
+      }
+
+      const { syncInboxReplies } = await import("./inboxSync");
+      const result = await syncInboxReplies(1); // Owner userId
+      console.log(`[Heartbeat] Inbox sync: ${JSON.stringify(result)}`);
+      res.json({ ok: true, ...result });
+    } catch (error: any) {
+      console.error("[Heartbeat] Inbox sync handler error:", error);
+      res.status(500).json({
+        error: error.message || "Unknown error",
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // Scheduled campaign auto-launch endpoint (called by heartbeat cron)
   app.post("/api/scheduled/launch-campaign", async (req, res) => {
     try {

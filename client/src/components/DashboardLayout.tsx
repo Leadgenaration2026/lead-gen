@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, Clock, CalendarDays, MessageSquare, Trash2, Search } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, Clock, CalendarDays, MessageSquare, Trash2, Search, Inbox } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -34,6 +34,7 @@ const menuItems = [
   { icon: FolderOpen, label: "Lead Sets", path: "/lead-sets", color: "text-amber-500", activeBg: "data-[active=true]:bg-amber-50 dark:data-[active=true]:bg-amber-950/30" },
   { icon: Mail, label: "Email Composer", path: "/email-composer", color: "text-sky-500", activeBg: "data-[active=true]:bg-sky-50 dark:data-[active=true]:bg-sky-950/30" },
   { icon: Megaphone, label: "Campaigns", path: "/campaigns", color: "text-pink-500", activeBg: "data-[active=true]:bg-pink-50 dark:data-[active=true]:bg-pink-950/30" },
+  { icon: Inbox, label: "Inbox", path: "/inbox", color: "text-fuchsia-500", activeBg: "data-[active=true]:bg-fuchsia-50 dark:data-[active=true]:bg-fuchsia-950/30" },
   { icon: FileText, label: "Templates", path: "/templates", color: "text-indigo-500", activeBg: "data-[active=true]:bg-indigo-50 dark:data-[active=true]:bg-indigo-950/30" },
   { icon: BarChart3, label: "Analytics", path: "/analytics", color: "text-emerald-500", activeBg: "data-[active=true]:bg-emerald-50 dark:data-[active=true]:bg-emerald-950/30" },
   { icon: Clock, label: "Follow-ups", path: "/follow-up-reports", color: "text-orange-500", activeBg: "data-[active=true]:bg-orange-50 dark:data-[active=true]:bg-orange-950/30" },

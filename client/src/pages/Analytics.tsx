@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, BarChart3, Mail, MousePointerClick, Phone, TrendingUp, Users, Send, Eye, Globe, Linkedin, Instagram, Facebook, CheckCircle, Clock } from "lucide-react";
+import { Loader2, BarChart3, Mail, MousePointerClick, Phone, TrendingUp, Users, Send, Eye, Globe, Linkedin, Instagram, Facebook, CheckCircle, Clock, Reply } from "lucide-react";
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -38,7 +38,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -74,6 +74,19 @@ export default function AnalyticsPage() {
               <div>
                 <p className="text-2xl font-bold">{overview?.totals.overallClickRate || 0}%</p>
                 <p className="text-xs text-muted-foreground">Click Rate</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-fuchsia-100">
+                <Reply className="w-5 h-5 text-fuchsia-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{(overview?.totals as any)?.overallReplyRate || 0}%</p>
+                <p className="text-xs text-muted-foreground">Reply Rate ({(overview?.totals as any)?.emailsReplied || 0} replied)</p>
               </div>
             </div>
           </CardContent>

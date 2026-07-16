@@ -27,6 +27,9 @@ import { searchDiagnosticsRouter } from "./searchDiagnosticsRouter";
 // follow-up calls, and one-off scheduled emails.
 const FOLLOW_UP_HEARTBEAT_NAME = "process-scheduled-emails";
 
+// Name of the recurring heartbeat job that polls the IMAP inbox for replies.
+const INBOX_SYNC_HEARTBEAT_NAME = "sync-inbox-replies";
+
 // Validation schemas
 const createLeadSchema = z.object({
   companyName: z.string().min(1),
@@ -90,6 +93,12 @@ const updateUserSettingsSchema = z.object({
   replyToEmail: z.union([z.string().email(), z.literal("")]).optional(),
   notificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
   claudeApiKey: z.string().optional(),
+
+  // IMAP inbox sync
+  imapHost: z.string().optional(),
+  imapPort: z.number().optional(),
+  imapUsername: z.string().optional(),
+  imapPassword: z.string().optional(),
 });
 
 export const appRouter = router({
@@ -2427,6 +2436,11 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           replyToEmail: "",
           notificationEmail: "",
           hasClaudeApiKey: false,
+          imapHost: "imap.gmail.com",
+          imapPort: 993,
+          imapUsername: "",
+          hasImapPassword: false,
+          imapLastSyncedAt: null,
         };
       }
       // Don't return sensitive data to frontend
@@ -2456,6 +2470,11 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         replyToEmail: settings.replyToEmail || "",
         notificationEmail: settings.notificationEmail || "",
         hasClaudeApiKey: !!settings.claudeApiKey,
+        imapHost: (settings as any).imapHost || "imap.gmail.com",
+        imapPort: (settings as any).imapPort || 993,
+        imapUsername: (settings as any).imapUsername || "",
+        hasImapPassword: !!(settings as any).imapPassword,
+        imapLastSyncedAt: (settings as any).imapLastSyncedAt || null,
       };
     }),
 
@@ -2474,6 +2493,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           if (key === 'retellWebhookSecret' && !value) continue;
           if (key === 'seamlessApiKey' && !value) continue;
           if (key === 'claudeApiKey' && !value) continue;
+          if (key === 'imapPassword' && !value) continue;
           cleanedInput[key] = value;
         }
         
@@ -2785,6 +2805,115 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
   }),
 
   // Email tracking router - actual tracking handled by Express routes
+  // Reply inbox — replies detected via IMAP sync (see server/_core/inboxSync.ts)
+  inbox: router({
+    list: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(200).default(100) }).optional())
+      .query(async ({ ctx, input }) => {
+        const replies = await db.getEmailRepliesByUser(ctx.user.id, input?.limit || 100);
+        // Enrich with lead/company name where we matched one
+        return Promise.all(
+          (replies as any[]).map(async (r) => {
+            let leadName: string | null = null;
+            let companyName: string | null = null;
+            if (r.leadId) {
+              const lead = await db.getLeadById(r.leadId);
+              if (lead) {
+                leadName = lead.ownerName;
+                companyName = lead.companyName;
+              }
+            }
+            return { ...r, leadName, companyName };
+          })
+        );
+      }),
+
+    getStats: protectedProcedure.query(async ({ ctx }) => {
+      return db.getReplyStatsByUser(ctx.user.id);
+    }),
+
+    getSyncStatus: protectedProcedure.query(async ({ ctx }) => {
+      const settings = await db.getUserSettings(ctx.user.id);
+      const configured = !!((settings as any)?.imapHost && (settings as any)?.imapUsername && (settings as any)?.imapPassword);
+      try {
+        const { parse: parseCookie } = await import("cookie");
+        const { COOKIE_NAME } = await import("@shared/const");
+        const { listHeartbeatJobs } = await import("./_core/heartbeat");
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const { jobs } = await listHeartbeatJobs(sessionToken);
+        const job = jobs.find((j) => j.name === INBOX_SYNC_HEARTBEAT_NAME);
+        return {
+          configured,
+          enabled: !!job?.isEnable,
+          nextExecutionAt: job?.nextExecutionAt || null,
+          lastSyncedAt: (settings as any)?.imapLastSyncedAt || null,
+        };
+      } catch (err: any) {
+        return { configured, enabled: false, nextExecutionAt: null, lastSyncedAt: (settings as any)?.imapLastSyncedAt || null, error: err.message };
+      }
+    }),
+
+    testImapConnection: protectedProcedure
+      .input(z.object({ host: z.string().min(1), port: z.number(), username: z.string().min(1), password: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        let password = input.password;
+        if (!password) {
+          // No new password provided — fall back to the already-saved one.
+          const settings = await db.getUserSettings(ctx.user.id);
+          password = (settings as any)?.imapPassword || undefined;
+        }
+        if (!password) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Enter a password to test the connection." });
+        }
+        const { testImapConnection } = await import("./_core/inboxSync");
+        return testImapConnection({ host: input.host, port: input.port, username: input.username, password });
+      }),
+
+    enableInboxSync: protectedProcedure.mutation(async ({ ctx }) => {
+      const settings = await db.getUserSettings(ctx.user.id);
+      if (!(settings as any)?.imapHost || !(settings as any)?.imapUsername || !(settings as any)?.imapPassword) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Save your IMAP connection settings first." });
+      }
+      const { parse: parseCookie } = await import("cookie");
+      const { COOKIE_NAME } = await import("@shared/const");
+      const { listHeartbeatJobs, createHeartbeatJob, updateHeartbeatJob } = await import("./_core/heartbeat");
+      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      const { jobs } = await listHeartbeatJobs(sessionToken);
+      const existing = jobs.find((j) => j.name === INBOX_SYNC_HEARTBEAT_NAME);
+      if (existing) {
+        if (!existing.isEnable) {
+          await updateHeartbeatJob(existing.taskUid, { enable: true }, sessionToken);
+        }
+        return { success: true };
+      }
+      await createHeartbeatJob({
+        name: INBOX_SYNC_HEARTBEAT_NAME,
+        cron: "0 */5 * * * *", // every 5 minutes
+        path: "/api/scheduled/sync-inbox",
+        description: "Polls the configured IMAP inbox for new lead replies",
+      }, sessionToken);
+      return { success: true };
+    }),
+
+    disableInboxSync: protectedProcedure.mutation(async ({ ctx }) => {
+      const { parse: parseCookie } = await import("cookie");
+      const { COOKIE_NAME } = await import("@shared/const");
+      const { listHeartbeatJobs, updateHeartbeatJob } = await import("./_core/heartbeat");
+      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      const { jobs } = await listHeartbeatJobs(sessionToken);
+      const existing = jobs.find((j) => j.name === INBOX_SYNC_HEARTBEAT_NAME);
+      if (existing?.isEnable) {
+        await updateHeartbeatJob(existing.taskUid, { enable: false }, sessionToken);
+      }
+      return { success: true };
+    }),
+
+    syncNow: protectedProcedure.mutation(async ({ ctx }) => {
+      const { syncInboxReplies } = await import("./_core/inboxSync");
+      return syncInboxReplies(ctx.user.id);
+    }),
+  }),
+
   tracking: router({
     getEvents: protectedProcedure
       .input(z.number())
@@ -3670,6 +3799,7 @@ Respond in this exact JSON format:
       let totalOpened = 0;
       let totalClicked = 0;
       let totalCalls = 0;
+      let totalReplied = 0;
       const campaignMetrics: Array<{
         id: number;
         name: string;
@@ -3680,9 +3810,11 @@ Respond in this exact JSON format:
         clicked: number;
         calls: number;
         bounced: number;
+        replied: number;
         openRate: number;
         clickRate: number;
         bounceRate: number;
+        replyRate: number;
         createdAt: Date;
       }> = [];
 
@@ -3693,11 +3825,13 @@ Respond in this exact JSON format:
         const clicked = campaignLeadsList.filter((cl: any) => cl.emailClicked).length;
         const calls = campaignLeadsList.filter((cl: any) => cl.callTriggered).length;
         const bounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
+        const replied = campaignLeadsList.filter((cl: any) => cl.replied).length;
 
         totalSent += sent;
         totalOpened += opened;
         totalClicked += clicked;
         totalCalls += calls;
+        totalReplied += replied;
 
         campaignMetrics.push({
           id: campaign.id,
@@ -3709,9 +3843,11 @@ Respond in this exact JSON format:
           clicked,
           calls,
           bounced,
+          replied,
           openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
           clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
           bounceRate: sent > 0 ? Math.round((bounced / sent) * 100) : 0,
+          replyRate: sent > 0 ? Math.round((replied / sent) * 100) : 0,
           createdAt: campaign.createdAt ? new Date(campaign.createdAt) : new Date(),
         });
       }
@@ -3748,8 +3884,10 @@ Respond in this exact JSON format:
           emailsOpened: totalOpened,
           emailsClicked: totalClicked,
           callsMade: totalCalls,
+          emailsReplied: totalReplied,
           overallOpenRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
           overallClickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
+          overallReplyRate: totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0,
           socialOutreach: socialTotals,
         },
         campaigns: campaignMetrics,
