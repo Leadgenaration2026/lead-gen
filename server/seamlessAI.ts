@@ -103,6 +103,29 @@ export function mapToValidSeamlessIndustry(guess: string): string | null {
   });
   if (normalizedMatch) return normalizedMatch;
 
+  // Word-overlap match: catches multi-word guesses like "Travel Agency" or
+  // "Tourism Company" that share no contiguous substring with the matching
+  // option (e.g. "Leisure Travel & Tourism") because of the extra generic
+  // word, but do share one real, meaningful word. Without this, a guess like
+  // "Travel Agency" fails every check above and the industry filter gets
+  // silently dropped -- which doesn't just return no results, it returns
+  // OTHER industries entirely (the search falls back to matching on job
+  // title alone, e.g. "Owner", across every industry Seamless has).
+  const GENERIC_WORDS = new Set([
+    "and", "the", "for", "services", "service", "company", "companies",
+    "industry", "business", "businesses", "agency", "agencies", "management", "group",
+  ]);
+  const significantWords = (s: string) =>
+    s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 3 && !GENERIC_WORDS.has(w));
+  const guessWords = significantWords(guessLower);
+  if (guessWords.length > 0) {
+    const wordMatch = SEAMLESS_INDUSTRY_OPTIONS.find((opt) => {
+      const optWords = new Set(significantWords(opt));
+      return guessWords.some((w) => optWords.has(w));
+    });
+    if (wordMatch) return wordMatch;
+  }
+
   return null;
 }
 
