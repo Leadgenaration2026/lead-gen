@@ -568,6 +568,12 @@ export async function processScheduledEmails() {
           continue;
         }
 
+        if ((lead as any).unsubscribed) {
+          await db.updateScheduledEmail(scheduledEmail.id, { status: "cancelled" });
+          console.log(`[ScheduledEmailProcessor] Skipping scheduled email ${scheduledEmail.id} - lead ${lead.id} has unsubscribed`);
+          continue;
+        }
+
         // Get user SMTP settings
         const settings = await db.getUserSettings(scheduledEmail.userId);
         if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) {
@@ -590,19 +596,31 @@ export async function processScheduledEmails() {
           },
         });
 
-        // Create tracking token
+        // Create tracking tokens -- tied to leadId since one-off scheduled
+        // emails have no campaignLeadId to associate with.
         const { nanoid: createId } = await import("nanoid");
         const trackingToken = createId();
+        const clickTrackingToken = createId();
+        await db.createEmailTrackingEvent({ leadId: lead.id, eventType: "open", trackingToken } as any);
+        await db.createEmailTrackingEvent({ leadId: lead.id, eventType: "click", trackingToken: clickTrackingToken } as any);
+
         // Use the deployed domain for tracking URLs
         const baseUrl = process.env.SITE_URL || `https://${process.env.DOMAIN || 'leadgenoutreach-gkqazghm.manus.space'}`;
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
-        
+
         // Get user's email signature
         // Using Nitin hardcoded signature
-        
+
         // Convert plain text to HTML (preserve line breaks and bullet points)
         const { plainTextToHtml } = await import("@shared/emailFormat");
-        const htmlBody = plainTextToHtml(scheduledEmail.emailBody) + NITIN_SIGNATURE_HTML + trackingPixel;
+        let htmlBody = scheduledEmail.emailBody.replace(
+          /(https?:\/\/[^\s<>"']+)/g,
+          (rawUrl) => {
+            if (rawUrl.includes('/api/track/click/')) return rawUrl;
+            return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
+          }
+        );
+        htmlBody = plainTextToHtml(htmlBody) + NITIN_SIGNATURE_HTML + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;

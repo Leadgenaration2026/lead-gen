@@ -144,7 +144,10 @@ export const emailTemplates = mysqlTable("emailTemplates", {
 
 export const emailTrackingEvents = mysqlTable("emailTrackingEvents", {
 	id: int().autoincrement().notNull(),
-	campaignLeadId: int().notNull(),
+	// Nullable: campaign-linked emails set this; standalone one-off scheduled
+	// emails (no campaign) set leadId instead.
+	campaignLeadId: int(),
+	leadId: int(),
 	eventType: mysqlEnum(['open','click','bounce','unsubscribe']).notNull(),
 	trackingToken: varchar({ length: 255 }).notNull(),
 	userAgent: text(),
@@ -275,6 +278,8 @@ export const leads = mysqlTable("leads", {
 		state: varchar({ length: 100 }),
 		seamlessId: varchar({ length: 255 }), // Seamless.AI contact ID for phone verification
 		enrichmentCreditsUsed: int().default(0), // Credits consumed during phone verification enrichment
+		unsubscribed: tinyint().default(0).notNull(), // Global opt-out, independent of any single campaign
+		unsubscribedAt: timestamp({ mode: 'string' }),
 	});
 
 export const rotationalEmails = mysqlTable("rotationalEmails", {

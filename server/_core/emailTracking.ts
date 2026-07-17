@@ -35,12 +35,21 @@ export function registerEmailTrackingRoutes(app: Express) {
 
       // Log the open event with metadata
       await db.createEmailTrackingEvent({
-        campaignLeadId: event.campaignLeadId,
+        campaignLeadId: event.campaignLeadId || undefined,
+        leadId: (event as any).leadId || undefined,
         eventType: "open",
         trackingToken: `open_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         userAgent: req.get("user-agent"),
         ipAddress: req.ip || req.socket.remoteAddress || undefined,
-      });
+      } as any);
+
+      // One-off scheduled emails (leadId, no campaignLeadId) have nothing
+      // campaign-specific to update -- the event above is all that's needed.
+      if (!event.campaignLeadId) {
+        res.setHeader("Content-Type", "image/gif");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        return res.send(PIXEL_GIF);
+      }
 
       // Update campaign lead to mark as opened
       const campaignLead = await db.getCampaignLeadById(event.campaignLeadId);
@@ -141,19 +150,20 @@ export function registerEmailTrackingRoutes(app: Express) {
       if (event) {
         // Log the click event
         await db.createEmailTrackingEvent({
-          campaignLeadId: event.campaignLeadId,
+          campaignLeadId: event.campaignLeadId || undefined,
+          leadId: (event as any).leadId || undefined,
           eventType: "click",
           trackingToken: `click_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           clickUrl: url,
           userAgent: req.get("user-agent"),
           ipAddress: req.ip || req.socket.remoteAddress || undefined,
-        });
+        } as any);
 
         // Update campaign lead to mark as clicked
         const campaignLead = await db.getCampaignLeadById(event.campaignLeadId);
         if (campaignLead) {
           if (!campaignLead.emailClicked) {
-            await db.updateCampaignLead(event.campaignLeadId, {
+            await db.updateCampaignLead(campaignLead.id, {
               emailClicked: 1 as any,
               emailClickedAt: new Date().toISOString(),
             });
@@ -193,7 +203,7 @@ export function registerEmailTrackingRoutes(app: Express) {
               
               if (result.success) {
                 if (!campaignLead.callTriggered) {
-                    await db.updateCampaignLead(event.campaignLeadId, {
+                    await db.updateCampaignLead(campaignLead.id, {
                       callTriggered: 1 as any,
                     });
                 }
@@ -234,10 +244,15 @@ export function registerEmailTrackingRoutes(app: Express) {
       console.log(`[EmailTracking] Unsubscribe request for token: ${token}`);
 
       const event = await db.getEmailTrackingEventByToken(token);
-      if (event) {
+      if (event?.campaignLeadId) {
         await db.markLeadUnsubscribed(event.campaignLeadId);
         await db.cancelPendingFollowUps(event.campaignLeadId);
         console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as unsubscribed and cancelled follow-ups`);
+      } else if ((event as any)?.leadId) {
+        await db.markLeadUnsubscribedGlobally((event as any).leadId);
+        console.log(`[EmailTracking] Marked lead ${(event as any).leadId} as globally unsubscribed`);
+      } else {
+        console.log(`[EmailTracking] Unsubscribe token not found: ${token}`);
       }
 
       // Show a simple confirmation page

@@ -16,7 +16,28 @@ export async function getDb() {
       _db = null;
     }
   }
+  if (_db) {
+    try {
+      await ensureLeadsAndTrackingColumns(_db);
+    } catch (error) {
+      console.warn("[Database] Failed to ensure leads/tracking columns:", error);
+    }
+  }
   return _db;
+}
+
+// Lazily adds columns needed for lead-level (non-campaign) unsubscribe and
+// tracking support. `leads` is queried from dozens of call sites, so this
+// runs from getDb() itself (guarded, runs once) rather than from any one
+// specific function -- every query against these tables goes through here.
+let leadsAndTrackingColumnsReady = false;
+async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) {
+  if (leadsAndTrackingColumnsReady) return;
+  await database.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS unsubscribed TINYINT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS unsubscribedAt TIMESTAMP NULL`);
+  await database.execute(sql`ALTER TABLE emailTrackingEvents ADD COLUMN IF NOT EXISTS leadId INT`);
+  await database.execute(sql`ALTER TABLE emailTrackingEvents MODIFY COLUMN campaignLeadId INT NULL`);
+  leadsAndTrackingColumnsReady = true;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -244,7 +265,8 @@ export async function getCampaignLeads(campaignId: number) {
   return db.select().from(campaignLeads).where(eq(campaignLeads.campaignId, campaignId));
 }
 
-export async function getCampaignLeadById(id: number) {
+export async function getCampaignLeadById(id: number | null | undefined) {
+  if (!id) return undefined;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.select().from(campaignLeads).where(eq(campaignLeads.id, id)).limit(1);
@@ -816,6 +838,22 @@ export async function deleteRotationalEmail(id: number) {
 }
 
 // ===== Unsubscribe & Reply =====
+
+// Global, lead-level unsubscribe -- used for one-off scheduled emails, which
+// aren't tied to any campaign so there's no campaignLeadId to scope to.
+// Also cancels any other still-pending scheduled emails for this lead.
+export async function markLeadUnsubscribedGlobally(leadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(leads).set({
+    unsubscribed: true,
+    unsubscribedAt: new Date(),
+  } as any).where(eq(leads.id, leadId));
+
+  await database.update(scheduledEmails).set({ status: "cancelled" }).where(
+    and(eq(scheduledEmails.leadId, leadId), eq(scheduledEmails.status, "pending"))
+  );
+}
 
 export async function markLeadUnsubscribed(campaignLeadId: number) {
   const database = await getDb();

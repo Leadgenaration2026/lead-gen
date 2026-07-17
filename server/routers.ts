@@ -3711,6 +3711,10 @@ Respond in this exact JSON format:
         scheduledFor: z.string(), // ISO date string
       }))
       .mutation(async ({ input, ctx }) => {
+        const lead = await db.getLeadById(input.leadId);
+        if (lead && (lead as any).unsubscribed) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This lead has unsubscribed and can't be scheduled for future emails." });
+        }
         const id = await db.createScheduledEmail({
           userId: ctx.user.id,
           leadId: input.leadId,
