@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   Linkedin, Instagram, Facebook, Copy, ExternalLink, CheckCircle2,
-  Clock, MessageSquare, Filter, Trash2, Send, ThumbsUp, Reply, ThumbsDown
+  Clock, MessageSquare, Filter, Trash2, Send, ThumbsUp, Reply, ThumbsDown, MessageCircle
 } from "lucide-react";
 
 type FilterPlatform = "all" | "linkedin" | "instagram" | "facebook";
@@ -26,6 +26,26 @@ const PLATFORM_COLORS: Record<string, string> = {
   instagram: "text-pink-600 bg-pink-50 border-pink-200",
   facebook: "text-blue-700 bg-blue-50 border-blue-200",
 };
+
+// Facebook (m.me) and Instagram (ig.me) both support opening a DM thread
+// directly with a specific username. LinkedIn has no equivalent -- there's
+// no documented way to deep-link into a message thread, so the profile page
+// (whose Connect/Pending/Message button state already reveals whether a
+// connection was accepted) is the only option there.
+function getDirectMessageUrl(platform: string, profileUrl: string | null): string | null {
+  if (!profileUrl) return null;
+  let username: string;
+  try {
+    const url = new URL(profileUrl);
+    username = url.pathname.split("/").filter(Boolean)[0] || "";
+  } catch {
+    return null;
+  }
+  if (!username || username === "profile.php") return null; // e.g. facebook.com/profile.php?id=... has no vanity username
+  if (platform === "facebook") return `https://m.me/${username}`;
+  if (platform === "instagram") return `https://ig.me/m/${username}`;
+  return null;
+}
 
 export default function MessageQueue() {
   const [filterPlatform, setFilterPlatform] = useState<FilterPlatform>("all");
@@ -174,6 +194,9 @@ export default function MessageQueue() {
           <h2 className="text-2xl font-semibold tracking-tight">Message Queue</h2>
           <p className="text-sm text-muted-foreground mt-1">
             All your social outreach messages in one place. Copy, open profiles, and send them manually in batch.
+            Once sent, use <strong>"Open Chat"</strong> to jump straight to the conversation on Facebook/Instagram and check for a reply —
+            LinkedIn doesn't support a direct link to a message thread, so use <strong>"Profile"</strong> there: the Connect/Pending/Message
+            button on their profile tells you whether they've accepted.
           </p>
         </div>
 
@@ -370,6 +393,16 @@ export default function MessageQueue() {
                                 onClick={() => handleOpenProfile(msg.profileUrl)}
                               >
                                 <ExternalLink className="w-3 h-3" /> Profile
+                              </Button>
+                            )}
+                            {msg.status === "sent" && getDirectMessageUrl(msg.platform, msg.profileUrl) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs gap-1 text-indigo-700"
+                                onClick={() => window.open(getDirectMessageUrl(msg.platform, msg.profileUrl)!, "_blank")}
+                              >
+                                <MessageCircle className="w-3 h-3" /> Open Chat
                               </Button>
                             )}
                             {msg.status !== "sent" && (
