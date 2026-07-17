@@ -39,7 +39,44 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE emailTrackingEvents MODIFY COLUMN campaignLeadId INT NULL`);
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS responseStatus ENUM('none','accepted','replied','declined') DEFAULT 'none' NOT NULL`);
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS respondedAt TIMESTAMP NULL`);
+  await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS socialDailyLimits JSON NULL`);
   leadsAndTrackingColumnsReady = true;
+}
+
+// Conservative default caps per platform/action, used when the user hasn't
+// configured their own. These aren't official published platform limits
+// (none of the three publish one) -- they're commonly-recommended safe
+// starting points to avoid tripping spam/abuse detection.
+export const DEFAULT_SOCIAL_DAILY_LIMITS: Record<string, Record<string, number>> = {
+  linkedin: { connection_request: 20, direct_message: 20 },
+  instagram: { connection_request: 20, direct_message: 20 },
+  facebook: { connection_request: 20, direct_message: 20 },
+};
+
+export function getSocialDailyLimit(settings: any, platform: string, messageType: string): number {
+  const configured = settings?.socialDailyLimits?.[platform]?.[messageType];
+  if (typeof configured === "number" && configured > 0) return configured;
+  return DEFAULT_SOCIAL_DAILY_LIMITS[platform]?.[messageType] || 20;
+}
+
+// Counts today's queued+sent outreach of this exact platform/type combo --
+// used to enforce the per-platform, per-action-type daily cap.
+export async function getSocialCountToday(userId: number, platform: string, messageType: string): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  const { socialOutreach } = await import("../drizzle/schema");
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const rows = await database.select().from(socialOutreach).where(
+    and(
+      eq(socialOutreach.userId, userId),
+      eq(socialOutreach.platform, platform as any),
+      eq(socialOutreach.messageType, messageType as any),
+      inArray(socialOutreach.status, ["sent", "pending"]),
+      gte(socialOutreach.createdAt, todayStart)
+    )
+  );
+  return rows.length;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

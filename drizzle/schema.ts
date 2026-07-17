@@ -361,6 +361,10 @@ export const userSettings = mysqlTable("userSettings", {
 	facebookType: mysqlEnum(['page','personal']).default('personal'),
 	socialDailyLimit: int().default(20),
 	socialMessageCharLimit: int().default(300),
+	// Per-platform, per-action-type daily caps, e.g.
+	// {"linkedin":{"connection_request":20,"direct_message":20}, "instagram":{...}, "facebook":{...}}
+	// Kept separate from socialDailyLimit (the old combined-across-everything cap).
+	socialDailyLimits: json(),
 	socialNotificationEmail: varchar({ length: 320 }),
 	bouncerApiKey: varchar({ length: 500 }),
 	ctaLink: varchar({ length: 500 }),

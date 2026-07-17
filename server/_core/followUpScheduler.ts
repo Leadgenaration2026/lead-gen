@@ -300,28 +300,25 @@ export async function processScheduledFollowUpEmails() {
             if (campaign) {
               const settings = await db.getUserSettings(campaign.userId);
               const { socialOutreach } = await import("../../drizzle/schema");
-              const { eq, and } = await import("drizzle-orm");
+              const { eq, and, inArray } = await import("drizzle-orm");
               const database = await db.getDb();
               if (database && settings) {
-                const dailyLimit = settings.socialDailyLimit || 20;
                 const charLimit = settings.socialMessageCharLimit || 300;
-                const todayStart = new Date();
-                todayStart.setHours(0, 0, 0, 0);
-                const { gte, inArray } = await import("drizzle-orm");
-                // Count today's queued+sent messages (by createdAt, since queued ones
-                // have no sentAt yet) to keep the daily generation volume capped.
-                const todaySent = await database.select().from(socialOutreach).where(
-                  and(eq(socialOutreach.userId, campaign.userId), inArray(socialOutreach.status, ["sent", "pending"]), gte(socialOutreach.createdAt, todayStart))
-                );
 
-                // Only send if under daily limit
-                if (todaySent.length < dailyLimit) {
-                  const platforms: Array<"linkedin" | "instagram" | "facebook"> = [];
-                  if (lead.linkedinUrl) platforms.push("linkedin");
-                  if (lead.instagramUrl) platforms.push("instagram");
-                  if ((lead as any).facebookUrl) platforms.push("facebook");
+                const platforms: Array<"linkedin" | "instagram" | "facebook"> = [];
+                if (lead.linkedinUrl) platforms.push("linkedin");
+                if (lead.instagramUrl) platforms.push("instagram");
+                if ((lead as any).facebookUrl) platforms.push("facebook");
 
-                  for (const platform of platforms) {
+                for (const platform of platforms) {
+                    // Per-platform, per-action-type daily cap
+                    const platformDailyLimit = db.getSocialDailyLimit(settings, platform, "connection_request");
+                    const todayCount = await db.getSocialCountToday(campaign.userId, platform, "connection_request");
+                    if (todayCount >= platformDailyLimit) {
+                      console.log(`[FollowUpScheduler] Skipping ${platform} connection request - daily limit reached (${todayCount}/${platformDailyLimit})`);
+                      continue;
+                    }
+
                     // Check if a connection request was already queued/sent
                     const existing = await database.select().from(socialOutreach).where(
                       and(
@@ -394,10 +391,7 @@ export async function processScheduledFollowUpEmails() {
                       }
                     }
                   }
-                } else {
-                  console.log(`[FollowUpScheduler] Skipping social outreach - daily limit reached (${todaySent.length}/${dailyLimit})`);
                 }
-              }
             }
           } catch (socialError) {
             console.error(`[FollowUpScheduler] Social outreach error for lead ${lead?.id}:`, socialError);

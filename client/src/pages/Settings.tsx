@@ -108,6 +108,14 @@ export default function SettingsPage() {
     socialNotificationEmail: "",
   });
 
+  // Per-platform, per-action-type daily outreach caps (conservative defaults;
+  // none of these platforms publish an official number)
+  const [socialDailyLimits, setSocialDailyLimits] = useState({
+    linkedin: { connection_request: 20, direct_message: 20 },
+    instagram: { connection_request: 20, direct_message: 20 },
+    facebook: { connection_request: 20, direct_message: 20 },
+  });
+
   // Email deliverability checks state
   const [deliverabilityChecks, setDeliverabilityChecks] = useState<{
     spf: "pending" | "pass" | "fail" | "warning";
@@ -173,6 +181,12 @@ export default function SettingsPage() {
         facebookUrl: (settingsQuery.data as any).facebookUrl || "",
         facebookType: (settingsQuery.data as any).facebookType || "personal",
         socialNotificationEmail: (settingsQuery.data as any).socialNotificationEmail || "",
+      });
+      const savedLimits = (settingsQuery.data as any).socialDailyLimits;
+      setSocialDailyLimits({
+        linkedin: { connection_request: savedLimits?.linkedin?.connection_request || 20, direct_message: savedLimits?.linkedin?.direct_message || 20 },
+        instagram: { connection_request: savedLimits?.instagram?.connection_request || 20, direct_message: savedLimits?.instagram?.direct_message || 20 },
+        facebook: { connection_request: savedLimits?.facebook?.connection_request || 20, direct_message: savedLimits?.facebook?.direct_message || 20 },
       });
       setPasswordTouched(false);
       setRetellKeyTouched(false);
@@ -1389,6 +1403,78 @@ export default function SettingsPage() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Daily Outreach Limits */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                Daily Outreach Limits
+              </CardTitle>
+              <CardDescription>
+                Caps how many connection requests and messages can be queued/sent per platform per day, so you don't trip spam or abuse detection.
+                None of these platforms publish an official limit — these are conservative, commonly-recommended starting points. Sending itself stays
+                manual; this only limits how many the app will let you queue or record as sent in a day.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(["linkedin", "instagram", "facebook"] as const).map((platform) => {
+                const PlatformIcon = platform === "linkedin" ? Linkedin : platform === "instagram" ? Instagram : Facebook;
+                const iconColor = platform === "linkedin" ? "text-blue-600" : platform === "instagram" ? "text-pink-600" : "text-blue-700";
+                return (
+                  <div key={platform} className="p-4 border rounded-lg space-y-3">
+                    <div className="flex items-center gap-2">
+                      <PlatformIcon className={`w-5 h-5 ${iconColor}`} />
+                      <h3 className="font-semibold capitalize">{platform}</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Connection Requests / Day</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={socialDailyLimits[platform].connection_request}
+                          onChange={(e) => setSocialDailyLimits({
+                            ...socialDailyLimits,
+                            [platform]: { ...socialDailyLimits[platform], connection_request: parseInt(e.target.value) || 1 },
+                          })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Messages / Day</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={socialDailyLimits[platform].direct_message}
+                          onChange={(e) => setSocialDailyLimits({
+                            ...socialDailyLimits,
+                            [platform]: { ...socialDailyLimits[platform], direct_message: parseInt(e.target.value) || 1 },
+                          })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <Button
+                onClick={async () => {
+                  try {
+                    await updateSettingsMutation.mutateAsync({ socialDailyLimits });
+                    toast.success("Daily outreach limits saved!");
+                    settingsQuery.refetch();
+                  } catch (error: any) {
+                    toast.error(error?.message || "Failed to save limits");
+                  }
+                }}
+                disabled={updateSettingsMutation.isPending}
+                className="gap-2"
+              >
+                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Daily Limits
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Social Media Account Authorization */}
           <Card className="mt-6">
             <CardHeader>

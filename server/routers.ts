@@ -89,6 +89,11 @@ const updateUserSettingsSchema = z.object({
   facebookType: z.enum(["page", "personal"]).optional(),
   socialDailyLimit: z.number().optional(),
   socialMessageCharLimit: z.number().optional(),
+  socialDailyLimits: z.object({
+    linkedin: z.object({ connection_request: z.number(), direct_message: z.number() }),
+    instagram: z.object({ connection_request: z.number(), direct_message: z.number() }),
+    facebook: z.object({ connection_request: z.number(), direct_message: z.number() }),
+  }).optional(),
   socialNotificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
   replyToEmail: z.union([z.string().email(), z.literal("")]).optional(),
   notificationEmail: z.union([z.string().email(), z.literal("")]).optional(),
@@ -2432,6 +2437,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           facebookType: "personal" as const,
           socialDailyLimit: 20,
           socialMessageCharLimit: 300,
+          socialDailyLimits: db.DEFAULT_SOCIAL_DAILY_LIMITS,
           socialNotificationEmail: "",
           replyToEmail: "",
           notificationEmail: "",
@@ -2466,6 +2472,11 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         facebookType: settings.facebookType || "personal",
         socialDailyLimit: settings.socialDailyLimit || 20,
         socialMessageCharLimit: settings.socialMessageCharLimit || 300,
+        socialDailyLimits: {
+          linkedin: { connection_request: db.getSocialDailyLimit(settings, "linkedin", "connection_request"), direct_message: db.getSocialDailyLimit(settings, "linkedin", "direct_message") },
+          instagram: { connection_request: db.getSocialDailyLimit(settings, "instagram", "connection_request"), direct_message: db.getSocialDailyLimit(settings, "instagram", "direct_message") },
+          facebook: { connection_request: db.getSocialDailyLimit(settings, "facebook", "connection_request"), direct_message: db.getSocialDailyLimit(settings, "facebook", "direct_message") },
+        },
         socialNotificationEmail: settings.socialNotificationEmail || "",
         replyToEmail: settings.replyToEmail || "",
         notificationEmail: settings.notificationEmail || "",
@@ -4328,25 +4339,17 @@ Website: ${lead.website || "N/A"}` },
         }
         const settings = await db.getUserSettings(ctx.user.id);
         const charLimit = settings?.socialMessageCharLimit || 300;
-        const dailyLimit = settings?.socialDailyLimit || 20;
 
-        // Anti-spam: check daily limit
+        // Anti-spam: per-platform, per-action-type daily limit
         const { socialOutreach } = await import("../drizzle/schema");
-        const { eq, and, gte } = await import("drizzle-orm");
+        const { eq, and } = await import("drizzle-orm");
         const database = await db.getDb();
         if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todaySent = await database.select().from(socialOutreach).where(
-          and(
-            eq(socialOutreach.userId, ctx.user.id),
-            eq(socialOutreach.status, "sent"),
-            gte(socialOutreach.sentAt, todayStart)
-          )
-        );
-        if (todaySent.length >= dailyLimit) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `Daily social outreach limit reached (${dailyLimit}). Try again tomorrow to avoid spamming.` });
+        const platformDailyLimit = db.getSocialDailyLimit(settings, input.platform, input.messageType);
+        const todayCount = await db.getSocialCountToday(ctx.user.id, input.platform, input.messageType);
+        if (todayCount >= platformDailyLimit) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Daily limit reached: ${platformDailyLimit} ${input.messageType.replace("_", " ")}(s) on ${input.platform} per day. Try again tomorrow to avoid policy violations.` });
         }
 
         // Character limit check
@@ -4511,7 +4514,7 @@ Website: ${lead.website || "N/A"}` },
         }
         const settings = await db.getUserSettings(ctx.user.id);
         const charLimit = settings?.socialMessageCharLimit || 300;
-        const dailyLimit = settings?.socialDailyLimit || 20;
+        const dailyLimit = db.getSocialDailyLimit(settings, input.platform, input.messageType);
 
         const checks: { name: string; passed: boolean; message: string }[] = [];
 
@@ -4532,23 +4535,15 @@ Website: ${lead.website || "N/A"}` },
           message: `${input.message.length}/${charLimit} characters`,
         });
 
-        // Check 3: Daily limit
+        // Check 3: Daily limit (per-platform, per-action-type)
         const { socialOutreach } = await import("../drizzle/schema");
-        const { eq, and, gte } = await import("drizzle-orm");
+        const { eq, and, inArray } = await import("drizzle-orm");
         const database = await db.getDb();
-        let todayCount = 0;
-        if (database) {
-          const todayStart = new Date();
-          todayStart.setHours(0, 0, 0, 0);
-          const todaySent = await database.select().from(socialOutreach).where(
-            and(eq(socialOutreach.userId, ctx.user.id), eq(socialOutreach.status, "sent"), gte(socialOutreach.sentAt, todayStart))
-          );
-          todayCount = todaySent.length;
-        }
+        const todayCount = await db.getSocialCountToday(ctx.user.id, input.platform, input.messageType);
         checks.push({
           name: "Daily Limit",
           passed: todayCount < dailyLimit,
-          message: `${todayCount}/${dailyLimit} messages sent today`,
+          message: `${todayCount}/${dailyLimit} ${input.messageType.replace("_", " ")}(s) on ${input.platform} today`,
         });
 
         // Check 4: No duplicate connection request
@@ -4558,7 +4553,7 @@ Website: ${lead.website || "N/A"}` },
               eq(socialOutreach.leadId, input.leadId),
               eq(socialOutreach.platform, input.platform),
               eq(socialOutreach.messageType, "connection_request"),
-              eq(socialOutreach.status, "sent")
+              inArray(socialOutreach.status, ["sent", "pending"])
             )
           );
           checks.push({
