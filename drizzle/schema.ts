@@ -327,6 +327,11 @@ export const socialOutreach = mysqlTable("socialOutreach", {
 	sentAt: timestamp({ mode: 'string' }),
 	profileUrl: varchar({ length: 500 }),
 	characterCount: int(),
+	// Recipient response, tracked manually since there's no platform API
+	// integration -- the user has to check LinkedIn/Instagram/Facebook
+	// themselves and report back what happened.
+	responseStatus: mysqlEnum(['none','accepted','replied','declined']).default('none').notNull(),
+	respondedAt: timestamp({ mode: 'string' }),
 	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 });

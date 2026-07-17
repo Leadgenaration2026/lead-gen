@@ -2758,10 +2758,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             const allSocialOutreach = await database.select().from(socialOutreach).where(
               and(eq(socialOutreach.userId, ctx.user.id), inArray(socialOutreach.leadId, leadIds))
             );
-            // Note: "accepted" (connection accepted by the recipient) isn't tracked
-            // anywhere — the schema's status enum is only pending/sent/failed/skipped —
-            // so totalAccepted/accepted always report 0 here rather than pretending to
-            // measure something the app doesn't detect.
+            // "accepted" is reported manually via social.markResponse (there's no
+            // platform API to detect it automatically).
             for (const so of allSocialOutreach) {
               const platform = (so as any).platform as "linkedin" | "instagram" | "facebook";
               const status = (so as any).status;
@@ -2769,6 +2767,12 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
                 socialOutreachStats.totalSent++;
                 if (socialOutreachStats.byPlatform[platform]) {
                   socialOutreachStats.byPlatform[platform].sent++;
+                }
+                if ((so as any).responseStatus === "accepted") {
+                  socialOutreachStats.totalAccepted++;
+                  if (socialOutreachStats.byPlatform[platform]) {
+                    socialOutreachStats.byPlatform[platform].accepted++;
+                  }
                 }
               } else if (status === "pending") {
                 socialOutreachStats.totalPending++;
@@ -3891,15 +3895,18 @@ Respond in this exact JSON format:
         const database = await db.getDb();
         if (database) {
           const allOutreach = await database.select().from(socialOutreach).where(eq(socialOutreach.userId, ctx.user.id));
-          // Note: "accepted" isn't tracked anywhere (the schema's status enum is only
-          // pending/sent/failed/skipped), so it always reports 0 rather than pretending
-          // to measure something the app doesn't detect.
+          // "accepted" is reported manually via social.markResponse (there's no
+          // platform API to detect it automatically).
           for (const so of allOutreach) {
             const platform = (so as any).platform as "linkedin" | "instagram" | "facebook";
             const status = (so as any).status;
             if (status === "sent") {
               socialTotals.sent++;
               if (socialTotals[platform]) socialTotals[platform].sent++;
+              if ((so as any).responseStatus === "accepted") {
+                socialTotals.accepted++;
+                if (socialTotals[platform]) socialTotals[platform].accepted++;
+              }
             } else if (status === "pending") {
               socialTotals.pending++;
             }
@@ -4356,18 +4363,22 @@ Website: ${lead.website || "N/A"}` },
           throw new TRPCError({ code: "BAD_REQUEST", message: `No ${input.platform} profile URL found for this lead. Please add it first.` });
         }
 
-        // Check if we already sent a connection request to this lead on this platform
+        // Check if we already sent (or auto-queued) a connection request to
+        // this lead on this platform -- includes "pending" so this doesn't
+        // create a duplicate alongside one already queued by the automated
+        // follow-up flow.
         if (input.messageType === "connection_request") {
+          const { inArray } = await import("drizzle-orm");
           const existing = await database.select().from(socialOutreach).where(
             and(
               eq(socialOutreach.leadId, input.leadId),
               eq(socialOutreach.platform, input.platform),
               eq(socialOutreach.messageType, "connection_request"),
-              eq(socialOutreach.status, "sent")
+              inArray(socialOutreach.status, ["sent", "pending"])
             )
           );
           if (existing.length > 0) {
-            throw new TRPCError({ code: "BAD_REQUEST", message: `Connection request already sent to this lead on ${input.platform}.` });
+            throw new TRPCError({ code: "BAD_REQUEST", message: `A connection request is already sent or queued for this lead on ${input.platform}.` });
           }
         }
 
@@ -4407,6 +4418,54 @@ Website: ${lead.website || "N/A"}` },
         await database.update(socialOutreach)
           .set({ status: "sent", sentAt: new Date() } as any)
           .where(eq(socialOutreach.id, id));
+
+        return { success: true };
+      }),
+
+    // Delete a queued/sent social outreach message from the queue
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id, ctx }) => {
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+        const [existing] = await database.select().from(socialOutreach).where(eq(socialOutreach.id, id));
+        if (!existing || (existing as any).userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        await database.delete(socialOutreach).where(eq(socialOutreach.id, id));
+        return { success: true };
+      }),
+
+    // Record what happened after a message was sent -- there's no platform
+    // API integration, so the user reports back after checking LinkedIn/
+    // Instagram/Facebook themselves (did they accept the connection, reply,
+    // or decline).
+    markResponse: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        responseStatus: z.enum(["none", "accepted", "replied", "declined"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { socialOutreach } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+        const [existing] = await database.select().from(socialOutreach).where(eq(socialOutreach.id, input.id));
+        if (!existing || (existing as any).userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        await database.update(socialOutreach)
+          .set({
+            responseStatus: input.responseStatus,
+            respondedAt: input.responseStatus === "none" ? null : new Date(),
+          } as any)
+          .where(eq(socialOutreach.id, input.id));
 
         return { success: true };
       }),

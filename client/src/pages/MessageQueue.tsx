@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   Linkedin, Instagram, Facebook, Copy, ExternalLink, CheckCircle2,
-  Clock, MessageSquare, Filter, Trash2, RotateCcw, Send
+  Clock, MessageSquare, Filter, Trash2, Send, ThumbsUp, Reply, ThumbsDown
 } from "lucide-react";
 
 type FilterPlatform = "all" | "linkedin" | "instagram" | "facebook";
@@ -38,6 +38,14 @@ export default function MessageQueue() {
   const markSentMutation = trpc.social.markSent.useMutation({
     onSuccess: () => messagesQuery.refetch(),
   });
+  const deleteMutation = trpc.social.delete.useMutation({
+    onSuccess: () => { toast.success("Message deleted"); messagesQuery.refetch(); },
+    onError: (err) => toast.error(err.message || "Failed to delete message"),
+  });
+  const markResponseMutation = trpc.social.markResponse.useMutation({
+    onSuccess: () => messagesQuery.refetch(),
+    onError: (err) => toast.error(err.message || "Failed to update response"),
+  });
 
   const messages = useMemo(() => {
     let items = messagesQuery.data || [];
@@ -62,6 +70,8 @@ export default function MessageQueue() {
       total: all.length,
       pending: all.filter(m => m.status === "pending").length,
       sent: all.filter(m => m.status === "sent").length,
+      accepted: all.filter((m: any) => m.responseStatus === "accepted").length,
+      replied: all.filter((m: any) => m.responseStatus === "replied").length,
       linkedin: all.filter(m => m.platform === "linkedin").length,
       instagram: all.filter(m => m.platform === "instagram").length,
       facebook: all.filter(m => m.platform === "facebook").length,
@@ -121,6 +131,18 @@ export default function MessageQueue() {
     toast.success(`${selectedMessages.length} messages copied to clipboard!`);
   };
 
+  const handleDelete = (id: number) => {
+    if (window.confirm("Delete this message from the queue? This can't be undone.")) {
+      deleteMutation.mutate(id);
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (!window.confirm(`Delete ${selectedIds.size} message(s) from the queue? This can't be undone.`)) return;
+    selectedIds.forEach((id) => deleteMutation.mutate(id));
+    setSelectedIds(new Set());
+  };
+
   const handleBatchOpenProfiles = () => {
     const selectedMessages = messages.filter(m => selectedIds.has(m.id));
     const urls = selectedMessages.map(m => m.profileUrl).filter(Boolean);
@@ -156,7 +178,7 @@ export default function MessageQueue() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           <Card className="p-3">
             <div className="text-xs text-muted-foreground">Total</div>
             <div className="text-xl font-bold">{stats.total}</div>
@@ -168,6 +190,14 @@ export default function MessageQueue() {
           <Card className="p-3">
             <div className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Sent</div>
             <div className="text-xl font-bold text-green-600">{stats.sent}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-1"><ThumbsUp className="w-3 h-3" /> Accepted</div>
+            <div className="text-xl font-bold text-emerald-600">{stats.accepted}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-1"><Reply className="w-3 h-3" /> Replied</div>
+            <div className="text-xl font-bold text-indigo-600">{stats.replied}</div>
           </Card>
           <Card className="p-3">
             <div className="text-xs text-muted-foreground flex items-center gap-1"><Linkedin className="w-3 h-3" /> LinkedIn</div>
@@ -224,6 +254,9 @@ export default function MessageQueue() {
                     </Button>
                     <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={handleBatchOpenProfiles}>
                       <ExternalLink className="w-3 h-3" /> Open Profiles
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 text-red-600 hover:text-red-700" onClick={handleBatchDelete}>
+                      <Trash2 className="w-3 h-3" /> Delete
                     </Button>
                   </div>
                 )}
@@ -283,6 +316,21 @@ export default function MessageQueue() {
                               {msg.status === "sent" ? <CheckCircle2 className="w-3 h-3 mr-0.5" /> : <Clock className="w-3 h-3 mr-0.5" />}
                               {msg.status}
                             </Badge>
+                            {(msg as any).responseStatus === "accepted" && (
+                              <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
+                                <ThumbsUp className="w-3 h-3" /> Accepted
+                              </Badge>
+                            )}
+                            {(msg as any).responseStatus === "replied" && (
+                              <Badge variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200 gap-1">
+                                <Reply className="w-3 h-3" /> Replied
+                              </Badge>
+                            )}
+                            {(msg as any).responseStatus === "declined" && (
+                              <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200 gap-1">
+                                <ThumbsDown className="w-3 h-3" /> Declined
+                              </Badge>
+                            )}
                             <span className="text-xs text-muted-foreground ml-auto">
                               {formatDate(msg.sentAt || msg.createdAt)}
                             </span>
@@ -334,6 +382,30 @@ export default function MessageQueue() {
                                 <Send className="w-3 h-3" /> Mark as Sent
                               </Button>
                             )}
+                            {msg.status === "sent" && (
+                              <Select
+                                value={(msg as any).responseStatus || "none"}
+                                onValueChange={(v) => markResponseMutation.mutate({ id: msg.id, responseStatus: v as any })}
+                              >
+                                <SelectTrigger className="h-7 w-[130px] text-xs">
+                                  <SelectValue placeholder="Response..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">No response yet</SelectItem>
+                                  <SelectItem value="accepted">Accepted</SelectItem>
+                                  <SelectItem value="replied">Replied</SelectItem>
+                                  <SelectItem value="declined">Declined</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs gap-1 text-red-600 hover:text-red-700"
+                              onClick={() => handleDelete(msg.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
                             <span className="text-xs text-muted-foreground ml-auto">
                               {msg.characterCount || msg.message.length} chars
                             </span>
