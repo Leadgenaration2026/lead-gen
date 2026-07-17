@@ -68,6 +68,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const scoreSeamlessEngagementMutation = trpc.leads.scoreSeamlessCandidatesEngagement.useMutation();
   const excludeSeamlessContactsMutation = trpc.leads.excludeSeamlessContacts.useMutation();
+  const clearExcludedSeamlessContactsMutation = trpc.leads.clearExcludedSeamlessContacts.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
   const addLeadOverwriteMutation = trpc.leads.addManualOverwrite.useMutation();
@@ -358,7 +359,25 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           result.skippedExcluded > 0 ? `${result.skippedExcluded} previously deleted by you` : null,
         ].filter(Boolean);
         const ownedMsg = reasons.length > 0 ? ` (${reasons.join(", ")})` : "";
-        toast.error(`No new contacts found${ownedMsg}. Try different search criteria or location.`, { duration: 8000 });
+        toast.error(`No new contacts found${ownedMsg}. Try different search criteria or location.`, {
+          duration: 10000,
+          // If the only reason nothing came back is your own past "discard"
+          // clicks, offer a one-click way to undo that instead of a dead end --
+          // this matters most right after a search-quality fix, since a
+          // previously-discarded bad batch can include the only real matches.
+          action: result.skippedExcluded > 0 ? {
+            label: "Clear excluded list & retry",
+            onClick: async () => {
+              try {
+                const clearResult = await clearExcludedSeamlessContactsMutation.mutateAsync();
+                toast.success(`Cleared ${clearResult.cleared} previously discarded contact(s). Searching again...`);
+                handleSearchSeamless();
+              } catch (err: any) {
+                toast.error(err?.message || "Failed to clear excluded contacts");
+              }
+            },
+          } : undefined,
+        });
         return;
       }
 

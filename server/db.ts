@@ -663,6 +663,37 @@ export async function excludeSeamlessContacts(userId: number, seamlessIds: strin
   }
 }
 
+export async function getExcludedSeamlessContactsCount(userId: number): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  try {
+    await ensureExcludedSeamlessContactsTable(database);
+    const result: any = await database.execute(
+      sql`SELECT COUNT(*) as count FROM excludedSeamlessContacts WHERE userId = ${userId}`
+    );
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    return Number(rows[0]?.count) || 0;
+  } catch (error) {
+    console.error("[getExcludedSeamlessContactsCount] Failed:", error);
+    return 0;
+  }
+}
+
+export async function clearExcludedSeamlessContacts(userId: number): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  try {
+    await ensureExcludedSeamlessContactsTable(database);
+    const result: any = await database.execute(
+      sql`DELETE FROM excludedSeamlessContacts WHERE userId = ${userId}`
+    );
+    return Number(result?.[0]?.affectedRows ?? result?.affectedRows) || 0;
+  } catch (error) {
+    console.error("[clearExcludedSeamlessContacts] Failed:", error);
+    return 0;
+  }
+}
+
 export async function getExcludedSeamlessContactIds(userId: number, seamlessIds: string[]): Promise<Set<string>> {
   const database = await getDb();
   if (!database || seamlessIds.length === 0) return new Set();

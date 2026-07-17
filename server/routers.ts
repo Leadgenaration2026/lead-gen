@@ -1049,6 +1049,23 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         return { success: true };
       }),
 
+    // How many Seamless.AI contacts this user has permanently discarded --
+    // shown so "no new contacts found (N previously deleted by you)" has a
+    // concrete number the user can act on rather than a vague dead end.
+    getExcludedSeamlessContactsCount: protectedProcedure.query(async ({ ctx }) => {
+      const count = await db.getExcludedSeamlessContactsCount(ctx.user.id);
+      return { count };
+    }),
+
+    // Un-discards every previously-excluded Seamless.AI contact for this user,
+    // so a search that keeps coming back empty because its only real matches
+    // were discarded earlier (e.g. while the industry filter had a bug) can
+    // find them again.
+    clearExcludedSeamlessContacts: protectedProcedure.mutation(async ({ ctx }) => {
+      const cleared = await db.clearExcludedSeamlessContacts(ctx.user.id);
+      return { cleared };
+    }),
+
     // Enrich only the candidates the user selected from searchSeamlessPreview,
     // then create them as leads.
     enrichSeamlessSelection: protectedProcedure
