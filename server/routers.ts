@@ -2833,23 +2833,50 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
     }),
 
     getSyncStatus: protectedProcedure.query(async ({ ctx }) => {
-      const settings = await db.getUserSettings(ctx.user.id);
-      const configured = !!((settings as any)?.imapHost && (settings as any)?.imapUsername && (settings as any)?.imapPassword);
       try {
-        const { parse: parseCookie } = await import("cookie");
-        const { COOKIE_NAME } = await import("@shared/const");
-        const { listHeartbeatJobs } = await import("./_core/heartbeat");
-        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-        const { jobs } = await listHeartbeatJobs(sessionToken);
-        const job = jobs.find((j) => j.name === INBOX_SYNC_HEARTBEAT_NAME);
+        const settings = await db.getUserSettings(ctx.user.id);
+        const configured = !!((settings as any)?.imapHost && (settings as any)?.imapUsername && (settings as any)?.imapPassword);
+        // Non-sensitive debug snapshot so a "not configured" state can be
+        // diagnosed from the UI without server log access.
+        const debug = {
+          imapHost: (settings as any)?.imapHost || null,
+          imapUsername: (settings as any)?.imapUsername || null,
+          hasImapPassword: !!(settings as any)?.imapPassword,
+        };
+
+        let heartbeatError: string | undefined;
+        let enabled = false;
+        let nextExecutionAt: string | null = null;
+        try {
+          const { parse: parseCookie } = await import("cookie");
+          const { COOKIE_NAME } = await import("@shared/const");
+          const { listHeartbeatJobs } = await import("./_core/heartbeat");
+          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+          const { jobs } = await listHeartbeatJobs(sessionToken);
+          const job = jobs.find((j) => j.name === INBOX_SYNC_HEARTBEAT_NAME);
+          enabled = !!job?.isEnable;
+          nextExecutionAt = job?.nextExecutionAt || null;
+        } catch (err: any) {
+          heartbeatError = err.message || String(err);
+        }
+
         return {
           configured,
-          enabled: !!job?.isEnable,
-          nextExecutionAt: job?.nextExecutionAt || null,
+          enabled,
+          nextExecutionAt,
           lastSyncedAt: (settings as any)?.imapLastSyncedAt || null,
+          heartbeatError,
+          debug,
         };
       } catch (err: any) {
-        return { configured, enabled: false, nextExecutionAt: null, lastSyncedAt: (settings as any)?.imapLastSyncedAt || null, error: err.message };
+        return {
+          configured: false,
+          enabled: false,
+          nextExecutionAt: null,
+          lastSyncedAt: null,
+          error: err.message || String(err),
+          debug: null,
+        };
       }
     }),
 

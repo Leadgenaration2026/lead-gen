@@ -90,11 +90,30 @@ export default function InboxPage() {
           <CardTitle className="text-base">Sync Status</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {!syncStatusQuery.data?.configured ? (
-            <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-              <MailWarning className="w-4 h-4 shrink-0" />
-              IMAP isn't configured yet. Go to Settings → Integrations → Reply Inbox to connect your mailbox.
+          {syncStatusQuery.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Checking status...
             </div>
+          ) : syncStatusQuery.isError || syncStatusQuery.data?.error ? (
+            <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
+              <MailWarning className="w-4 h-4 shrink-0" />
+              Couldn't check sync status: {syncStatusQuery.data?.error || syncStatusQuery.error?.message || "Unknown error"}
+            </div>
+          ) : !syncStatusQuery.data?.configured ? (
+            <>
+              <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+                <MailWarning className="w-4 h-4 shrink-0" />
+                IMAP isn't configured yet. Go to Settings → Integrations → Reply Inbox to connect your mailbox.
+              </div>
+              {syncStatusQuery.data?.debug && (
+                <div className="text-xs text-muted-foreground bg-muted/40 rounded-md p-2 space-y-0.5">
+                  <p>Debug — what the server currently sees:</p>
+                  <p>Host: {syncStatusQuery.data.debug.imapHost ?? "(not set)"}</p>
+                  <p>Username: {syncStatusQuery.data.debug.imapUsername ?? "(not set)"}</p>
+                  <p>Password saved: {syncStatusQuery.data.debug.hasImapPassword ? "yes" : "no"}</p>
+                </div>
+              )}
+            </>
           ) : (
             <>
               <div className="flex items-center gap-2 flex-wrap">
@@ -118,6 +137,9 @@ export default function InboxPage() {
                   </Button>
                 )}
               </div>
+              {syncStatusQuery.data?.heartbeatError && (
+                <p className="text-xs text-red-600">Heartbeat status unavailable: {syncStatusQuery.data.heartbeatError}</p>
+              )}
               {syncStatusQuery.data?.lastSyncedAt && (
                 <p className="text-xs text-muted-foreground">Last checked: {formatDate(syncStatusQuery.data.lastSyncedAt)}</p>
               )}
