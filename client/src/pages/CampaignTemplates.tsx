@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, Plus, Copy, Trash2, FileText, Sparkles, Eye, BookTemplate, Send, Rocket } from "lucide-react";
+import { Loader2, Plus, Copy, Trash2, FileText, Sparkles, Eye, BookTemplate, Send, Rocket, RefreshCw, ShieldCheck, ChevronUp, ChevronDown, AlertTriangle, XCircle, Wand2, CheckCircle2 } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
@@ -60,6 +60,15 @@ export default function CampaignTemplates() {
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const saveFromCampaignMutation = trpc.campaignTemplates.saveFromCampaign.useMutation();
 
+  // Same AI refinement tools available in the Bulk Email Composer: regenerate
+  // a different variation, check + fix deliverability.
+  const [lastTemplateAIPrompt, setLastTemplateAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
+  const [templateDeliverabilityResult, setTemplateDeliverabilityResult] = useState<{ allPassed: boolean; score: number; checks: Array<{ name: string; status: "pass" | "fail" | "warning"; message: string; category: string }> } | null>(null);
+  const [showTemplateDeliverabilityDetails, setShowTemplateDeliverabilityDetails] = useState(false);
+  const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
+  const deliverabilityCheckMutation = trpc.email.checkDeliverability.useMutation();
+  const fixDeliverabilityMutation = trpc.email.fixDeliverability.useMutation();
+
   const handleCreate = async () => {
     if (!newTemplate.name || !newTemplate.subject || !newTemplate.emailTemplate) {
       toast.error("Please fill in name, subject, and email template");
@@ -69,6 +78,9 @@ export default function CampaignTemplates() {
       await createMutation.mutateAsync(newTemplate);
       toast.success("Template created successfully!");
       setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "" });
+      setLastTemplateAIPrompt(null);
+      setTemplateDeliverabilityResult(null);
+      setShowTemplateDeliverabilityDetails(false);
       setCreateOpen(false);
       templatesQuery.refetch();
     } catch (error: any) {
@@ -273,17 +285,196 @@ export default function CampaignTemplates() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Email Template *</Label>
-                    <AIWriteButton
-                      onGenerated={(s, b) => setNewTemplate({ ...newTemplate, subject: s, emailTemplate: b })}
-                      includeVariables={true}
-                      buttonLabel="AI Write"
-                      buttonVariant="outline"
-                      buttonSize="sm"
-                      className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                    />
+                    <div className="flex items-center gap-2">
+                      {newTemplate.emailTemplate && lastTemplateAIPrompt && (
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const result = await regenerateTemplateMutation.mutateAsync({
+                                prompt: lastTemplateAIPrompt.prompt,
+                                emailType: lastTemplateAIPrompt.emailType as any,
+                                companyContext: lastTemplateAIPrompt.companyContext || undefined,
+                                includeVariables: true,
+                                useProblemAnalysis: false,
+                              });
+                              setNewTemplate({ ...newTemplate, subject: result.subject, emailTemplate: result.body });
+                              toast.success("New template variation generated!");
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to regenerate");
+                            }
+                          }}
+                          disabled={regenerateTemplateMutation.isPending}
+                          className="gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
+                        >
+                          {regenerateTemplateMutation.isPending ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Regenerating...</>
+                          ) : (
+                            <><RefreshCw className="w-3.5 h-3.5" /> Regenerate</>
+                          )}
+                        </Button>
+                      )}
+                      <AIWriteButton
+                        onGenerated={(s, b) => setNewTemplate({ ...newTemplate, subject: s, emailTemplate: b })}
+                        onPromptUsed={(prompt, emailType, companyContext) => setLastTemplateAIPrompt({ prompt, emailType, companyContext })}
+                        includeVariables={true}
+                        buttonLabel="AI Write"
+                        buttonVariant="outline"
+                        buttonSize="sm"
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                      />
+                    </div>
                   </div>
                   <Textarea value={newTemplate.emailTemplate} onChange={(e) => setNewTemplate({ ...newTemplate, emailTemplate: e.target.value })} placeholder={"Hi {{ownerName}},\n\nI noticed {{companyName}} is doing great work in...\n\nHere's how we can help:\n• Point 1\n• Point 2\n• Point 3\n\nWould you be open to a quick 15-minute chat?\n\nSchedule here: {{ctaLink}}\n\nBest regards"} rows={10} className="text-sm font-mono" />
                   <p className="text-xs text-muted-foreground">Available variables: {"{{ownerName}}"}, {"{{companyName}}"}, {"{{email}}"}, {"{{industry}}"}, {"{{ctaLink}}"}</p>
+                  {newTemplate.emailTemplate && lastTemplateAIPrompt && (
+                    <div className="border-2 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-purple-900">Not happy with this template?</p>
+                          <p className="text-xs text-purple-600">Click Regenerate above to get a completely different variation</p>
+                        </div>
+                        <RefreshCw className="w-4 h-4 text-purple-500" />
+                      </div>
+                    </div>
+                  )}
+                  {/* Deliverability Score */}
+                  {(newTemplate.subject || newTemplate.emailTemplate) && (
+                    <div className="border rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setShowTemplateDeliverabilityDetails(!showTemplateDeliverabilityDetails);
+                          if (!templateDeliverabilityResult) {
+                            try {
+                              const result = await deliverabilityCheckMutation.mutateAsync({ subject: newTemplate.subject, body: newTemplate.emailTemplate });
+                              setTemplateDeliverabilityResult(result);
+                            } catch { /* silent */ }
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-primary" />
+                          <span className="text-sm font-medium">Deliverability Score</span>
+                          {deliverabilityCheckMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                          {templateDeliverabilityResult && !deliverabilityCheckMutation.isPending && (
+                            <Badge variant="outline" className={`text-xs ${
+                              templateDeliverabilityResult.score >= 80
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : templateDeliverabilityResult.score >= 50
+                                  ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                  : "bg-red-50 text-red-700 border-red-200"
+                            }`}>
+                              {templateDeliverabilityResult.score}/100
+                            </Badge>
+                          )}
+                          {templateDeliverabilityResult && (
+                            <span className="text-xs text-muted-foreground">
+                              {templateDeliverabilityResult.checks.filter(c => c.status === "pass").length}/{templateDeliverabilityResult.checks.length} checks passed
+                            </span>
+                          )}
+                        </div>
+                        {showTemplateDeliverabilityDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                      {showTemplateDeliverabilityDetails && (
+                        <div className="p-3 border-t space-y-3">
+                          {templateDeliverabilityResult ? (
+                            <>
+                              <div className="space-y-1">
+                                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      templateDeliverabilityResult.score >= 80 ? "bg-green-500" : templateDeliverabilityResult.score >= 50 ? "bg-yellow-500" : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${templateDeliverabilityResult.score}%` }}
+                                  />
+                                </div>
+                              </div>
+                              {["infrastructure", "content", "personalization", "compliance"].map(category => {
+                                const categoryChecks = templateDeliverabilityResult.checks.filter(c => c.category === category);
+                                if (categoryChecks.length === 0) return null;
+                                const categoryLabels: Record<string, string> = { infrastructure: "Infrastructure", content: "Content Quality", personalization: "Personalization", compliance: "Compliance" };
+                                return (
+                                  <div key={category} className="space-y-1">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{categoryLabels[category]}</p>
+                                    {categoryChecks.map((check, i) => (
+                                      <div key={i} className="flex items-start gap-2 py-1 pl-1">
+                                        {check.status === "pass" ? (
+                                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
+                                        ) : check.status === "warning" ? (
+                                          <AlertTriangle className="w-3.5 h-3.5 text-yellow-600 mt-0.5 shrink-0" />
+                                        ) : (
+                                          <XCircle className="w-3.5 h-3.5 text-red-600 mt-0.5 shrink-0" />
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm leading-tight">{check.name}</p>
+                                          <p className="text-xs text-muted-foreground leading-tight">{check.message}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })}
+                              <div className="pt-2 border-t mt-2 space-y-2">
+                                {templateDeliverabilityResult.checks.some(c => c.status === "fail" || c.status === "warning") && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="w-full gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                                    onClick={async () => {
+                                      const failedChecks = templateDeliverabilityResult.checks.filter(c => c.status === "fail" || c.status === "warning");
+                                      try {
+                                        const fixed = await fixDeliverabilityMutation.mutateAsync({
+                                          subject: newTemplate.subject,
+                                          body: newTemplate.emailTemplate,
+                                          failedChecks: failedChecks.map(c => ({ name: c.name, status: c.status as "fail" | "warning", message: c.message, category: c.category })),
+                                        });
+                                        setNewTemplate({ ...newTemplate, subject: fixed.subject, emailTemplate: fixed.body });
+                                        toast.success("Template rewritten to fix deliverability issues");
+                                        const newResult = await deliverabilityCheckMutation.mutateAsync({ subject: fixed.subject, body: fixed.body });
+                                        setTemplateDeliverabilityResult(newResult);
+                                      } catch {
+                                        toast.error("Failed to fix template. Please try again.");
+                                      }
+                                    }}
+                                    disabled={fixDeliverabilityMutation.isPending}
+                                  >
+                                    {fixDeliverabilityMutation.isPending ? (
+                                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Fixing Issues...</>
+                                    ) : (
+                                      <><Wand2 className="w-3.5 h-3.5" /> Fix Issues with AI</>
+                                    )}
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full gap-2"
+                                  onClick={async () => {
+                                    try {
+                                      const result = await deliverabilityCheckMutation.mutateAsync({ subject: newTemplate.subject, body: newTemplate.emailTemplate });
+                                      setTemplateDeliverabilityResult(result);
+                                      toast.success("Deliverability checks refreshed");
+                                    } catch { toast.error("Failed to run checks"); }
+                                  }}
+                                  disabled={deliverabilityCheckMutation.isPending}
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${deliverabilityCheckMutation.isPending ? "animate-spin" : ""}`} />
+                                  Re-run All Checks
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-2">Click to run deliverability checks</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Tags (comma-separated)</Label>
