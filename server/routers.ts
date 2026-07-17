@@ -523,7 +523,7 @@ export const appRouter = router({
             });
           }
 
-          const { parseInstructionToFiltersWithLLM, getSeamlessLeads } = await import("./seamlessAI");
+          const { parseInstructionToFiltersWithLLM, getSeamlessLeads, mapToValidSeamlessIndustry } = await import("./seamlessAI");
 
           // Parse user instruction into Seamless.AI filters. The LLM is the primary
           // interpreter for job titles and industries (covers any profession/industry,
@@ -582,6 +582,24 @@ export const appRouter = router({
                 return titleRegexes.some((re: RegExp) => re.test(title));
               });
               console.log(`[Seamless.AI] After strict title filter: ${candidates.length} of ${beforeTitleFilter} contacts match requested titles`);
+            }
+
+            // Strict industry filter: Seamless.AI's own search doesn't reliably
+            // restrict results to the requested industry either (same
+            // unreliability as job titles above) -- re-check each candidate's
+            // actual industry client-side, canonicalizing both sides through
+            // mapToValidSeamlessIndustry so wording differences (e.g. "Travel"
+            // vs "Leisure Travel & Tourism") don't cause false rejections.
+            if (filters.industry?.length) {
+              const targetIndustries = new Set(filters.industry as string[]);
+              const beforeIndustryFilter = candidates.length;
+              candidates = candidates.filter((c: any) => {
+                const rawIndustry = Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined);
+                if (!rawIndustry) return false; // Can't verify — exclude rather than risk a mismatch
+                const canonical = mapToValidSeamlessIndustry(rawIndustry);
+                return canonical ? targetIndustries.has(canonical) : false;
+              });
+              console.log(`[Seamless.AI] After strict industry filter: ${candidates.length} of ${beforeIndustryFilter} contacts match requested industry`);
             }
 
             // Skip candidates already saved as leads (matched by Seamless.AI's own

@@ -913,6 +913,25 @@ export async function searchAndFilterSeamlessCandidates(
     console.log(`[Seamless.AI] Preview: after strict title filter: ${candidates.length} of ${before}`);
   }
 
+  // Strict industry filter: Seamless.AI's own search doesn't reliably restrict
+  // results to the requested industry either (same unreliability documented
+  // above for job titles) -- re-check each candidate's actual industry
+  // client-side, canonicalizing both sides through mapToValidSeamlessIndustry
+  // so wording differences (e.g. "Travel" vs "Leisure Travel & Tourism") don't
+  // cause false rejections. Without this, a search for "Travel Agency" could
+  // come back full of unrelated industries Seamless returned anyway.
+  if (filters.industry?.length) {
+    const targetIndustries = new Set(filters.industry as string[]);
+    const before = candidates.length;
+    candidates = candidates.filter((c: any) => {
+      const rawIndustry = Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined);
+      if (!rawIndustry) return false; // Can't verify — exclude rather than risk a mismatch
+      const canonical = mapToValidSeamlessIndustry(rawIndustry);
+      return canonical ? targetIndustries.has(canonical) : false;
+    });
+    console.log(`[Seamless.AI] Preview: after strict industry filter: ${candidates.length} of ${before}`);
+  }
+
   candidates = candidates.slice(0, count);
 
   const preview: SeamlessCandidatePreview[] = candidates
