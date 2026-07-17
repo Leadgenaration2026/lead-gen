@@ -109,7 +109,7 @@ export default function FollowUpReports() {
       {report && (
         <>
           {/* Campaign Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3 mb-3">
             <Card className="border-gray-200 shadow-sm">
               <CardContent className="pt-4 pb-3 px-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -177,6 +177,26 @@ export default function FollowUpReports() {
                   <span className="text-xs font-medium text-muted-foreground">Total Leads</span>
                 </div>
                 <div className="text-2xl font-bold">{report.summary.totalLeads}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span className="text-xs font-medium text-muted-foreground">Replied</span>
+                </div>
+                <div className="text-2xl font-bold text-emerald-600">{(report.summary as any).totalReplied || 0}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <span className="text-xs font-medium text-muted-foreground">Bounced</span>
+                </div>
+                <div className="text-2xl font-bold text-red-600">{(report.summary as any).totalBounced || 0}</div>
               </CardContent>
             </Card>
           </div>
@@ -342,6 +362,7 @@ export default function FollowUpReports() {
                           <TableHead className="font-semibold">Emails Done</TableHead>
                           <TableHead className="font-semibold">Emails Pending</TableHead>
                           <TableHead className="font-semibold">Emails Failed</TableHead>
+                          <TableHead className="font-semibold">Cancelled (Replied/Answered)</TableHead>
                           <TableHead className="font-semibold">Next Email Due</TableHead>
                           <TableHead className="font-semibold">Progress</TableHead>
                         </TableRow>
@@ -377,6 +398,12 @@ export default function FollowUpReports() {
                                   <span className="font-semibold text-red-700">{lead.summary.emailsFailed}</span>
                                 </span>
                               </TableCell>
+                              <TableCell>
+                                <span className="inline-flex items-center gap-1">
+                                  <CheckCircle className="w-4 h-4 text-blue-500" />
+                                  <span className="font-semibold text-blue-700">{lead.summary.emailsCancelled ?? 0}</span>
+                                </span>
+                              </TableCell>
                               <TableCell className="text-sm">
                                 {nextPending ? formatDate(nextPending.scheduledFor) : "All sent"}
                               </TableCell>
@@ -396,7 +423,7 @@ export default function FollowUpReports() {
                         })}
                         {report.leads.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                               No follow-up emails scheduled yet
                             </TableCell>
                           </TableRow>
