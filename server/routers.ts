@@ -61,6 +61,7 @@ const generateLeadsSchema = z.object({
   source: z.enum(["ai", "seamless"]).optional().default("ai"),
   country: z.string().optional(),
   state: z.string().optional(), // US state for targeted prospecting
+  industryOverride: z.string().optional(), // User-confirmed/corrected industry from the detection suggestion
 });
 
 const updateUserSettingsSchema = z.object({
@@ -530,7 +531,14 @@ export const appRouter = router({
           // not just the fixed keyword lists), with keyword-based parsing as a
           // fallback if the LLM call fails.
           const filters = await parseInstructionToFiltersWithLLM(input.instruction, input.country);
-          
+
+          // If the user confirmed or corrected the detected industry suggestion
+          // before searching, that takes priority over the LLM's own guess.
+          if (input.industryOverride) {
+            const canonicalOverride = mapToValidSeamlessIndustry(input.industryOverride);
+            filters.industry = canonicalOverride ? [canonicalOverride] : undefined;
+          }
+
           // ALWAYS enforce country filter when user specifies a country
           if (input.country) {
             filters.contactCountry = [input.country];
@@ -950,6 +958,28 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         };
       }),
 
+    // Every valid Seamless.AI industry filter value, for populating an
+    // industry picker/suggestion UI on the frontend.
+    listSeamlessIndustries: protectedProcedure.query(async () => {
+      const { SEAMLESS_INDUSTRY_OPTIONS } = await import("./seamlessAI");
+      return SEAMLESS_INDUSTRY_OPTIONS;
+    }),
+
+    // Detects the industry (and job titles) an instruction would resolve to,
+    // without spending any Seamless.AI search credits -- lets the UI show it
+    // as a confirmable suggestion ("Detected industry: Leisure, Travel &
+    // Tourism") before the user commits to an actual search.
+    detectSearchIndustry: protectedProcedure
+      .input(z.object({ instruction: z.string().min(3) }))
+      .mutation(async ({ input }) => {
+        const { parseInstructionToFiltersWithLLM } = await import("./seamlessAI");
+        const filters = await parseInstructionToFiltersWithLLM(input.instruction);
+        return {
+          industries: filters.industry || [],
+          titles: filters.jobTitle || [],
+        };
+      }),
+
     // ═══════════════════════════════════════════════
     // SEARCH -> SELECT -> ENRICH: search-only preview, no credits spent.
     // The user reviews the raw candidates and picks which ones to enrich via
@@ -963,6 +993,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         country: z.string().optional(),
         state: z.string().optional(),
         companySize: z.string().optional(),
+        industryOverride: z.string().optional(), // User-confirmed/corrected industry from the detection suggestion
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
@@ -980,7 +1011,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           input.count,
           input.country,
           input.state,
-          input.companySize
+          input.companySize,
+          input.industryOverride
         );
 
         if (candidates.length === 0) {

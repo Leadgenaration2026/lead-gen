@@ -857,9 +857,17 @@ export async function searchAndFilterSeamlessCandidates(
   count: number,
   country?: string,
   state?: string,
-  companySize?: string
+  companySize?: string,
+  // Lets the caller override the auto-detected industry (e.g. after the user
+  // confirms or corrects a suggestion shown before searching) instead of
+  // relying purely on the LLM's own guess from the instruction text.
+  industryOverride?: string
 ): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
+  if (industryOverride) {
+    const canonical = mapToValidSeamlessIndustry(industryOverride);
+    filters.industry = canonical ? [canonical] : undefined;
+  }
   if (country) {
     filters.contactCountry = [country];
   }

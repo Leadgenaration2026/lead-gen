@@ -62,6 +62,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const leadsQuery = showOnlyUnassigned ? unassignedLeadsQuery : allLeadsQuery;
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const searchSeamlessPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
+  const seamlessIndustriesQuery = trpc.leads.listSeamlessIndustries.useQuery();
+  const seamlessIndustries = seamlessIndustriesQuery.data || [];
+  const detectIndustryMutation = trpc.leads.detectSearchIndustry.useMutation();
   const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const scoreSeamlessEngagementMutation = trpc.leads.scoreSeamlessCandidatesEngagement.useMutation();
   const excludeSeamlessContactsMutation = trpc.leads.excludeSeamlessContacts.useMutation();
@@ -157,6 +160,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [generateState, setGenerateState] = useState("");
   const [generateCompanySize, setGenerateCompanySize] = useState("");
   const [csvLeadSetName, setCsvLeadSetName] = useState("");
+
+  // Industry detection suggestion (shown before an actual search runs, so the
+  // user can confirm or correct what industry filter their instruction maps to)
+  const [industryOverride, setIndustryOverride] = useState("");
+  const [industryDetected, setIndustryDetected] = useState(false);
+  const [industryComboboxOpen, setIndustryComboboxOpen] = useState(false);
 
   // Seamless.AI search -> select -> enrich preview flow
   const [seamlessPreviewDialogOpen, setSeamlessPreviewDialogOpen] = useState(false);
@@ -290,6 +299,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         source: generateSource === "seamless_csv" ? "seamless" : generateSource,
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
+        industryOverride: industryOverride.trim() || undefined,
       });
       
       // Handle different response scenarios
@@ -302,6 +312,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.success(`Generated ${result.count} new leads!${dupMsg}${seamlessMsg}`);
         setInstruction("");
         setGenerateLeadSetName("");
+        setIndustryOverride("");
+        setIndustryDetected(false);
         // New leads sort newest-first and land on page 1 — jump there so they're
         // visible immediately instead of only after manually navigating back.
         setCurrentPage(1);
@@ -309,6 +321,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.success(`Lead generation complete!`);
         setInstruction("");
         setGenerateLeadSetName("");
+        setIndustryOverride("");
+        setIndustryDetected(false);
       }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
@@ -335,6 +349,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
         companySize: generateCompanySize && generateCompanySize !== "any" ? generateCompanySize : undefined,
+        industryOverride: industryOverride.trim() || undefined,
       });
 
       if (result.candidates.length === 0) {
@@ -371,6 +386,21 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       toast.error(msg, { duration: 8000 });
     } finally {
       setIsSearchingSeamless(false);
+    }
+  };
+
+  // Detects the industry an instruction resolves to (no search credits spent)
+  // and pre-fills it as an editable suggestion the user can confirm or
+  // correct before actually running a search.
+  const handleDetectIndustry = async () => {
+    if (!instruction.trim() || instruction.trim().length < 3) return;
+    if (industryOverride) return; // Don't clobber a choice the user already confirmed/picked
+    try {
+      const result = await detectIndustryMutation.mutateAsync({ instruction });
+      setIndustryOverride(result.industries[0] || "");
+      setIndustryDetected(true);
+    } catch (error: any) {
+      console.warn("Industry detection failed:", error?.message);
     }
   };
 
@@ -2001,8 +2031,62 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <div className="space-y-4">
                   <div>
                     <label className="text-sm font-medium">Your Instructions</label>
-                    <Textarea placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..." value={instruction} onChange={(e) => setInstruction(e.target.value)} className="mt-1 min-h-24" />
+                    <Textarea
+                      placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..."
+                      value={instruction}
+                      onChange={(e) => setInstruction(e.target.value)}
+                      onBlur={handleDetectIndustry}
+                      className="mt-1 min-h-24"
+                    />
                   </div>
+                  {(generateSource === "seamless" || generateSource === "ai") && (
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Industry Filter</label>
+                        {detectIndustryMutation.isPending && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
+                          </span>
+                        )}
+                      </div>
+                      <Popover open={industryComboboxOpen} onOpenChange={setIndustryComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" aria-expanded={industryComboboxOpen} className="w-full justify-between font-normal mt-1">
+                            <span className="truncate">{industryOverride || "Auto-detect from instructions"}</span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Search industries..." />
+                            <CommandList>
+                              <CommandEmpty>No industry found</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem value="auto-detect from instructions" onSelect={() => { setIndustryOverride(""); setIndustryComboboxOpen(false); }}>
+                                  Auto-detect from instructions
+                                </CommandItem>
+                                {seamlessIndustries.map((ind: string) => (
+                                  <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryComboboxOpen(false); }}>
+                                    {ind}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {industryDetected && industryOverride && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Suggested from your instructions — change above if this isn't right.
+                        </p>
+                      )}
+                      {industryDetected && !industryOverride && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          No specific industry detected — search will include all industries. Pick one above to narrow it down.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium">Lead Source</label>
