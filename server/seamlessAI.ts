@@ -51,14 +51,14 @@ export const SEAMLESS_INDUSTRY_OPTIONS = [
   "Finance & Banking", "Banking", "Capital Markets", "Financial Services", "Investment Banking", "Investment Management", "Venture Capital & Private Equity",
   "Food & Beverage", "Dairy", "Fishery", "Food & Beverages", "Food Production", "Restaurants", "Supermarkets", "Wine & Spirits",
   "Government & Public Policy", "Executive Office", "Government Administration", "Government Relations", "Judiciary", "Law Enforcement", "Legislative Office", "Political Organization", "Public Policy", "Public Safety",
-  "Health & Wellness", "Alternative Medicine", "Health Wellness and Fitness", "Hospital & Health Care", "Medical Practice", "Mental Health Care", "Veterinary",
-  "Hospitality & Tourism", "Events Services", "Hospitality", "Leisure Travel & Tourism", "Museums & Institutions",
-  "Household Personal & Beauty", "Consumer Services", "Cosmetics", "Furniture", "Individual & Family Services",
+  "Health & Wellness", "Alternative Medicine", "Health, Wellness and Fitness", "Hospital & Health Care", "Medical Practice", "Mental Health Care", "Veterinary",
+  "Hospitality & Tourism", "Events Services", "Hospitality", "Leisure, Travel & Tourism", "Museums & Institutions",
+  "Household, Personal, & Beauty", "Consumer Services", "Cosmetics", "Furniture", "Individual & Family Services",
   "Insurance",
   "Internet & E-Commerce", "Internet",
   "Manufacturing & Engineering", "Civil Engineering", "Industrial Automation", "Machinery", "Mechanical or Industrial Engineering", "Railroad Manufacture", "Shipbuilding",
   "Marketing & Media", "Broadcast Media", "Graphic Design", "Marketing & Advertising", "Media Production", "Newspapers", "Online Media", "Printing", "Public Relations & Communications", "Publishing", "Writing & Editing",
-  "Metals Mining & Materials", "Building Materials", "Glass Ceramics & Concrete", "Mining & Metals", "Paper & Forest Products",
+  "Metals, Mining & Materials", "Building Materials", "Glass, Ceramics & Concrete", "Mining & Metals", "Paper & Forest Products",
   "Non-Profit", "Fund-Raising", "Non-Profit Organization Management", "Philanthropy", "Religious Institutions",
   "Pharmaceuticals & Medical Devices", "Biotechnology", "Medical Devices", "Nanotechnology", "Pharmaceuticals",
   "Professional Services & Consulting", "Accounting", "Alternative Dispute Resolution", "Civic & Social Organization", "Design", "Human Resources", "International Affairs", "International Trade & Development", "Law Practice", "Legal Services", "Management Consulting", "Market Research", "Outsourcing/Offshoring", "Professional Training & Coaching", "Program Development", "Research", "Security & Investigations", "Staffing & Recruiting", "Think Tanks",
@@ -79,10 +79,11 @@ export function mapToValidSeamlessIndustry(guess: string): string | null {
   const guessLower = guess.trim().toLowerCase();
   if (!guessLower) return null;
 
-  // Strip spaces, hyphens, and "&"/"and" so wording differences like
-  // "healthcare" vs "Health Care", or "e-commerce" vs "E-Commerce", don't
-  // block an otherwise-obvious match.
-  const normalize = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[\s-]/g, "");
+  // Strip spaces, hyphens, commas, and "&"/"and" so wording differences like
+  // "healthcare" vs "Health Care", "e-commerce" vs "E-Commerce", or a guess
+  // missing the internal comma some options have (e.g. "Leisure, Travel &
+  // Tourism"), don't block an otherwise-obvious match.
+  const normalize = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[\s,-]/g, "");
   const guessNormalized = normalize(guessLower);
 
   // Exact match first
@@ -105,7 +106,7 @@ export function mapToValidSeamlessIndustry(guess: string): string | null {
 
   // Word-overlap match: catches multi-word guesses like "Travel Agency" or
   // "Tourism Company" that share no contiguous substring with the matching
-  // option (e.g. "Leisure Travel & Tourism") because of the extra generic
+  // option (e.g. "Leisure, Travel & Tourism") because of the extra generic
   // word, but do share one real, meaningful word. Without this, a guess like
   // "Travel Agency" fails every check above and the industry filter gets
   // silently dropped -- which doesn't just return no results, it returns
@@ -917,7 +918,7 @@ export async function searchAndFilterSeamlessCandidates(
   // results to the requested industry either (same unreliability documented
   // above for job titles) -- re-check each candidate's actual industry
   // client-side, canonicalizing both sides through mapToValidSeamlessIndustry
-  // so wording differences (e.g. "Travel" vs "Leisure Travel & Tourism") don't
+  // so wording differences (e.g. "Travel" vs "Leisure, Travel & Tourism") don't
   // cause false rejections. Without this, a search for "Travel Agency" could
   // come back full of unrelated industries Seamless returned anyway.
   if (filters.industry?.length) {
