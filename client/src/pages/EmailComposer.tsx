@@ -23,14 +23,6 @@ import { WebsiteInsightsPanel } from "@/components/WebsiteInsightsPanel";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
 
-const emailTypeDescriptions: Record<EmailType, string> = {
-  discovery: "Initial discovery email to understand their needs and pain points",
-  value_prop: "Highlight your unique value proposition and how you solve their problem",
-  social_proof: "Share case studies, testimonials, or success stories from similar companies",
-  urgency: "Create urgency with limited-time offers or time-sensitive opportunities",
-  custom: "Custom email based on your specific instructions",
-};
-
 export default function EmailComposer() {
   const { user } = useAuth();
   const searchString = useSearch();
@@ -41,12 +33,12 @@ export default function EmailComposer() {
 
   // Single lead state
   const [selectedLead, setSelectedLead] = useState<number | null>(null);
-  const [leadSearchQuery, setLeadSearchQuery] = useState("");
+  const [singleFilterLeadSet, setSingleFilterLeadSet] = useState<string>("all");
+  const [singleTagComboboxOpen, setSingleTagComboboxOpen] = useState(false);
+  const [singleLeadComboboxOpen, setSingleLeadComboboxOpen] = useState(false);
   const [emailType, setEmailType] = useState<EmailType>("discovery");
-  const [instructions, setInstructions] = useState("");
   const [subject, setSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
-  const [ctaLink, setCtaLink] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [lastAIPrompt, setLastAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
@@ -109,15 +101,7 @@ export default function EmailComposer() {
   const [singleTemplateComboboxOpen, setSingleTemplateComboboxOpen] = useState(false);
   const [bulkTemplateComboboxOpen, setBulkTemplateComboboxOpen] = useState(false);
 
-  // Load CTA link from settings
-  useEffect(() => {
-    if (settingsQuery.data?.ctaLink && !ctaLink) {
-      setCtaLink(settingsQuery.data.ctaLink);
-    }
-  }, [settingsQuery.data]);
-
   // Mutations - Single
-  const generateEmailMutation = trpc.email.generateAI.useMutation();
   const regenerateMutation = trpc.email.generateAITemplate.useMutation();
   const sendEmailMutation = trpc.email.sendIndividual.useMutation();
   const deliverabilityCheckMutation = trpc.email.checkDeliverability.useMutation();
@@ -180,33 +164,6 @@ export default function EmailComposer() {
   };
 
   // Single lead handlers
-  const handleGenerateEmail = async () => {
-    if (!selectedLead) {
-      toast.error("Please select a lead first");
-      return;
-    }
-    try {
-      const result = await generateEmailMutation.mutateAsync({
-        leadId: selectedLead,
-        emailType,
-        instructions: instructions || undefined,
-        ctaLink,
-      });
-      setSubject(result.subject);
-      setEmailBody(result.body);
-      setShowPreview(true);
-      setLastAIPrompt({ prompt: instructions || `Generate a ${emailType} email`, emailType, companyContext: undefined });
-      toast.success("Email generated successfully! Review and edit before sending.");
-      // Auto-run deliverability checks
-      try {
-        const checkResult = await deliverabilityCheckMutation.mutateAsync({ subject: result.subject, body: result.body });
-        setDeliverabilityResult(checkResult);
-      } catch { /* silently fail - checks are informational */ }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to generate email");
-    }
-  };
-
   const handleSendEmail = async () => {
     if (!selectedLead || !subject || !emailBody) {
       toast.error("Please fill in all fields");
@@ -236,7 +193,6 @@ export default function EmailComposer() {
       }
       setSubject("");
       setEmailBody("");
-      setInstructions("");
       setShowPreview(false);
     } catch (error: any) {
       toast.error(error.message || "Failed to send email. Check your SMTP settings.");
@@ -335,146 +291,117 @@ export default function EmailComposer() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-blue-600" />
-                    AI Email Generator
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    Select Lead
                   </CardTitle>
                   <CardDescription>
-                    Select a lead, describe what you want to say, and AI creates a professional email
+                    Filter by tag, then pick a lead. Write the email with AI or load a saved template on the right.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Lead Selection with Search */}
+                  {/* Filter by Tag */}
                   <div className="space-y-2">
-                    <Label htmlFor="lead-search">Select Lead *</Label>
-                    {selectedLead ? (
-                      <div className="flex items-center justify-between p-3 border rounded-md bg-green-50/50 border-green-200">
-                        {(() => {
-                          const lead = (leadsQuery.data || []).find((l: any) => l.id === selectedLead);
-                          return lead ? (
-                            <div>
-                              <p className="text-sm font-medium text-green-800">{lead.ownerName} — {lead.companyName}</p>
-                              {lead.email && <p className="text-xs text-green-600">{lead.email}</p>}
-                            </div>
-                          ) : <p className="text-sm">Lead selected</p>;
-                        })()}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setSelectedLead(null); setLeadSearchQuery(""); }}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          Change
+                    <Label>Filter by Tag</Label>
+                    <Popover open={singleTagComboboxOpen} onOpenChange={setSingleTagComboboxOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" role="combobox" aria-expanded={singleTagComboboxOpen} className="w-full justify-between font-normal">
+                          <span className="flex items-center min-w-0">
+                            <Users className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                            <span className="truncate">
+                              {singleFilterLeadSet === "all" ? "All Tags" :
+                                singleFilterLeadSet === "unassigned" ? "Unassigned" :
+                                leadSets.find((s: any) => String(s.id) === singleFilterLeadSet)?.name || "Filter by tag"}
+                            </span>
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <Input
-                          id="lead-search"
-                          placeholder="Search by name, email, or company..."
-                          value={leadSearchQuery}
-                          onChange={(e) => setLeadSearchQuery(e.target.value)}
-                          className="mb-2"
-                        />
-                        {leadSearchQuery.trim() && (
-                          <div className="max-h-48 overflow-y-auto border rounded-md">
-                            {(leadsQuery.data || []).filter((lead: any) => {
-                              const q = leadSearchQuery.toLowerCase();
-                              return (
-                                (lead.ownerName || "").toLowerCase().includes(q) ||
-                                (lead.companyName || "").toLowerCase().includes(q) ||
-                                (lead.email || "").toLowerCase().includes(q)
-                              );
-                            }).slice(0, 20).map((lead: any) => (
-                              <button
-                                key={lead.id}
-                                type="button"
-                                onClick={() => { setSelectedLead(lead.id); setLeadSearchQuery(""); }}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
-                              >
-                                <span className="font-medium">{lead.ownerName}</span>
-                                <span className="text-muted-foreground"> — {lead.companyName}</span>
-                                {lead.email && <span className="text-xs text-muted-foreground block">{lead.email}</span>}
-                              </button>
-                            ))}
-                            {(leadsQuery.data || []).filter((lead: any) => {
-                              const q = leadSearchQuery.toLowerCase();
-                              return (
-                                (lead.ownerName || "").toLowerCase().includes(q) ||
-                                (lead.companyName || "").toLowerCase().includes(q) ||
-                                (lead.email || "").toLowerCase().includes(q)
-                              );
-                            }).length === 0 && (
-                              <p className="px-3 py-2 text-sm text-muted-foreground">No leads found</p>
-                            )}
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search tags..." />
+                          <CommandList>
+                            <CommandEmpty>No tag found</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem value="all" onSelect={() => { setSingleFilterLeadSet("all"); setSingleTagComboboxOpen(false); }}>
+                                All Tags
+                              </CommandItem>
+                              <CommandItem value="unassigned" onSelect={() => { setSingleFilterLeadSet("unassigned"); setSingleTagComboboxOpen(false); }}>
+                                Unassigned
+                              </CommandItem>
+                              {leadSets.map((set: any) => (
+                                <CommandItem key={set.id} value={set.name} onSelect={() => { setSingleFilterLeadSet(String(set.id)); setSingleTagComboboxOpen(false); }}>
+                                  {set.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Select Lead */}
+                  <div className="space-y-2">
+                    <Label>Select Lead *</Label>
+                    {(() => {
+                      const singleLeadsForTag = (leadsQuery.data || []).filter((l: any) => {
+                        if (singleFilterLeadSet === "all") return true;
+                        if (singleFilterLeadSet === "unassigned") return !l.leadSetId;
+                        return l.leadSetId === parseInt(singleFilterLeadSet);
+                      });
+                      const currentLead = (leadsQuery.data || []).find((l: any) => l.id === selectedLead);
+                      return currentLead ? (
+                        <div className="flex items-center justify-between p-3 border rounded-md bg-green-50/50 border-green-200">
+                          <div>
+                            <p className="text-sm font-medium text-green-800">{currentLead.ownerName} — {currentLead.companyName}</p>
+                            {currentLead.email && <p className="text-xs text-green-600">{currentLead.email}</p>}
                           </div>
-                        )}
-                        {!leadSearchQuery.trim() && (
-                          <p className="text-xs text-muted-foreground">Start typing to search for a lead...</p>
-                        )}
-                      </>
-                    )}
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedLead(null)} className="text-muted-foreground hover:text-foreground">
+                            Change
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Popover open={singleLeadComboboxOpen} onOpenChange={setSingleLeadComboboxOpen}>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" role="combobox" aria-expanded={singleLeadComboboxOpen} className="w-full justify-between font-normal">
+                                <span className="truncate text-muted-foreground">Search by name, email, or company...</span>
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-full p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="Search leads..." />
+                                <CommandList>
+                                  <CommandEmpty>No lead found{singleFilterLeadSet !== "all" ? " in this tag" : ""}</CommandEmpty>
+                                  <CommandGroup>
+                                    {singleLeadsForTag.map((lead: any) => (
+                                      <CommandItem
+                                        key={lead.id}
+                                        value={`${lead.ownerName} ${lead.companyName || ""} ${lead.email || ""}`}
+                                        onSelect={() => { setSelectedLead(lead.id); setSingleLeadComboboxOpen(false); }}
+                                      >
+                                        <div>
+                                          <span className="font-medium">{lead.ownerName}</span>
+                                          <span className="text-muted-foreground"> — {lead.companyName}</span>
+                                          {lead.email && <span className="text-xs text-muted-foreground block">{lead.email}</span>}
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          {singleFilterLeadSet !== "all" && (
+                            <p className="text-xs text-muted-foreground">
+                              Showing {singleLeadsForTag.length} lead{singleLeadsForTag.length !== 1 ? "s" : ""} in this tag
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
-
-                  {/* Email Type Selection */}
-                  <div className="space-y-2">
-                    <Label htmlFor="email-type">Email Type *</Label>
-                    <Select value={emailType} onValueChange={(v) => setEmailType(v as EmailType)}>
-                      <SelectTrigger id="email-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="discovery">Discovery</SelectItem>
-                        <SelectItem value="value_prop">Value Proposition</SelectItem>
-                        <SelectItem value="social_proof">Social Proof</SelectItem>
-                        <SelectItem value="urgency">Urgency</SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">{emailTypeDescriptions[emailType]}</p>
-                  </div>
-
-                  {/* Instructions */}
-                  <div className="space-y-2">
-                    <Label htmlFor="instructions">Your Instructions</Label>
-                    <Textarea
-                      id="instructions"
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Tell the AI what you want to say...&#10;&#10;Example: Their website is outdated. Tell them we can redesign it to get 3x more leads. Mention our case study with XYZ Corp where we increased conversions by 200%."
-                      rows={5}
-                      className="text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Be specific about their weak points and what you want to offer
-                    </p>
-                  </div>
-
-                  {/* CTA Link */}
-                  <div className="space-y-2">
-                    <Label htmlFor="cta-link">CTA Link (Calendly)</Label>
-                    <Input
-                      id="cta-link"
-                      value={ctaLink}
-                      onChange={(e) => setCtaLink(e.target.value)}
-                      placeholder="https://cal.com/your-name/30min"
-                      className="text-sm"
-                    />
-                  </div>
-
-                  {/* Generate Button */}
-                  <Button
-                    onClick={handleGenerateEmail}
-                    disabled={generateEmailMutation.isPending || !selectedLead}
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    size="lg"
-                  >
-                    {generateEmailMutation.isPending ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Email...</>
-                    ) : (
-                      <><Sparkles className="w-4 h-4 mr-2" /> Generate with AI</>
-                    )}
-                  </Button>
                 </CardContent>
               </Card>
 
