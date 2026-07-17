@@ -12,7 +12,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, X, Check } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Loader2, Plus, Wand2, Trash2, UserPlus, Upload, Tag, Filter, FileSpreadsheet, AlertTriangle, FolderPlus, Layers, Download, Pencil, Globe, Linkedin, Instagram, Facebook, ArrowUpDown, TrendingUp, TrendingDown, Zap, ExternalLink, CheckCircle2, ArrowRight, Building2, X, Check, ChevronsUpDown } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -80,6 +82,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
+  const [tagComboboxOpen, setTagComboboxOpen] = useState(false);
   const [filterIndustry, setFilterIndustry] = useState<string>("all");
   const [filterHasPhone, setFilterHasPhone] = useState<string>("all"); // "all", "has-phone", "no-phone"
   // Support URL param ?setId=123 to pre-filter by lead set
@@ -2348,21 +2351,60 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={filterLeadSet} onValueChange={setFilterLeadSet}>
-                <SelectTrigger className="w-40">
-                  <Layers className="w-3.5 h-3.5 mr-1.5" />
-                  <SelectValue placeholder="Filter by set" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sets</SelectItem>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {leadSets.map((set: any) => (
-                    <SelectItem key={set.id} value={String(set.id)}>
-                      {set.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={tagComboboxOpen} onOpenChange={setTagComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={tagComboboxOpen}
+                    className="w-44 justify-between font-normal"
+                  >
+                    <span className="flex items-center min-w-0">
+                      <Layers className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                      <span className="truncate">
+                        {filterLeadSet === "all" ? "All Tags" :
+                          filterLeadSet === "unassigned" ? "Unassigned" :
+                          leadSets.find((s: any) => String(s.id) === filterLeadSet)?.name || "Filter by tag"}
+                      </span>
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search tags..." />
+                    <CommandList>
+                      <CommandEmpty>No tag found</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="all"
+                          onSelect={() => { setFilterLeadSet("all"); setTagComboboxOpen(false); }}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${filterLeadSet === "all" ? "opacity-100" : "opacity-0"}`} />
+                          All Tags
+                        </CommandItem>
+                        <CommandItem
+                          value="unassigned"
+                          onSelect={() => { setFilterLeadSet("unassigned"); setTagComboboxOpen(false); }}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${filterLeadSet === "unassigned" ? "opacity-100" : "opacity-0"}`} />
+                          Unassigned
+                        </CommandItem>
+                        {leadSets.map((set: any) => (
+                          <CommandItem
+                            key={set.id}
+                            value={set.name}
+                            onSelect={() => { setFilterLeadSet(String(set.id)); setTagComboboxOpen(false); }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${filterLeadSet === String(set.id) ? "opacity-100" : "opacity-0"}`} />
+                            {set.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <Select value={filterIndustry} onValueChange={setFilterIndustry}>
                 <SelectTrigger className="w-40">
                   <Building2 className="w-3.5 h-3.5 mr-1.5" />
