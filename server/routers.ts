@@ -840,17 +840,22 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           };
         }
 
-        // If leadSetName is provided, create or find the lead set
+        // Always file these into a named list, even if the user didn't type
+        // one -- otherwise the leads are saved with no leadSetId at all and
+        // never show up under any "Imported List" filter, which looks like
+        // generation silently failed to save them anywhere.
+        const resolvedLeadSetName = input.leadSetName?.trim() ||
+          `${input.source === "seamless" ? "Seamless.AI" : "AI"} Generated - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
         let leadSetId: number | null = null;
-        if (input.leadSetName && input.leadSetName.trim()) {
+        {
           const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
-          const existing = existingSets.find(s => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+          const existing = existingSets.find(s => s.name.toLowerCase() === resolvedLeadSetName.toLowerCase());
           if (existing) {
             leadSetId = existing.id;
           } else {
             leadSetId = await db.createLeadSet({
               userId: ctx.user.id,
-              name: input.leadSetName.trim(),
+              name: resolvedLeadSetName,
               description: `Auto-created from ${input.source === "seamless" ? "Seamless.AI" : "AI"} generation: ${input.instruction.slice(0, 100)}`,
               type: "list",
             });
@@ -1133,17 +1138,22 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           };
         }
 
-        // If leadSetName is provided, create or find the lead set (same pattern as leads.generate)
+        // Always file these into a named list, even if the user didn't type
+        // one -- otherwise the leads are saved with no leadSetId at all and
+        // never show up under any "Imported List" filter, which looks like
+        // enrichment silently failed to save them anywhere.
+        const resolvedLeadSetName = input.leadSetName?.trim() ||
+          `Seamless Import - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
         let leadSetId: number | null = null;
-        if (input.leadSetName && input.leadSetName.trim()) {
+        {
           const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
-          const existing = existingSets.find((s) => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+          const existing = existingSets.find((s) => s.name.toLowerCase() === resolvedLeadSetName.toLowerCase());
           if (existing) {
             leadSetId = existing.id;
           } else {
             leadSetId = await db.createLeadSet({
               userId: ctx.user.id,
-              name: input.leadSetName.trim(),
+              name: resolvedLeadSetName,
               description: `Manually selected from Seamless.AI search`,
               type: "list",
             });
@@ -1290,23 +1300,28 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
       .mutation(async ({ input, ctx }) => {
         console.log(`[CSV Import] Starting import for user ${ctx.user.id} with ${input.leads.length} leads`);
         
-        // Resolve lead set
+        // Always file these into a named list, even if the user didn't type
+        // one -- otherwise the leads are saved with no leadSetId at all and
+        // never show up under any "Imported List" filter, which looks like
+        // the import silently failed to save them anywhere.
+        const resolvedLeadSetName = input.leadSetName?.trim() ||
+          `CSV Import - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
         let leadSetId: number | null = null;
-        if (input.leadSetName && input.leadSetName.trim()) {
+        {
           const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
-          const existing = existingSets.find(s => s.name.toLowerCase() === input.leadSetName!.trim().toLowerCase());
+          const existing = existingSets.find(s => s.name.toLowerCase() === resolvedLeadSetName.toLowerCase());
           if (existing) {
             leadSetId = existing.id;
           } else {
             leadSetId = await db.createLeadSet({
               userId: ctx.user.id,
-              name: input.leadSetName.trim(),
+              name: resolvedLeadSetName,
               description: `Auto-created from CSV import`,
               type: "list",
             });
           }
         }
-        
+
         // Get existing leads for duplicate detection
         const existingLeads = await db.getLeadsByUserId(ctx.user.id);
         
