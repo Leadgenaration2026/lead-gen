@@ -223,6 +223,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     website: "",
     industry: "",
     timezone: "",
+    linkedinUrl: "",
+    instagramUrl: "",
+    facebookUrl: "",
   });
   const updateLeadMutation = trpc.leads.update.useMutation({
     onSuccess: () => {
@@ -245,6 +248,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       website: editingLead.website || "",
       industry: editingLead.industry || "",
       timezone: editingLead.timezone || "America/New_York",
+      linkedinUrl: editingLead.linkedinUrl || "",
+      instagramUrl: editingLead.instagramUrl || "",
+      facebookUrl: editingLead.facebookUrl || "",
     });
   }
   if (!editingLead && prevEditingLeadId.current !== null) {
@@ -263,6 +269,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         website: editForm.website || undefined,
         industry: editForm.industry || undefined,
         timezone: editForm.timezone || undefined,
+        linkedinUrl: editForm.linkedinUrl || undefined,
+        instagramUrl: editForm.instagramUrl || undefined,
+        facebookUrl: editForm.facebookUrl || undefined,
       },
     });
   };
@@ -3185,7 +3194,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       </Card>
       {/* Edit Lead Dialog */}
       <Dialog open={!!editingLead} onOpenChange={(open) => { if (!open) setEditingLead(null); }}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-4 h-4" />
@@ -3195,7 +3204,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               Update the lead's contact information and details.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 flex-1 overflow-y-auto pr-1 -mr-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Company Name</Label>
@@ -3259,8 +3268,37 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 placeholder="America/New_York"
               />
             </div>
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Social Profiles (for Social Outreach)</p>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">LinkedIn</Label>
+                <Input
+                  value={editForm.linkedinUrl}
+                  onChange={(e) => setEditForm(f => ({ ...f, linkedinUrl: e.target.value }))}
+                  placeholder="https://linkedin.com/in/johnsmith"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Instagram</Label>
+                  <Input
+                    value={editForm.instagramUrl}
+                    onChange={(e) => setEditForm(f => ({ ...f, instagramUrl: e.target.value }))}
+                    placeholder="https://instagram.com/john"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Facebook</Label>
+                  <Input
+                    value={editForm.facebookUrl}
+                    onChange={(e) => setEditForm(f => ({ ...f, facebookUrl: e.target.value }))}
+                    placeholder="https://facebook.com/john"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-2 shrink-0 border-t">
             <Button variant="outline" onClick={() => setEditingLead(null)}>Cancel</Button>
             <Button onClick={handleSaveEditLead} disabled={updateLeadMutation.isPending}>
               {updateLeadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}

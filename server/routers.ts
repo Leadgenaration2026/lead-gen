@@ -499,6 +499,9 @@ export const appRouter = router({
           industry?: string;
           companySize?: string;
           timezone?: string;
+          city?: string;
+          state?: string;
+          country?: string;
           linkedinUrl?: string;
           instagramUrl?: string;
           facebookUrl?: string;
@@ -639,7 +642,13 @@ export const appRouter = router({
                 industry: Array.isArray(contact.industries) ? contact.industries[0] : (contact.industries || contact.industry || enrichment.industry || undefined),
                 companySize: contact.employeeSizeRange || enrichment.companySize || "1-10",
                 timezone: contact.timezone || undefined,
+                city: contact.city || undefined,
+                state: contact.state || undefined,
+                country: contact.country || undefined,
                 linkedinUrl: contact.liUrl || contact.linkedinUrl || undefined,
+                // Seamless.AI's contact/search API doesn't return Instagram or
+                // Facebook profiles at all (it's LinkedIn-focused) -- these stay
+                // empty and can be filled in via the Edit Lead form for social outreach.
                 instagramUrl: undefined,
                 facebookUrl: undefined,
                 seamlessId: contact.searchResultId, // Store Seamless.AI search result ID for later phone verification
@@ -828,8 +837,10 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               industry: leadData.industry,
               companySize: leadData.companySize || undefined,
               timezone: leadData.timezone || "America/New_York",
+              city: leadData.city || undefined,
+              state: leadData.state || undefined,
+              country: leadData.country || undefined,
               linkedinUrl: leadData.linkedinUrl || undefined,
-              seamlessId: (leadData as any).seamlessId || undefined,
               instagramUrl: leadData.instagramUrl || undefined,
               facebookUrl: leadData.facebookUrl || undefined,
               userId: ctx.user.id,
@@ -1075,6 +1086,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               industry: leadData.industry,
               companySize: leadData.companySize || undefined,
               timezone: leadData.timezone || "America/New_York",
+              city: leadData.city || undefined,
+              state: leadData.state || undefined,
+              country: leadData.country || undefined,
               linkedinUrl: leadData.linkedinUrl || undefined,
               seamlessId: leadData.seamlessId || undefined,
               instagramUrl: leadData.instagramUrl || undefined,

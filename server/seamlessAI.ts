@@ -995,6 +995,9 @@ export interface SeamlessLeadData {
   industry?: string;
   companySize?: string;
   timezone?: string;
+  city?: string;
+  state?: string;
+  country?: string;
   linkedinUrl?: string;
   instagramUrl?: string;
   facebookUrl?: string;
@@ -1032,7 +1035,13 @@ export async function enrichSeamlessCandidatesToLeadData(
       industry: c.industry || enrichment.industry || undefined,
       companySize: c.companySize || enrichment.companySize || "1-10",
       timezone: undefined,
+      city: c.city || undefined,
+      state: c.state || undefined,
+      country: c.country || undefined,
       linkedinUrl: c.linkedinUrl || undefined,
+      // Seamless.AI's contact/search API doesn't return Instagram or Facebook
+      // profiles at all (it's LinkedIn-focused) -- these stay empty here and
+      // can be filled in manually via the Edit Lead form for social outreach.
       instagramUrl: undefined,
       facebookUrl: undefined,
       seamlessId: c.searchResultId,
