@@ -130,6 +130,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [csvFileName, setCsvFileName] = useState("");
+  const [csvEngagementScores, setCsvEngagementScores] = useState<Record<number, { score: number; metrics: any }>>({});
+  const [csvScoringIndices, setCsvScoringIndices] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [manualLead, setManualLead] = useState({
     companyName: "",
@@ -394,6 +396,45 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
+  // Same preview-scoring approach as the Seamless.AI candidate flow above,
+  // but for CSV rows -- these aren't saved leads yet either, so we score
+  // them by row index (stable for the life of this preview dialog) instead
+  // of a database id.
+  const scoreEngagementForCsvRows = async (rows: Array<{ index: number; row: any }>) => {
+    const toScore = rows.filter(
+      ({ index }) => csvEngagementScores[index] === undefined && !csvScoringIndices.has(index)
+    );
+    if (toScore.length === 0) return;
+
+    setCsvScoringIndices((prev) => new Set([...prev, ...toScore.map((r) => r.index)]));
+    try {
+      const result = await scoreSeamlessEngagementMutation.mutateAsync({
+        candidates: toScore.map(({ index, row }) => ({
+          searchResultId: String(index),
+          linkedinUrl: row.linkedinUrl,
+          ownerName: row.ownerName,
+          companyName: row.companyName,
+          website: row.website,
+        })),
+      });
+      setCsvEngagementScores((prev) => {
+        const next = { ...prev };
+        for (const [key, val] of Object.entries(result.results)) {
+          next[Number(key)] = val as any;
+        }
+        return next;
+      });
+    } catch (error: any) {
+      console.warn("CSV engagement scoring failed:", error?.message);
+    } finally {
+      setCsvScoringIndices((prev) => {
+        const next = new Set(prev);
+        toScore.forEach(({ index }) => next.delete(index));
+        return next;
+      });
+    }
+  };
+
   // Enrich + save only the candidates the user left checked
   // Navigate the engagement-score detail view, auto-scoring the target candidate
   // if it hasn't been scored yet.
@@ -598,6 +639,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvPreview([]);
       setCsvFileName("");
       setCsvLeadSetName("");
+      setCsvEngagementScores({});
+      setCsvScoringIndices(new Set());
       leadsQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
@@ -639,6 +682,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setCsvPreview([]);
         setCsvFileName("");
         setCsvLeadSetName("");
+        setCsvEngagementScores({});
+        setCsvScoringIndices(new Set());
         leadsQuery.refetch();
         leadSetsQuery.refetch();
       } catch (error: any) {
@@ -930,7 +975,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         }
 
         setCsvPreview(rows);
+        setCsvEngagementScores({});
+        setCsvScoringIndices(new Set());
         setCsvDialogOpen(true);
+        // Kept small (10) so the initial preview feels fast -- "Score More"
+        // covers the rest, same pattern as the Seamless.AI candidate preview.
+        scoreEngagementForCsvRows(rows.slice(0, 10).map((row, index) => ({ index, row })));
       },
       error: (error: any) => {
         toast.error(`Failed to parse CSV: ${error.message}`);
@@ -986,6 +1036,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvPreview([]);
       setCsvFileName("");
       setCsvLeadSetName("");
+      setCsvEngagementScores({});
+      setCsvScoringIndices(new Set());
       leadsQuery.refetch();
       leadSetsQuery.refetch();
       
@@ -2229,8 +2281,25 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               <FileSpreadsheet className="w-5 h-5 text-green-600" />
               CSV Import Preview
             </DialogTitle>
-            <DialogDescription>
-              {csvFileName} — {csvPreview.length} leads found. Review before importing.
+            <DialogDescription className="flex items-center justify-between gap-2">
+              <span>{csvFileName} — {csvPreview.length} leads found. Review before importing.</span>
+              {csvPreview.slice(0, 20).some((_, i) => csvEngagementScores[i] === undefined && !csvScoringIndices.has(i)) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 gap-1.5"
+                  disabled={csvScoringIndices.size > 0}
+                  onClick={() => scoreEngagementForCsvRows(
+                    csvPreview.slice(0, 20)
+                      .map((row, index) => ({ index, row }))
+                      .filter(({ index }) => csvEngagementScores[index] === undefined)
+                      .slice(0, 10)
+                  )}
+                >
+                  {csvScoringIndices.size > 0 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Score More
+                </Button>
+              )}
             </DialogDescription>
           </DialogHeader>
           {/* Lead Set Name for CSV Import */}
@@ -2256,6 +2325,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8">#</TableHead>
+                  <TableHead className="w-20">Engagement</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Owner</TableHead>
                   <TableHead>Email</TableHead>
@@ -2264,9 +2334,29 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {csvPreview.slice(0, 20).map((row, i) => (
+                {csvPreview.slice(0, 20).map((row, i) => {
+                  const engagement = csvEngagementScores[i];
+                  const isScoring = csvScoringIndices.has(i);
+                  return (
                   <TableRow key={i}>
                     <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                    <TableCell>
+                      {isScoring ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      ) : engagement ? (
+                        <span
+                          className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
+                            engagement.score >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
+                            engagement.score >= 30 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400" :
+                            "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                          }`}
+                        >
+                          {engagement.score}
+                        </span>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => scoreEngagementForCsvRows([{ index: i, row }])}>Score</Button>
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium text-sm">{row.companyName}</TableCell>
                     <TableCell className="text-sm">{row.ownerName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.email}</TableCell>
@@ -2281,7 +2371,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
             {csvPreview.length > 20 && (
@@ -2289,7 +2380,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             )}
           </div>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" onClick={() => { setCsvDialogOpen(false); setCsvPreview([]); setCsvLeadSetName(""); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setCsvDialogOpen(false); setCsvPreview([]); setCsvLeadSetName(""); setCsvEngagementScores({}); setCsvScoringIndices(new Set()); }}>Cancel</Button>
             <Button onClick={handleCSVImport} disabled={csvImportMutation.isPending || dedupCheckMutation.isPending} className="gap-2">
               {(csvImportMutation.isPending || dedupCheckMutation.isPending) ? (<><Loader2 className="w-4 h-4 animate-spin" />Checking...</>) : (<><Upload className="w-4 h-4" />Import {csvPreview.length} Leads</>)}
             </Button>
