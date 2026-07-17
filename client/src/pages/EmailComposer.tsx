@@ -13,12 +13,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Play, Pause, Trash2, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock, Globe, Linkedin, X, BookTemplate, FileText, ChevronsUpDown } from "lucide-react";
+import { Loader2, Mail, Send, Sparkles, Eye, TestTube, Clock, RefreshCw, Plus, Users, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp, Wand2, Inbox, Zap, CalendarClock, Globe, Linkedin, X, BookTemplate, FileText, ChevronsUpDown } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 import { LeadPicker } from "@/components/LeadPicker";
-import { ActivityFeed } from "@/components/ActivityFeed";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { WebsiteInsightsPanel } from "@/components/WebsiteInsightsPanel";
+import { easternDateTimeToISOString, isoStringToEasternDateTime, formatEasternDateTime } from "@/lib/utils";
 // DashboardLayout removed - layout is provided by parent route or Dashboard tab
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
@@ -65,7 +65,6 @@ export default function EmailComposer() {
   });
   const [enableScheduling, setEnableScheduling] = useState(false);
   const [lastCampaignAIPrompt, setLastCampaignAIPrompt] = useState<{ prompt: string; emailType: string; companyContext?: string } | null>(null);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
   const [bulkTestEmail, setBulkTestEmail] = useState("");
   const [showBulkTestEmailInput, setShowBulkTestEmailInput] = useState(false);
 
@@ -111,18 +110,6 @@ export default function EmailComposer() {
 
   // Mutations - Bulk
   const createCampaignMutation = trpc.campaigns.create.useMutation();
-  const launchCampaignMutation = trpc.campaigns.launch.useMutation();
-  const pauseCampaignMutation = trpc.campaigns.pause.useMutation();
-  const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
-  const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
-  const createInboxTestMutation = trpc.verification.createInboxTest.useMutation();
-  const cancelScheduleMutation = trpc.campaigns.cancelSchedule.useMutation({
-    onSuccess: () => {
-      toast.success("Scheduled launch cancelled");
-      campaignsQuery.refetch();
-    },
-    onError: (err) => toast.error(err.message),
-  });
   const validateEmailsMutation = trpc.campaigns.validateEmails.useMutation();
   const regenerateTemplateMutation = trpc.email.generateAITemplate.useMutation();
 
@@ -217,7 +204,7 @@ export default function EmailComposer() {
         dailySendLimit: campaignFormData.dailySendLimit || undefined,
       });
       if (result.scheduled) {
-        toast.success(`Campaign scheduled for ${new Date(campaignFormData.scheduledAt).toLocaleString()} with ${campaignFormData.leadIds.length} leads!`);
+        toast.success(`Campaign scheduled for ${formatEasternDateTime(campaignFormData.scheduledAt)} with ${campaignFormData.leadIds.length} leads!`);
       } else {
         toast.success(`Campaign created with ${campaignFormData.leadIds.length} leads!`);
       }
@@ -226,37 +213,6 @@ export default function EmailComposer() {
       campaignsQuery.refetch();
     } catch (error) {
       toast.error("Failed to create campaign");
-    }
-  };
-
-  const handleLaunchCampaign = async (campaignId: number) => {
-    try {
-      await launchCampaignMutation.mutateAsync(campaignId);
-      toast.success("Campaign launched successfully");
-      campaignsQuery.refetch();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to launch campaign");
-    }
-  };
-
-  const handlePauseCampaign = async (campaignId: number) => {
-    try {
-      await pauseCampaignMutation.mutateAsync(campaignId);
-      toast.success("Campaign paused");
-      campaignsQuery.refetch();
-    } catch (error) {
-      toast.error("Failed to pause campaign");
-    }
-  };
-
-  const handleDeleteCampaign = async (campaignId: number) => {
-    if (!confirm("Are you sure you want to delete this campaign?")) return;
-    try {
-      await deleteCampaignMutation.mutateAsync(campaignId);
-      toast.success("Campaign deleted");
-      campaignsQuery.refetch();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to delete campaign");
     }
   };
 
@@ -844,9 +800,9 @@ export default function EmailComposer() {
                               return;
                             }
                             try {
-                              const scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+                              const scheduledFor = easternDateTimeToISOString(scheduledDate, scheduledTime);
                               await scheduleEmailMutation.mutateAsync({ leadId: selectedLead, subject, emailBody: emailBody, scheduledFor });
-                              toast.success(`Email scheduled for ${scheduledDate} at ${scheduledTime}`);
+                              toast.success(`Email scheduled for ${scheduledDate} at ${scheduledTime} ET`);
                               setSubject(""); setEmailBody(""); setScheduleMode(false); setScheduledDate(""); setScheduledTime(""); setShowPreview(false);
                             } catch (error: any) {
                               toast.error(error.message || "Failed to schedule email");
@@ -884,7 +840,7 @@ export default function EmailComposer() {
                       <div className="border rounded-lg p-3 bg-indigo-50/50 border-indigo-200">
                         <div className="flex items-center gap-2 mb-2">
                           <Clock className="w-4 h-4 text-indigo-600" />
-                          <span className="text-sm font-medium text-indigo-900">Schedule Send</span>
+                          <span className="text-sm font-medium text-indigo-900">Schedule Send (Eastern Time)</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -892,11 +848,11 @@ export default function EmailComposer() {
                             <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} min={new Date().toISOString().split("T")[0]} className="text-sm h-9 bg-white" />
                           </div>
                           <div>
-                            <Label className="text-xs text-indigo-700">Time</Label>
+                            <Label className="text-xs text-indigo-700">Time (ET)</Label>
                             <Input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className="text-sm h-9 bg-white" />
                           </div>
                         </div>
-                        <p className="text-xs text-indigo-600 mt-2">Tip: Emails sent Tuesday-Thursday between 9-11 AM get the best open rates</p>
+                        <p className="text-xs text-indigo-600 mt-2">All times are Eastern Time (ET). Tip: Emails sent Tuesday-Thursday between 9-11 AM get the best open rates.</p>
                       </div>
                     )}
 
@@ -1468,7 +1424,7 @@ export default function EmailComposer() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <CalendarClock className="w-4 h-4 text-purple-600" />
-                      <span className="text-sm font-medium text-purple-900">Schedule Campaign Launch</span>
+                      <span className="text-sm font-medium text-purple-900">Schedule Campaign Launch (Eastern Time)</span>
                     </div>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -1490,10 +1446,10 @@ export default function EmailComposer() {
                           <Label className="text-xs text-purple-700 mb-1 block">Date</Label>
                           <Input
                             type="date"
-                            value={campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toISOString().split('T')[0] : ""}
+                            value={isoStringToEasternDateTime(campaignFormData.scheduledAt).date}
                             onChange={(e) => {
-                              const currentTime = campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toTimeString().slice(0, 5) : "09:00";
-                              const newDate = e.target.value ? new Date(`${e.target.value}T${currentTime}:00`).toISOString() : "";
+                              const currentTime = isoStringToEasternDateTime(campaignFormData.scheduledAt).time || "09:00";
+                              const newDate = e.target.value ? easternDateTimeToISOString(e.target.value, currentTime) : "";
                               setCampaignFormData(prev => ({ ...prev, scheduledAt: newDate }));
                             }}
                             min={new Date().toISOString().split('T')[0]}
@@ -1501,13 +1457,13 @@ export default function EmailComposer() {
                           />
                         </div>
                         <div>
-                          <Label className="text-xs text-purple-700 mb-1 block">Time</Label>
+                          <Label className="text-xs text-purple-700 mb-1 block">Time (ET)</Label>
                           <Input
                             type="time"
-                            value={campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toTimeString().slice(0, 5) : ""}
+                            value={isoStringToEasternDateTime(campaignFormData.scheduledAt).time}
                             onChange={(e) => {
-                              const currentDate = campaignFormData.scheduledAt ? new Date(campaignFormData.scheduledAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-                              const newDate = e.target.value ? new Date(`${currentDate}T${e.target.value}:00`).toISOString() : "";
+                              const currentDate = isoStringToEasternDateTime(campaignFormData.scheduledAt).date || isoStringToEasternDateTime(new Date().toISOString()).date;
+                              const newDate = e.target.value ? easternDateTimeToISOString(currentDate, e.target.value) : "";
                               setCampaignFormData(prev => ({ ...prev, scheduledAt: newDate }));
                             }}
                             className="text-sm h-9 bg-white"
@@ -1516,10 +1472,10 @@ export default function EmailComposer() {
                       </div>
                       {campaignFormData.scheduledAt && (
                         <p className="text-xs text-purple-800 font-medium">
-                          Scheduled for: {new Date(campaignFormData.scheduledAt).toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          Scheduled for: {formatEasternDateTime(campaignFormData.scheduledAt)}
                         </p>
                       )}
-                      <p className="text-xs text-purple-700">Campaign will auto-launch at the scheduled time. Best open rates: Tue-Thu, 9-11 AM.</p>
+                      <p className="text-xs text-purple-700">All times are Eastern Time (ET). Campaign will auto-launch at the scheduled time. Best open rates: Tue-Thu, 9-11 AM.</p>
                     </div>
                   )}
                 </div>
@@ -1589,258 +1545,13 @@ export default function EmailComposer() {
               </CardContent>
             </Card>
 
-            {/* Campaign History */}
-            <Card id="campaigns-list">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Mail className="w-5 h-5" />
-                  Your Campaigns ({campaignsQuery.data?.length || 0})
-                </CardTitle>
-                <CardDescription>Manage your email campaigns and track performance</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {campaignsQuery.isLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : campaignsQuery.data && campaignsQuery.data.length > 0 ? (
-                  <div className="space-y-4">
-                    {campaignsQuery.data.map((campaign) => (
-                      <div key={campaign.id} className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-semibold cursor-pointer hover:text-primary transition-colors" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>{campaign.name}</h3>
-                            <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(campaign as any).scheduledAt && campaign.status === "draft" && (
-                              <div className="flex items-center gap-1">
-                                <Badge variant="outline" className="border-purple-300 text-purple-700 bg-purple-50 gap-1">
-                                  <CalendarClock className="w-3 h-3" />
-                                  {new Date((campaign as any).scheduledAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                </Badge>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    cancelScheduleMutation.mutate(campaign.id);
-                                  }}
-                                  disabled={cancelScheduleMutation.isPending}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            )}
-                            <Badge variant={
-                              campaign.status === "active" ? "default" :
-                              campaign.status === "draft" ? "secondary" :
-                              campaign.status === "paused" ? "outline" : "secondary"
-                            }>
-                              {campaign.status}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 py-3 border-y border-border">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Total Leads</p>
-                            <p className="text-lg font-semibold">{campaign.totalLeads}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Sent</p>
-                            <p className="text-lg font-semibold">{campaign.sentCount}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Opens</p>
-                            <p className="text-lg font-semibold text-green-600">{campaign.openCount}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Clicks</p>
-                            <p className="text-lg font-semibold text-purple-600">{campaign.clickCount || 0}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Calls</p>
-                            <p className="text-lg font-semibold text-orange-600">{campaign.callCount}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Bounced</p>
-                            <p className="text-lg font-semibold text-red-600">{(campaign as any).bounceCount || 0}</p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Bounce Rate</p>
-                            <p className="text-lg font-semibold text-red-500">
-                              {campaign.sentCount > 0 ? Math.round((((campaign as any).bounceCount || 0) / campaign.sentCount) * 100) : 0}%
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                          {campaign.status === "draft" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  try {
-                                    await sendTestEmailMutation.mutateAsync({ subject: campaign.subject || "Preview", body: campaign.emailTemplate || "Preview not available" });
-                                    toast.success("Preview email sent to your inbox!");
-                                  } catch (error: any) {
-                                    toast.error(error?.message || "Failed to send preview email");
-                                  }
-                                }}
-                                disabled={sendTestEmailMutation.isPending}
-                                className="gap-2"
-                              >
-                                <Mail className="w-4 h-4" />
-                                {sendTestEmailMutation.isPending ? "Sending..." : "Send Preview"}
-                              </Button>
-                              <EmailPreviewDialog
-                                subject={campaign.subject || "(No subject)"}
-                                body={campaign.emailTemplate || ""}
-                                recipientName="{{ownerName}}"  
-                                recipientEmail="lead@company.com"
-                                recipientCompany="{{companyName}}"
-                                trigger={
-                                  <Button size="sm" variant="outline" className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50">
-                                    <Inbox className="w-4 h-4" />
-                                    Preview
-                                  </Button>
-                                }
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1.5 border-teal-200 text-teal-700 hover:bg-teal-50"
-                                disabled={validateEmailsMutation.isPending}
-                                onClick={async () => {
-                                  try {
-                                    const result = await validateEmailsMutation.mutateAsync({ campaignId: campaign.id });
-                                    setBulkEmailValidationResult(result);
-                                    setShowBulkEmailValidation(true);
-                                    setSelectedCampaignId(campaign.id);
-                                    if (result.invalidCount > 0) {
-                                      toast.warning(`${result.invalidCount} of ${result.total} emails have invalid domains`);
-                                    } else {
-                                      toast.success(`All ${result.total} email addresses are valid!`);
-                                    }
-                                  } catch (error: any) {
-                                    toast.error(error.message || "Failed to validate emails");
-                                  }
-                                }}
-                              >
-                                {validateEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><CheckCircle2 className="w-3.5 h-3.5" /> Validate Emails</>}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  try {
-                                    const result = await verifyEmailsMutation.mutateAsync({ campaignId: String(campaign.id) });
-                                    if (result.doNotSendCount > 0) {
-                                      toast.warning(`Verification: ${result.safeToSendCount} safe, ${result.doNotSendCount} unsafe (${result.undeliverable} undeliverable, ${result.risky} risky)`);
-                                    } else {
-                                      toast.success(`All ${result.safeToSendCount} emails verified safe!`);
-                                    }
-                                  } catch (error: any) {
-                                    toast.error(error?.message || "Verification failed");
-                                  }
-                                }}
-                                disabled={verifyEmailsMutation.isPending}
-                                className="gap-2"
-                              >
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                {verifyEmailsMutation.isPending ? "Verifying..." : "Verify Emails"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  try {
-                                    const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
-                                    if (result.dashboardUrl) {
-                                      window.open(result.dashboardUrl, "_blank");
-                                      toast.success("Opening Bouncer dashboard. Use email verification to check your list before sending.", { duration: 8000 });
-                                    }
-                                  } catch (error: any) {
-                                    toast.error(error?.message || "Inbox test failed");
-                                  }
-                                }}
-                                disabled={createInboxTestMutation.isPending}
-                                className="gap-2"
-                              >
-                                <Inbox className="w-3.5 h-3.5" />
-                                {createInboxTestMutation.isPending ? "Loading..." : "Test Inbox"}
-                              </Button>
-                              <Button size="sm" onClick={() => handleLaunchCampaign(campaign.id)} disabled={launchCampaignMutation.isPending} className="gap-2">
-                                <Play className="w-4 h-4" /> Launch
-                              </Button>
-                            </>
-                          )}
-                          {campaign.status === "active" && (
-                            <Button size="sm" variant="outline" onClick={() => handlePauseCampaign(campaign.id)} disabled={pauseCampaignMutation.isPending} className="gap-2">
-                              <Pause className="w-4 h-4" /> Pause
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" onClick={() => setSelectedCampaignId(selectedCampaignId === campaign.id ? null : campaign.id)}>
-                            {selectedCampaignId === campaign.id ? "Hide Details" : "View Tracking"}
-                          </Button>
-                          <Button size="sm" variant="outline" className="gap-1" onClick={() => navigate(`/campaigns/${campaign.id}`)}>
-                            View Full Details
-                          </Button>
-                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeleteCampaign(campaign.id)} disabled={deleteCampaignMutation.isPending}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        {selectedCampaignId === campaign.id && (
-                          <div className="mt-4 pt-4 border-t border-border space-y-4">
-                            {bulkEmailValidationResult && showBulkEmailValidation && (
-                              <div className="border rounded-lg p-3 bg-teal-50/50 border-teal-200">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <Mail className="w-4 h-4 text-teal-600" />
-                                  <span className="text-sm font-medium text-teal-900">Email Validation Results</span>
-                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                    {bulkEmailValidationResult.validCount} Valid
-                                  </Badge>
-                                  {bulkEmailValidationResult.invalidCount > 0 && (
-                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                      {bulkEmailValidationResult.invalidCount} Invalid
-                                    </Badge>
-                                  )}
-                                  <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => setShowBulkEmailValidation(false)}>Dismiss</Button>
-                                </div>
-                                {bulkEmailValidationResult.invalidCount > 0 && (
-                                  <div className="max-h-40 overflow-y-auto space-y-1">
-                                    {bulkEmailValidationResult.results.filter(r => !r.valid).map((r, i) => (
-                                      <div key={i} className="flex items-center gap-2 text-sm p-2 rounded bg-red-50 text-red-800">
-                                        <XCircle className="w-4 h-4 text-red-600 shrink-0" />
-                                        <span className="font-medium truncate">{r.name}</span>
-                                        <span className="text-xs text-red-600 truncate">{r.email}</span>
-                                        <span className="text-xs ml-auto shrink-0">{r.reason}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                {bulkEmailValidationResult.invalidCount > 0 && (
-                                  <p className="text-xs text-red-600 mt-2">These emails will be automatically skipped when the campaign is launched.</p>
-                                )}
-                              </div>
-                            )}
-                            <ActivityFeed campaignId={campaign.id} />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-muted-foreground">No campaigns yet. Create one above to get started!</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <p className="text-sm text-muted-foreground text-center">
+              Once created, this campaign will appear under the{" "}
+              <button type="button" className="underline font-medium text-foreground" onClick={() => navigate("/campaigns")}>
+                Campaigns
+              </button>{" "}
+              tab, where you can launch, pause, validate, and track it.
+            </p>
           </div>
         </TabsContent>
       </Tabs>

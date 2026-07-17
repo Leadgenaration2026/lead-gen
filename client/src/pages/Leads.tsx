@@ -144,6 +144,9 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     instagramUrl: "",
     facebookUrl: "",
   });
+  const [manualLeadTagId, setManualLeadTagId] = useState<string>("");
+  const [manualLeadNewTag, setManualLeadNewTag] = useState(false);
+  const [manualLeadNewTagName, setManualLeadNewTagName] = useState("");
 
   // Lead set name for AI generation and CSV import
   const [generateLeadSetName, setGenerateLeadSetName] = useState("");
@@ -520,6 +523,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       toast.error("Please fill in all required fields");
       return;
     }
+    if (manualLeadNewTag && !manualLeadNewTagName.trim()) {
+      toast.error("Please enter a name for the new tag");
+      return;
+    }
     try {
       const dedupResult = await dedupCheckMutation.mutateAsync({ emails: [manualLead.email] });
       if (dedupResult.duplicates.length > 0) {
@@ -531,6 +538,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         });
         setDupDialogOpen(true);
         return;
+      }
+      let leadSetId: number | undefined = manualLeadTagId ? Number(manualLeadTagId) : undefined;
+      if (manualLeadNewTag && manualLeadNewTagName.trim()) {
+        const newTag = await createLeadSetMutation.mutateAsync({ name: manualLeadNewTagName.trim() });
+        leadSetId = newTag.id || undefined;
       }
       await addLeadMutation.mutateAsync({
         companyName: manualLead.companyName,
@@ -544,10 +556,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         linkedinUrl: manualLead.linkedinUrl || undefined,
         instagramUrl: manualLead.instagramUrl || undefined,
         facebookUrl: manualLead.facebookUrl || undefined,
+        leadSetId,
       });
       toast.success("Lead added successfully");
       setManualLead({ companyName: "", ownerName: "", jobTitle: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
+      setManualLeadTagId("");
+      setManualLeadNewTag(false);
+      setManualLeadNewTagName("");
       leadsQuery.refetch();
+      leadSetsQuery.refetch();
     } catch (error: any) {
       console.error("Add lead error:", error);
       toast.error(error?.message || error?.data?.message || "Failed to add lead", { duration: 8000 });
@@ -1821,6 +1838,37 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       <label className="text-sm font-medium">Company Size</label>
                       <Input placeholder="e.g., 50-100" value={manualLead.companySize} onChange={(e) => setManualLead({ ...manualLead, companySize: e.target.value })} className="mt-1" />
                     </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Tag</label>
+                    {!manualLeadNewTag ? (
+                      <Select
+                        value={manualLeadTagId}
+                        onValueChange={(v) => { if (v === "__new__") { setManualLeadNewTag(true); } else { setManualLeadTagId(v); } }}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select a tag (optional)..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {leadSets.map((set: any) => (
+                            <SelectItem key={set.id} value={String(set.id)}>{set.name}</SelectItem>
+                          ))}
+                          <SelectItem value="__new__">+ Create New Tag</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          placeholder="New tag name"
+                          value={manualLeadNewTagName}
+                          onChange={(e) => setManualLeadNewTagName(e.target.value)}
+                        />
+                        <Button type="button" variant="outline" onClick={() => { setManualLeadNewTag(false); setManualLeadNewTagName(""); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">Leads are grouped by tag for batch email sending</p>
                   </div>
                   <div className="border-t pt-3 mt-1">
                     <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Social Profiles (Optional)</p>

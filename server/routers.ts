@@ -427,6 +427,7 @@ export const appRouter = router({
         linkedinUrl: z.string().optional(),
         instagramUrl: z.string().optional(),
         facebookUrl: z.string().optional(),
+        leadSetId: z.number().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const result = await db.createLead({
@@ -440,6 +441,7 @@ export const appRouter = router({
           linkedinUrl: input.linkedinUrl || undefined,
           instagramUrl: input.instagramUrl || undefined,
           facebookUrl: input.facebookUrl || undefined,
+          leadSetId: input.leadSetId || undefined,
           customData: { companySize: input.companySize },
           userId: ctx.user.id,
           status: "new",
@@ -1220,7 +1222,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         const createdLeads = [];
         const errors: string[] = [];
         const duplicates: Array<{ row: number; name: string; company: string; email: string }> = [];
-        
+        const websiteAnalysisTargets: Array<{ id: number; website: string; companyName?: string; industry?: string }> = [];
+
         for (let i = 0; i < input.leads.length; i++) {
           const leadData = input.leads[i];
           
@@ -1272,14 +1275,22 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               await db.updateLead(Number(result), { tag: leadData.tag });
             }
             createdLeads.push(result);
+            if (leadData.website) {
+              websiteAnalysisTargets.push({
+                id: Number(result),
+                website: leadData.website,
+                companyName: leadData.companyName,
+                industry: leadData.industry,
+              });
+            }
           } catch (e: any) {
             console.error(`[CSV Import] Error on row ${i + 1}:`, e);
             errors.push(`Row ${i + 1}: ${e.message || "Failed to import"}`);
           }
         }
-        
+
         console.log(`[CSV Import] Completed: ${createdLeads.length} imported, ${duplicates.length} duplicates, ${errors.length} errors`);
-        
+
         // Auto-score engagement for imported leads in background
         const importedIds = createdLeads.filter(Boolean).map(Number);
         if (importedIds.length > 0) {
@@ -1295,6 +1306,41 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
           // Auto-verification disabled - only verify when user manually clicks "Verify Emails"
           console.log(`[AutoVerify] CSV import auto-verification disabled - user must manually verify emails`);
+        }
+
+        // Auto-analyze websites for imported leads in background, matching
+        // the leads.generate (AI import) pattern -- so a lead's website
+        // insights are populated the same way regardless of import source.
+        if (websiteAnalysisTargets.length > 0) {
+          setImmediate(async () => {
+            const { fullWebsiteAnalysis } = await import("./websiteAnalysis");
+            for (const target of websiteAnalysisTargets) {
+              try {
+                const analysis = await fullWebsiteAnalysis(
+                  target.website,
+                  target.companyName || "Unknown",
+                  target.industry || "general business"
+                );
+                await db.upsertWebsiteInsights(target.id, {
+                  domain: analysis.insights.domain,
+                  totalVisits: analysis.insights.totalVisits,
+                  bounceRate: analysis.insights.bounceRate,
+                  globalRank: analysis.insights.globalRank,
+                  topKeywords: analysis.insights.topKeywords,
+                  trafficSources: analysis.insights.trafficSources,
+                  topLandingPages: analysis.insights.topLandingPages,
+                  competitors: analysis.competitors,
+                  competitorGaps: analysis.competitorGaps,
+                  recentNews: analysis.recentNews,
+                  industryInsights: analysis.industryInsights,
+                  insightsSummary: analysis.summary,
+                });
+                console.log(`[AutoAnalyze] Complete for CSV-imported lead: ${target.website}`);
+              } catch (e: any) {
+                console.warn(`[AutoAnalyze] Failed for ${target.website}:`, e.message);
+              }
+            }
+          });
         }
         return { 
           success: true, 
@@ -3527,6 +3573,37 @@ Respond in this exact JSON format:
           }
         }
         await db.updateLead(lead.id, { status: "contacted" });
+
+        // Schedule the same 7-email follow-up cadence + fallback call cadence
+        // bulk campaigns get, so a single-lead send is tracked the same way
+        // as a campaign end-to-end, not just for the initial send.
+        if (campaignId) {
+          const campaignLeadsForFollowUp = await db.getCampaignLeads(campaignId);
+          const campaignLeadId = campaignLeadsForFollowUp[0]?.id;
+          if (campaignLeadId) {
+            const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./_core/followUpScheduler");
+            const followUpCtaLink = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
+            scheduleFollowUpEmails(
+              campaignLeadId,
+              lead.id,
+              lead.email,
+              lead.phoneNumber || '',
+              lead.ownerName,
+              lead.companyName,
+              lead.industry || 'business services',
+              followUpCtaLink,
+              ctx.user.id
+            ).catch((err: any) => {
+              console.error(`[sendIndividual] Failed to schedule follow-ups for lead ${lead.id}:`, err);
+            });
+            if (lead.phoneNumber) {
+              scheduleFollowUpCalls(campaignLeadId, lead.phoneNumber).catch((err: any) => {
+                console.error(`[sendIndividual] Failed to schedule follow-up calls for lead ${lead.id}:`, err);
+              });
+            }
+          }
+        }
+
         return { success: true, trackingToken, campaignId };
       }),
 
