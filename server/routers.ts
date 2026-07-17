@@ -1531,6 +1531,25 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           };
         }
 
+        // Fetch real, current text from the lead's actual website (homepage +
+        // an About/Services page when discoverable) so the analysis below is
+        // grounded in what the company actually says about itself, instead of
+        // Claude guessing from the company name and industry label alone.
+        let scrapedContext = "";
+        let groundedInRealContent = false;
+        let pagesScraped: string[] = [];
+        if (lead.website) {
+          const { scrapeWebsiteContent } = await import("./websiteScraper");
+          const scraped = await scrapeWebsiteContent(lead.website);
+          if (scraped.text) {
+            scrapedContext = scraped.text;
+            groundedInRealContent = true;
+            pagesScraped = scraped.pagesScraped;
+          } else {
+            console.warn(`[analyzeProblems] Could not scrape ${lead.website}: ${scraped.error}`);
+          }
+        }
+
         // Run deep analysis with Claude
         const { generateEmailWithClaude } = await import("./claude");
         const analysisResponse = await invokeLLM({
@@ -1538,11 +1557,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             {
               role: "system",
               content: `You are a senior business consultant and industry analyst. Your job is to deeply analyze a company and its industry to identify the REAL problems that business owners face daily. Be specific, not generic. Think about operational challenges, market pressures, technology gaps, staffing issues, customer acquisition problems, and competitive threats.
+${groundedInRealContent
+  ? `\nYou have been given real, current text scraped from the company's own website below. Base your analysis on specific facts from it (services/offerings they actually list, how they describe themselves, what's missing or outdated, gaps between what they claim and what a modern competitor would offer) rather than generic industry assumptions. Quote or reference specific details from the site where it strengthens a point.`
+  : `\nNo website content was available for this lead, so base your analysis on their industry and company profile -- clearly reason from general industry knowledge rather than inventing specifics you can't know.`}
 
 Return a JSON object with:
 - "painPoints": array of 5-7 specific, detailed pain points (each 1-2 sentences)
 - "industryTrends": array of 3-4 current industry trends creating pressure
-- "competitiveThreats": array of 2-3 competitive challenges they face
+- "competitiveThreats": array of 2-3 competitive challenges they face, framed as what a stronger competitor's strategy would look like against this company today
 - "analysis": a 2-3 paragraph detailed analysis of their situation
 - "suggestedApproach": which email approach would resonate most ("discovery", "value_prop", "social_proof", "urgency")
 
@@ -1557,8 +1579,9 @@ Owner: ${lead.ownerName}
 Industry: ${lead.industry || "Unknown"}
 Website: ${lead.website || "Not provided"}
 ${input.additionalContext ? `Additional Context: ${input.additionalContext}` : ""}
+${scrapedContext ? `\nReal text scraped from their website (${pagesScraped.join(", ")}):\n"""\n${scrapedContext}\n"""` : ""}
 
-Identify specific, actionable pain points that a virtual assistant / lead generation / business automation service could help solve.`,
+Identify specific, actionable pain points that a virtual assistant / lead generation / business automation service could help solve, and where relevant tie each one to how our virtual assistant service specifically addresses it.`,
             },
           ],
           response_format: {
@@ -1607,6 +1630,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           industryTrends: parsed.industryTrends || [],
           competitiveThreats: parsed.competitiveThreats || [],
           suggestedApproach: parsed.suggestedApproach || "discovery",
+          groundedInRealContent,
+          pagesScraped,
           cached: false,
         };
       }),

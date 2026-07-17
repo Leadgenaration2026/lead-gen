@@ -30,6 +30,8 @@ interface ProblemAnalysis {
   competitiveThreats?: string[];
   suggestedApproach?: string;
   cached?: boolean;
+  groundedInRealContent?: boolean;
+  pagesScraped?: string[];
 }
 
 export function AIWriteButton({
@@ -209,11 +211,25 @@ export function AIWriteButton({
                 {/* Analysis Results */}
                 {problemAnalysis && showAnalysis && (
                   <div className="mt-3 space-y-3 border-t border-blue-200 pt-3">
-                    {problemAnalysis.cached && (
-                      <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50">
-                        Using cached analysis — click Re-analyze for fresh insights
-                      </Badge>
-                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {problemAnalysis.cached && (
+                        <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50">
+                          Using cached analysis — click Re-analyze for fresh insights
+                        </Badge>
+                      )}
+                      {!problemAnalysis.cached && (
+                        problemAnalysis.groundedInRealContent ? (
+                          <Badge variant="outline" className="text-xs text-green-700 border-green-300 bg-green-50" title={problemAnalysis.pagesScraped?.join(", ")}>
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Based on their actual website content
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-gray-600 border-gray-300 bg-gray-50">
+                            Estimated from industry/company profile — no website content available
+                          </Badge>
+                        )
+                      )}
+                    </div>
 
                     {/* Pain Points */}
                     {(problemAnalysis.painPoints || problemAnalysis.weakPoints.filter(w => !w.startsWith("["))).length > 0 && (
