@@ -52,7 +52,7 @@ function Router() {
       <Route path={"/inbox"}>{() => <WithLayout component={Inbox} />}</Route>
       <Route path={"/settings"}>{() => <WithLayout component={SettingsPage} />}</Route>
       <Route path={"/social-outreach"}>{() => <WithLayout component={SocialOutreach} />}</Route>
-      <Route path={"/message-queue"}>{() => <WithLayout component={MessageQueue} />}</Route>
+      <Route path={"/message-queue"} component={MessageQueue} />
       <Route path={"/search-preview"}>{() => <WithLayout component={SearchPreview} />}</Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
