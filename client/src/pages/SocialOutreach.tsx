@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Linkedin, Instagram, Facebook, Copy, ExternalLink, MessageSquare, Sparkles, Users, CheckCircle2, XCircle, AlertTriangle, Send, Link2 } from "lucide-react";
+import { Loader2, Linkedin, Instagram, Facebook, Copy, ExternalLink, MessageSquare, Sparkles, Users, CheckCircle2, XCircle, AlertTriangle, Send, Link2, Layers, Check, ChevronsUpDown } from "lucide-react";
 
 type Platform = "linkedin" | "instagram" | "facebook";
 type MessageType = "connection_request" | "direct_message";
@@ -27,6 +29,9 @@ export default function SocialOutreach() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("linkedin");
   const [messageType, setMessageType] = useState<MessageType>("connection_request");
   const [selectedLeadId, setSelectedLeadId] = useState<string>("");
+  const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
+  const [tagComboboxOpen, setTagComboboxOpen] = useState(false);
+  const [leadComboboxOpen, setLeadComboboxOpen] = useState(false);
   const [generatedMessage, setGeneratedMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -38,11 +43,18 @@ export default function SocialOutreach() {
   const [facebookUrl, setFacebookUrl] = useState("");
 
   const leadsQuery = trpc.leads.list.useQuery();
+  const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const generateMessageMutation = trpc.social.generateMessage.useMutation();
   const sendMutation = trpc.social.send.useMutation();
   const updateLeadMutation = trpc.leads.update.useMutation();
+  const leadSets = useMemo(() => leadSetsQuery.data || [], [leadSetsQuery.data]);
 
   const leads = useMemo(() => leadsQuery.data || [], [leadsQuery.data]);
+  const leadsForTag = useMemo(() => {
+    if (filterLeadSet === "all") return leads;
+    if (filterLeadSet === "unassigned") return leads.filter((l: any) => !l.leadSetId);
+    return leads.filter((l: any) => l.leadSetId === parseInt(filterLeadSet));
+  }, [leads, filterLeadSet]);
   const selectedLead = useMemo(() => {
     const lead = leads.find((l) => String(l.id) === selectedLeadId);
     if (lead) {
@@ -289,23 +301,104 @@ export default function SocialOutreach() {
               </div>
             </div>
 
+            {/* Tag Filter */}
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Filter by Tag</label>
+              <Popover open={tagComboboxOpen} onOpenChange={setTagComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={tagComboboxOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    <span className="flex items-center min-w-0">
+                      <Layers className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                      <span className="truncate">
+                        {filterLeadSet === "all" ? "All Tags" :
+                          filterLeadSet === "unassigned" ? "Unassigned" :
+                          leadSets.find((s: any) => String(s.id) === filterLeadSet)?.name || "Filter by tag"}
+                      </span>
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search tags..." />
+                    <CommandList>
+                      <CommandEmpty>No tag found</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem value="all" onSelect={() => { setFilterLeadSet("all"); setTagComboboxOpen(false); }}>
+                          <Check className={`mr-2 h-4 w-4 ${filterLeadSet === "all" ? "opacity-100" : "opacity-0"}`} />
+                          All Tags
+                        </CommandItem>
+                        <CommandItem value="unassigned" onSelect={() => { setFilterLeadSet("unassigned"); setTagComboboxOpen(false); }}>
+                          <Check className={`mr-2 h-4 w-4 ${filterLeadSet === "unassigned" ? "opacity-100" : "opacity-0"}`} />
+                          Unassigned
+                        </CommandItem>
+                        {leadSets.map((set: any) => (
+                          <CommandItem
+                            key={set.id}
+                            value={set.name}
+                            onSelect={() => { setFilterLeadSet(String(set.id)); setTagComboboxOpen(false); }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${filterLeadSet === String(set.id) ? "opacity-100" : "opacity-0"}`} />
+                            {set.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
             {/* Lead Selection */}
             <div>
               <label className="text-sm font-medium mb-1.5 block">Select Lead</label>
-              <Select value={selectedLeadId} onValueChange={handleLeadChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a lead..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {leads.map((lead) => (
-                    <SelectItem key={lead.id} value={String(lead.id)}>
-                      <span className="flex items-center gap-2">
-                        {lead.ownerName} {lead.companyName && <span className="text-muted-foreground">— {lead.companyName}</span>}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={leadComboboxOpen} onOpenChange={setLeadComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={leadComboboxOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    <span className="truncate">
+                      {selectedLead
+                        ? `${selectedLead.ownerName}${selectedLead.companyName ? ` — ${selectedLead.companyName}` : ""}`
+                        : "Choose a lead..."}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search leads..." />
+                    <CommandList>
+                      <CommandEmpty>No lead found{filterLeadSet !== "all" ? " in this tag" : ""}</CommandEmpty>
+                      <CommandGroup>
+                        {leadsForTag.map((lead: any) => (
+                          <CommandItem
+                            key={lead.id}
+                            value={`${lead.ownerName} ${lead.companyName || ""}`}
+                            onSelect={() => { handleLeadChange(String(lead.id)); setLeadComboboxOpen(false); }}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${selectedLeadId === String(lead.id) ? "opacity-100" : "opacity-0"}`} />
+                            {lead.ownerName} {lead.companyName && <span className="text-muted-foreground">— {lead.companyName}</span>}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              {filterLeadSet !== "all" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Showing {leadsForTag.length} lead{leadsForTag.length !== 1 ? "s" : ""} in this tag
+                </p>
+              )}
             </div>
 
             {/* Social Profile Links */}
