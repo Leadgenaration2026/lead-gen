@@ -1803,12 +1803,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <span className="text-sm font-medium">Add Lead Manually</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle>Add New Lead</DialogTitle>
                   <DialogDescription>Enter the details of the lead you want to add</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
+                <div className="space-y-4 flex-1 overflow-y-auto pr-1 -mr-1">
                   <div>
                     <label className="text-sm font-medium">Company Name *</label>
                     <Input placeholder="e.g., Acme Corporation" value={manualLead.companyName} onChange={(e) => setManualLead({ ...manualLead, companyName: e.target.value })} className="mt-1" />
@@ -1893,10 +1893,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       </div>
                     </div>
                   </div>
+                </div>
+                <DialogFooter className="shrink-0 pt-3 border-t">
                   <Button onClick={handleAddManualLead} disabled={addLeadMutation.isPending} className="w-full">
                     {addLeadMutation.isPending ? (<><Loader2 className="w-4 h-4 animate-spin mr-2" />Adding...</>) : "Add Lead"}
                   </Button>
-                </div>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           </CardContent>
