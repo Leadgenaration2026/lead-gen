@@ -37,7 +37,7 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
-      <Route path={"/dashboard"} component={Dashboard} />
+      <Route path={"/dashboard"}>{() => <WithLayout component={Dashboard} />}</Route>
       <Route path={"/email-composer"}>{() => <WithLayout component={EmailComposer} />}</Route>
       <Route path={"/follow-up-reports"}>{() => <WithLayout component={FollowUpReports} />}</Route>
       <Route path={"/templates"}>{() => <WithLayout component={CampaignTemplates} />}</Route>
