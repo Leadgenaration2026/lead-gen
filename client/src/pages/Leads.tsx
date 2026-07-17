@@ -2053,7 +2053,16 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     <Textarea
                       placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..."
                       value={instruction}
-                      onChange={(e) => setInstruction(e.target.value)}
+                      onChange={(e) => {
+                        setInstruction(e.target.value);
+                        // Any edit invalidates the previous suggestion/choice --
+                        // otherwise a stale industry from an earlier, unrelated
+                        // instruction (e.g. "Leisure, Travel & Tourism" from a
+                        // prior "travel agency owners" search) silently carries
+                        // over and gets applied to a completely different search.
+                        setIndustryOverride("");
+                        setIndustryDetected(false);
+                      }}
                       onBlur={handleDetectIndustry}
                       className="mt-1 min-h-24"
                     />
