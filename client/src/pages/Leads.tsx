@@ -168,6 +168,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [industryDetected, setIndustryDetected] = useState(false);
   const [industryComboboxOpen, setIndustryComboboxOpen] = useState(false);
 
+  // Job title suggestion -- same idea as industry above, but titles aren't a
+  // fixed enum (Seamless.AI matches on relevance, up to 10 free-text titles),
+  // so this is an editable list of chips rather than a picker from a fixed list.
+  const [titlesOverride, setTitlesOverride] = useState<string[]>([]);
+  const [titlesDetected, setTitlesDetected] = useState(false);
+  const [titleInputValue, setTitleInputValue] = useState("");
+
   // Seamless.AI search -> select -> enrich preview flow
   const [seamlessPreviewDialogOpen, setSeamlessPreviewDialogOpen] = useState(false);
   const [seamlessCandidates, setSeamlessCandidates] = useState<Array<{
@@ -301,6 +308,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
         state: generateState && generateState !== "any" ? generateState : undefined,
         industryOverride: industryOverride.trim() || undefined,
+        titlesOverride: titlesOverride.length > 0 ? titlesOverride : undefined,
       });
       
       // Handle different response scenarios
@@ -315,6 +323,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setGenerateLeadSetName("");
         setIndustryOverride("");
         setIndustryDetected(false);
+        setTitlesOverride([]);
+        setTitlesDetected(false);
         // New leads sort newest-first and land on page 1 — jump there so they're
         // visible immediately instead of only after manually navigating back.
         setCurrentPage(1);
@@ -324,6 +334,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setGenerateLeadSetName("");
         setIndustryOverride("");
         setIndustryDetected(false);
+        setTitlesOverride([]);
+        setTitlesDetected(false);
       }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
@@ -351,6 +363,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         state: generateState && generateState !== "any" ? generateState : undefined,
         companySize: generateCompanySize && generateCompanySize !== "any" ? generateCompanySize : undefined,
         industryOverride: industryOverride.trim() || undefined,
+        titlesOverride: titlesOverride.length > 0 ? titlesOverride : undefined,
       });
 
       if (result.candidates.length === 0) {
@@ -408,19 +421,44 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
-  // Detects the industry an instruction resolves to (no search credits spent)
-  // and pre-fills it as an editable suggestion the user can confirm or
-  // correct before actually running a search.
-  const handleDetectIndustry = async () => {
+  // Detects the industry AND job titles an instruction resolves to (no search
+  // credits spent) and pre-fills both as editable suggestions the user can
+  // confirm or correct before actually running a search.
+  const handleDetectSearchFilters = async () => {
     if (!instruction.trim() || instruction.trim().length < 3) return;
-    if (industryOverride) return; // Don't clobber a choice the user already confirmed/picked
     try {
       const result = await detectIndustryMutation.mutateAsync({ instruction });
-      setIndustryOverride(result.industries[0] || "");
-      setIndustryDetected(true);
+      if (!industryOverride) { // Don't clobber an industry the user already confirmed/picked
+        setIndustryOverride(result.industries[0] || "");
+        setIndustryDetected(true);
+      }
+      if (titlesOverride.length === 0) { // Don't clobber titles the user already edited
+        setTitlesOverride(result.titles.slice(0, 10));
+        setTitlesDetected(true);
+      }
     } catch (error: any) {
-      console.warn("Industry detection failed:", error?.message);
+      console.warn("Search filter detection failed:", error?.message);
     }
+  };
+
+  const handleAddTitleChip = () => {
+    const value = titleInputValue.trim();
+    if (!value) return;
+    if (titlesOverride.some((t) => t.toLowerCase() === value.toLowerCase())) {
+      setTitleInputValue("");
+      return;
+    }
+    if (titlesOverride.length >= 10) {
+      toast.error("Seamless.AI allows up to 10 titles per search");
+      return;
+    }
+    setTitlesOverride([...titlesOverride, value]);
+    setTitlesDetected(true);
+    setTitleInputValue("");
+  };
+
+  const handleRemoveTitleChip = (title: string) => {
+    setTitlesOverride(titlesOverride.filter((t) => t !== title));
   };
 
   // Score engagement (LinkedIn + website) for a batch of preview candidates that
@@ -2055,15 +2093,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       value={instruction}
                       onChange={(e) => {
                         setInstruction(e.target.value);
-                        // Any edit invalidates the previous suggestion/choice --
-                        // otherwise a stale industry from an earlier, unrelated
-                        // instruction (e.g. "Leisure, Travel & Tourism" from a
-                        // prior "travel agency owners" search) silently carries
-                        // over and gets applied to a completely different search.
+                        // Any edit invalidates the previous suggestions/choices --
+                        // otherwise a stale industry/titles from an earlier,
+                        // unrelated instruction (e.g. "Leisure, Travel &
+                        // Tourism" from a prior "travel agency owners" search)
+                        // silently carries over and gets applied to a
+                        // completely different search.
                         setIndustryOverride("");
                         setIndustryDetected(false);
+                        setTitlesOverride([]);
+                        setTitlesDetected(false);
                       }}
-                      onBlur={handleDetectIndustry}
+                      onBlur={handleDetectSearchFilters}
                       className="mt-1 min-h-24"
                     />
                   </div>
@@ -2111,6 +2152,55 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       {industryDetected && !industryOverride && (
                         <p className="text-xs text-muted-foreground mt-1">
                           No specific industry detected — search will include all industries. Pick one above to narrow it down.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {(generateSource === "seamless" || generateSource === "ai") && (
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Job Titles (up to 10)</label>
+                        {detectIndustryMutation.isPending && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10">
+                        {titlesOverride.map((title) => (
+                          <Badge key={title} variant="secondary" className="gap-1 pr-1">
+                            {title}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTitleChip(title)}
+                              className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                        <input
+                          value={titleInputValue}
+                          onChange={(e) => setTitleInputValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === ",") {
+                              e.preventDefault();
+                              handleAddTitleChip();
+                            }
+                          }}
+                          onBlur={handleAddTitleChip}
+                          placeholder={titlesOverride.length === 0 ? "e.g., Owner, CEO, Founder — type and press Enter" : "Add another title..."}
+                          className="flex-1 min-w-32 bg-transparent outline-none text-sm"
+                        />
+                      </div>
+                      {titlesDetected && titlesOverride.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Suggested from your instructions — remove any that aren't specific enough, or add your own.
+                        </p>
+                      )}
+                      {titlesDetected && titlesOverride.length === 0 && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          No specific titles detected — add one or more above to narrow the search (e.g. "Owner", "CEO").
                         </p>
                       )}
                     </div>

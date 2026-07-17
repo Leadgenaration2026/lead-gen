@@ -62,6 +62,7 @@ const generateLeadsSchema = z.object({
   country: z.string().optional(),
   state: z.string().optional(), // US state for targeted prospecting
   industryOverride: z.string().optional(), // User-confirmed/corrected industry from the detection suggestion
+  titlesOverride: z.array(z.string()).max(10).optional(), // User-confirmed/corrected job titles (Seamless.AI caps at 10, relevance-matched -- not expanded further)
 });
 
 const updateUserSettingsSchema = z.object({
@@ -539,6 +540,13 @@ export const appRouter = router({
             filters.industry = canonicalOverride ? [canonicalOverride] : undefined;
           }
 
+          // Same for job titles -- the user's confirmed/edited list is used
+          // exactly as given (no further expansion), since picking specific
+          // titles is meant to narrow the search, not broaden it.
+          if (input.titlesOverride?.length) {
+            filters.jobTitle = input.titlesOverride;
+          }
+
           // ALWAYS enforce country filter when user specifies a country
           if (input.country) {
             filters.contactCountry = [input.country];
@@ -994,6 +1002,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         state: z.string().optional(),
         companySize: z.string().optional(),
         industryOverride: z.string().optional(), // User-confirmed/corrected industry from the detection suggestion
+        titlesOverride: z.array(z.string()).max(10).optional(), // User-confirmed/corrected job titles
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
@@ -1012,7 +1021,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           input.country,
           input.state,
           input.companySize,
-          input.industryOverride
+          input.industryOverride,
+          input.titlesOverride
         );
 
         if (candidates.length === 0) {
