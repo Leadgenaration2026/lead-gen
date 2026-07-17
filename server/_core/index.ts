@@ -6,7 +6,6 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerEmailTrackingRoutes } from "./emailTracking";
-import { NITIN_SIGNATURE_HTML } from "@shared/signature";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -155,12 +154,11 @@ async function startServer() {
       const nodemailer = (await import("nodemailer")).default;
       const { nanoid } = await import("nanoid");
       const { plainTextToHtml } = await import("@shared/emailFormat");
-      const { NITIN_SIGNATURE_HTML, getUnsubscribeLinkHtml } = await import("@shared/signature");
       const { getSignatureHtml } = await import("./followUpScheduler");
 
       const signature = await db.getEmailSignature(campaign.userId);
       const signatureHtml = getSignatureHtml(signature);
-      const campaignLeads = await db.getCampaignLeads(campaign.id);
+      const campaignLeads = (await db.getCampaignLeads(campaign.id)).filter((cl: any) => !cl.unsubscribed);
 
       if (campaignLeads.length === 0) {
         return res.json({ ok: true, skipped: "no_leads" });
@@ -175,6 +173,7 @@ async function startServer() {
         try {
           const lead = await db.getLeadById(campaignLead.leadId);
           if (!lead) continue;
+          if ((lead as any).unsubscribed) continue;
 
           const personalizedTemplate = (campaign.emailTemplate || "")
             .replace(/{{companyName}}/g, lead.companyName)
@@ -189,12 +188,13 @@ async function startServer() {
           await db.createEmailTrackingEvent({ campaignLeadId: campaignLead.id, eventType: "click", trackingToken: clickTrackingToken });
 
           const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
-          const ctaUrl = "https://calendly.com/nitin-virtualassistant/30min";
+          const ctaUrl = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
           const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
           let emailBody = personalizedTemplate
             .replace(/{{bookingUrl}}/g, trackedCtaUrl)
             .replace(/{{ctaLink}}/g, trackedCtaUrl)
-            .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+            .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl)
+            .replace(/https:\/\/cal\.com\/nitin-virtualassistant-group\.com\/30min/g, trackedCtaUrl);
 
           // Wrap any remaining raw URLs that weren't caught by specific patterns
           emailBody = emailBody.replace(
@@ -213,7 +213,7 @@ async function startServer() {
             }
           );
 
-          emailBody = plainTextToHtml(emailBody) + trackingPixel;
+          emailBody = plainTextToHtml(emailBody) + signatureHtml + trackingPixel;
 
           const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
           emailBody = emailBody.replace(
@@ -340,7 +340,7 @@ async function startServer() {
 
       // Get unsent campaign leads
       const allCampaignLeads = await db.getCampaignLeads(campaign.id);
-      const unsent = allCampaignLeads.filter(cl => !cl.emailSent);
+      const unsent = allCampaignLeads.filter(cl => !cl.emailSent && !(cl as any).unsubscribed);
       const dailyLimit = campaign.dailySendLimit || 50;
       const toSendToday = unsent.slice(0, dailyLimit);
 
@@ -364,6 +364,7 @@ async function startServer() {
         try {
           const lead = await db.getLeadById(campaignLead.leadId);
           if (!lead || !lead.email) continue;
+          if ((lead as any).unsubscribed) continue;
 
           const personalizedTemplate = (campaign.emailTemplate || "")
             .replace(/{{companyName}}/g, lead.companyName)
@@ -378,12 +379,13 @@ async function startServer() {
           await db.createEmailTrackingEvent({ campaignLeadId: campaignLead.id, eventType: "click", trackingToken: clickTrackingToken });
 
           const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" alt="" style="display:none" />`;
-          const ctaUrl = "https://calendly.com/nitin-virtualassistant/30min";
+          const ctaUrl = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
           const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
           let emailBody = personalizedTemplate
             .replace(/{{bookingUrl}}/g, trackedCtaUrl)
             .replace(/{{ctaLink}}/g, trackedCtaUrl)
-            .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl);
+            .replace(/https:\/\/calendly\.com\/nitin-virtualassistant\/30min/g, trackedCtaUrl)
+            .replace(/https:\/\/cal\.com\/nitin-virtualassistant-group\.com\/30min/g, trackedCtaUrl);
 
           emailBody = emailBody.replace(
             /(https?:\/\/[^\s<>"']+)/g,
@@ -400,7 +402,7 @@ async function startServer() {
             }
           );
 
-          emailBody = plainTextToHtml(emailBody) + trackingPixel;
+          emailBody = plainTextToHtml(emailBody) + signatureHtml + trackingPixel;
 
           const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
           emailBody = emailBody.replace(
@@ -482,7 +484,7 @@ async function startServer() {
       // Schedule follow-ups (emails + fallback call cadence) for today's batch —
       // only for leads whose email actually sent, not ones skipped/failed above.
       const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./followUpScheduler");
-      const ctaLinkForFollowUp = "https://calendly.com/nitin-virtualassistant/30min";
+      const ctaLinkForFollowUp = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
       for (const campaignLead of toSendToday) {
         if (!successfullySentCampaignLeadIds.has(campaignLead.id)) continue;
         const lead = await db.getLeadById(campaignLead.leadId);

@@ -11,7 +11,6 @@ import { nanoid } from "nanoid";
 import nodemailer from "nodemailer";
 import { plainTextToHtml } from "@shared/emailFormat";
 import { getSignatureHtml, normalizePhoneNumber } from "./_core/followUpScheduler";
-import { NITIN_SIGNATURE_PLAIN, NITIN_SIGNATURE_HTML, UNSUBSCRIBE_PLACEHOLDER_PLAIN, getUnsubscribeLinkHtml } from "@shared/signature";
 // DISABLED: Browser automation for enrichment - using REST API instead
 // import { seamlessAIAutomationRouter } from "./seamlessAIAutomationRouter";
 import { seamlessAIEnrichmentRouter } from "./seamlessAIEnrichmentRouter";
@@ -1980,6 +1979,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         let sentCount = 0;
         let skippedInvalid = 0;
         let skippedUndeliverable = 0;
+        let skippedUnsubscribed = 0;
         const successfullySentCampaignLeadIds = new Set<number>();
 
         // Auto-block: collect leads with Bouncer "undeliverable" status
@@ -1996,7 +1996,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         // Determine how many to send today based on dailySendLimit
         const dailyLimit = (campaign as any).dailySendLimit || null;
-        const unsent = campaignLeads.filter(cl => !cl.emailSent);
+        const unsent = campaignLeads.filter(cl => !cl.emailSent && !(cl as any).unsubscribed);
         const toSendToday = dailyLimit ? unsent.slice(0, dailyLimit) : unsent;
         const remaining = dailyLimit ? unsent.length - toSendToday.length : 0;
 
@@ -2007,6 +2007,13 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           try {
             const lead = await db.getLeadById(campaignLead.leadId);
             if (!lead) continue;
+
+            // Skip leads who have globally unsubscribed (from this or any other campaign)
+            if ((lead as any).unsubscribed) {
+              skippedUnsubscribed++;
+              console.log(`[Campaign ${campaignId}] Skipped unsubscribed lead: ${lead.email}`);
+              continue;
+            }
 
             // Skip leads with invalid emails
             if (invalidEmails.has(lead.email.toLowerCase())) {
@@ -2079,9 +2086,12 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               }
             );
 
-            // Convert plain text to HTML if needed, append tracking pixel
-            // Note: signature is already included in the template from AI generation
-            emailBody = plainTextToHtml(emailBody) + trackingPixel;
+            // Convert plain text to HTML, append the user's configured signature
+            // (Claude is explicitly instructed not to add its own sign-off -- see
+            // server/claude.ts -- so this is the only place one gets added) and the
+            // tracking pixel.
+            const signature = await db.getEmailSignature(ctx.user.id);
+            emailBody = plainTextToHtml(emailBody) + getSignatureHtml(signature) + trackingPixel;
 
             // Add unsubscribe link (replaces the plain text unsubscribe placeholder with a proper tracked link)
             const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -2164,8 +2174,11 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           }
         }
 
-        // Update campaign status based on results
-        if (sentCount === 0 && campaignLeads.length > 0) {
+        // Update campaign status based on results. Don't treat a batch that was
+        // entirely skipped for legitimate reasons (invalid/undeliverable/unsubscribed)
+        // as an SMTP failure -- only leads that were actually attempted and failed count.
+        const totalSkipped = skippedInvalid + skippedUndeliverable + skippedUnsubscribed;
+        if (sentCount === 0 && toSendToday.length > 0 && totalSkipped < toSendToday.length) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Failed to send any emails. Please check your SMTP settings (host, port, username, password) and try again.",
@@ -2236,7 +2249,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           }
         }
 
-        return { success: true, sentCount, remaining, dailyLimit, skippedUndeliverable };
+        return { success: true, sentCount, remaining, dailyLimit, skippedUndeliverable, skippedUnsubscribed };
       }),
 
     // Pause campaign
@@ -3338,8 +3351,9 @@ Respond in this exact JSON format:
         if (!emailBody.includes(ctaLink)) {
           emailBody += `<p style="margin-top:16px;"><a href="${ctaLink}" style="color:#2563eb;font-weight:500;">Schedule a quick chat</a></p>`;
         }
-        // Append Nitin's signature with clickable links
-        let fullBody = emailBody + NITIN_SIGNATURE_HTML;
+        // Append the user's configured signature with clickable links
+        const generateAISignature = await db.getEmailSignature(ctx.user.id);
+        let fullBody = emailBody + getSignatureHtml(generateAISignature);
         // Add unsubscribe opt-out text for CAN-SPAM compliance
         // Unsubscribe link is now added as a clickable link in the HTML version
 
@@ -3361,6 +3375,9 @@ Respond in this exact JSON format:
       .mutation(async ({ input, ctx }) => {
         const lead = await db.getLeadById(input.leadId);
         if (!lead || lead.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        if ((lead as any).unsubscribed) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This lead has unsubscribed and can no longer be emailed." });
+        }
 
         const settings = await db.getUserSettings(ctx.user.id);
         let smtpHost: string, smtpPort: number, smtpUser: string, smtpPass: string, fromEmail: string, fromName: string;
@@ -3400,8 +3417,6 @@ Respond in this exact JSON format:
         // Create tracking token
         const trackingToken = nanoid();
 
-        // Using Nitin's hardcoded signature
-
         // Use request origin for tracking URL (respect x-forwarded-proto behind reverse proxy)
         const baseUrl = ctx.req.headers?.['x-forwarded-proto']
           ? `${ctx.req.headers['x-forwarded-proto']}://${ctx.req.headers['x-forwarded-host'] || ctx.req.get?.('host') || 'localhost:3000'}`
@@ -3410,13 +3425,28 @@ Respond in this exact JSON format:
 
         // Create click tracking token for CTA links
         const clickTrackingToken = nanoid();
-        
+
+        // Personalize any template variables left in the body (matches bulk
+        // campaign send -- needed when the body came from "Load Template"
+        // without going through AI generation, which leaves {{placeholders}} intact)
+        const ctaUrl = settings?.ctaLink || 'https://cal.com/nitin-virtualassistant-group.com/30min';
+        const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
+        const personalizedBody = input.body
+          .replace(/{{companyName}}/g, lead.companyName || '')
+          .replace(/{{ownerName}}/g, lead.ownerName || '')
+          .replace(/{{email}}/g, lead.email || '')
+          .replace(/{{industry}}/g, lead.industry || 'your industry')
+          .replace(/{{phoneNumber}}/g, lead.phoneNumber || '')
+          .replace(/{{bookingUrl}}/g, trackedCtaUrl)
+          .replace(/{{ctaLink}}/g, trackedCtaUrl);
+
         // Wrap all links in the email body with click tracking
         // Step 1: Replace raw URLs in plain text (e.g. https://cal.com/...)
-        let trackedBody = input.body.replace(
+        let trackedBody = personalizedBody.replace(
           /(https?:\/\/[^\s<>"']+)/g,
           (rawUrl) => {
             // Skip if it's already inside an href attribute (already tracked)
+            if (rawUrl.includes('/api/track/click/')) return rawUrl;
             return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
           }
         );
@@ -3430,10 +3460,11 @@ Respond in this exact JSON format:
           }
         );
 
-        // Convert plain text to HTML if needed, append signature
+        // Convert plain text to HTML, append the user's configured signature and unsubscribe link
+        const signature = await db.getEmailSignature(ctx.user.id);
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
         const unsubscribeHtml = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
-        const htmlBody = plainTextToHtml(trackedBody) + NITIN_SIGNATURE_HTML + unsubscribeHtml + trackingPixel;
+        const htmlBody = plainTextToHtml(trackedBody) + getSignatureHtml(signature) + unsubscribeHtml + trackingPixel;
 
         let sendResult: any;
         try {
@@ -3524,13 +3555,14 @@ Respond in this exact JSON format:
           },
         });
 
-        // Using Nitin's hardcoded signature
+        // Get user's configured email signature (converted to HTML)
+        const signature = await db.getEmailSignature(ctx.user.id);
 
         // Add a [TEST] prefix to subject
         const testSubject = `[TEST PREVIEW] ${input.subject}`;
         const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> \u2014 This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
         // Convert plain text to HTML if needed, append signature
-        const htmlBody = testBanner + plainTextToHtml(input.body) + NITIN_SIGNATURE_HTML;
+        const htmlBody = testBanner + plainTextToHtml(input.body) + getSignatureHtml(signature);
 
         try {
           const testReplyTo = settings.replyToEmail || "nitin@virtualassistant-group.com";
@@ -3569,7 +3601,7 @@ Respond in this exact JSON format:
           throw new TRPCError({ code: "BAD_REQUEST", message: "Please configure your primary SMTP settings first in the Settings page." });
         }
         const recipientEmail = input.testEmail || settings.senderEmail || settings.smtpUsername;
-        // Using Nitin's hardcoded signature
+        const signature = await db.getEmailSignature(ctx.user.id);
         const testSubject = `[TEST ALL ACCOUNTS] ${input.subject}`;
 
         // Collect all SMTP accounts: primary + rotational
@@ -3613,7 +3645,7 @@ Respond in this exact JSON format:
               auth: { user: account.username, pass: account.password },
             });
             const accountBanner = `<div style="background:#dbeafe;border:1px solid #3b82f6;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#1e40af;"><strong>\u2709\uFE0F Sent via: ${account.label}</strong> &mdash; ${account.senderEmail}</div>`;
-            const htmlBody = accountBanner + plainTextToHtml(input.body) + NITIN_SIGNATURE_HTML;
+            const htmlBody = accountBanner + plainTextToHtml(input.body) + getSignatureHtml(signature);
             await transporter.sendMail({
               from: `"${account.senderName}" <${account.senderEmail}>`,
               to: recipientEmail,
@@ -3699,14 +3731,12 @@ Respond in this exact JSON format:
           websiteAnalysis,
         });
 
-        // Append Nitin's signature
-        let fullBody = result.body;
-        fullBody += "\n\n" + NITIN_SIGNATURE_PLAIN;
-        fullBody += "\n\n---\n[Unsubscribe link will be added automatically when sent]";
-
+        // Note: the signature and unsubscribe link are appended at send time
+        // (using the user's configured signature from Settings), not here --
+        // baking a hardcoded signature into the generated body would double up
+        // with the real one added when the email is actually sent.
         return {
           ...result,
-          body: fullBody,
           bodyWithoutSignature: result.body,
         };
       }),
@@ -4696,14 +4726,12 @@ Use the website data to:
           websiteAnalysis: websiteAnalysisData,
         });
 
-        // Append Nitin's signature
-        let fullBody = result.body;
-        fullBody += "\n\n" + NITIN_SIGNATURE_PLAIN;
-        fullBody += "\n\n---\n[Unsubscribe link will be added automatically when sent]";
-
+        // Note: the signature and unsubscribe link are appended at send time
+        // (using the user's configured signature from Settings), not here --
+        // baking a hardcoded signature into the generated body would double up
+        // with the real one added when the email is actually sent.
         return {
           ...result,
-          body: fullBody,
           bodyWithoutSignature: result.body,
         };
       }),

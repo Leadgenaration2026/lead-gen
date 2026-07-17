@@ -503,36 +503,45 @@ export default function EmailComposer() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Load a saved custom-built template */}
-                  {templates.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Popover open={singleTemplateComboboxOpen} onOpenChange={setSingleTemplateComboboxOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" aria-expanded={singleTemplateComboboxOpen} className="gap-1.5 font-normal">
-                            <BookTemplate className="w-4 h-4" />
-                            Load Template
-                            <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-72 p-0" align="start">
-                          <Command>
-                            <CommandInput placeholder="Search templates..." />
-                            <CommandList>
-                              <CommandEmpty>No template found</CommandEmpty>
-                              <CommandGroup>
-                                {templates.map((t: any) => (
-                                  <CommandItem key={t.id} value={t.name} onSelect={() => handleLoadTemplateSingle(t)}>
-                                    <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
-                                    {t.name}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <span className="text-xs text-muted-foreground">Start from one of your saved templates</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <Popover open={singleTemplateComboboxOpen} onOpenChange={setSingleTemplateComboboxOpen}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" role="combobox" aria-expanded={singleTemplateComboboxOpen} className="gap-1.5 font-normal">
+                          <BookTemplate className="w-4 h-4" />
+                          Load Template
+                          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search templates..." />
+                          <CommandList>
+                            {templates.length === 0 ? (
+                              <div className="p-4 text-sm text-muted-foreground text-center space-y-2">
+                                <p>You haven't created any templates yet.</p>
+                                <Button variant="outline" size="sm" onClick={() => { setSingleTemplateComboboxOpen(false); navigate("/templates"); }}>
+                                  Create a template
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <CommandEmpty>No template found</CommandEmpty>
+                                <CommandGroup>
+                                  {templates.map((t: any) => (
+                                    <CommandItem key={t.id} value={t.name} onSelect={() => handleLoadTemplateSingle(t)}>
+                                      <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
+                                      {t.name}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </>
+                            )}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <span className="text-xs text-muted-foreground">Start from one of your saved templates</span>
+                  </div>
                   {/* AI Write Button - Direct access */}
                   <div className="flex items-center gap-2">
                     <AIWriteButton
@@ -1097,33 +1106,42 @@ export default function EmailComposer() {
                   <div className="flex items-center justify-between">
                     <Label>Email Template *</Label>
                     <div className="flex items-center gap-2">
-                      {templates.length > 0 && (
-                        <Popover open={bulkTemplateComboboxOpen} onOpenChange={setBulkTemplateComboboxOpen}>
-                          <PopoverTrigger asChild>
-                            <Button type="button" variant="outline" role="combobox" aria-expanded={bulkTemplateComboboxOpen} size="sm" className="gap-1.5 font-normal">
-                              <BookTemplate className="w-3.5 h-3.5" />
-                              Load Template
-                              <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-72 p-0" align="end">
-                            <Command>
-                              <CommandInput placeholder="Search templates..." />
-                              <CommandList>
-                                <CommandEmpty>No template found</CommandEmpty>
-                                <CommandGroup>
-                                  {templates.map((t: any) => (
-                                    <CommandItem key={t.id} value={t.name} onSelect={() => handleLoadTemplateBulk(t)}>
-                                      <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
-                                      {t.name}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                      )}
+                      <Popover open={bulkTemplateComboboxOpen} onOpenChange={setBulkTemplateComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="outline" role="combobox" aria-expanded={bulkTemplateComboboxOpen} size="sm" className="gap-1.5 font-normal">
+                            <BookTemplate className="w-3.5 h-3.5" />
+                            Load Template
+                            <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0" align="end">
+                          <Command>
+                            <CommandInput placeholder="Search templates..." />
+                            <CommandList>
+                              {templates.length === 0 ? (
+                                <div className="p-4 text-sm text-muted-foreground text-center space-y-2">
+                                  <p>You haven't created any templates yet.</p>
+                                  <Button variant="outline" size="sm" onClick={() => { setBulkTemplateComboboxOpen(false); navigate("/templates"); }}>
+                                    Create a template
+                                  </Button>
+                                </div>
+                              ) : (
+                                <>
+                                  <CommandEmpty>No template found</CommandEmpty>
+                                  <CommandGroup>
+                                    {templates.map((t: any) => (
+                                      <CommandItem key={t.id} value={t.name} onSelect={() => handleLoadTemplateBulk(t)}>
+                                        <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
+                                        {t.name}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                       {campaignFormData.emailTemplate && lastCampaignAIPrompt && (
                         <Button
                           type="button"

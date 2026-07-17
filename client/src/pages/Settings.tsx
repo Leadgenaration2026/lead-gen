@@ -773,6 +773,60 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Email Signature */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PenTool className="w-5 h-5" />
+                Email Signature
+              </CardTitle>
+              <CardDescription>
+                Appended to every email you send — single sends, bulk campaigns, and follow-ups. Write it the same way you'd write the rest of an email; links and email addresses are made clickable automatically.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Signature (plain text)</Label>
+                <Textarea
+                  placeholder={"Best,\nJane Doe\nAcme Co.\nhttps://cal.com/jane/30min"}
+                  value={signaturePlainText}
+                  onChange={(e) => setSignaturePlainText(e.target.value)}
+                  rows={5}
+                  className="text-sm"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline"
+                  onClick={() => setShowSignaturePreview(!showSignaturePreview)}
+                >
+                  {showSignaturePreview ? "Hide" : "Show"} advanced HTML override
+                </button>
+                {showSignaturePreview && (
+                  <div className="space-y-2">
+                    <Textarea
+                      placeholder="<div>Optional custom HTML signature — used only if you want full control over formatting instead of the plain text above</div>"
+                      value={signatureHtml}
+                      onChange={(e) => setSignatureHtml(e.target.value)}
+                      rows={5}
+                      className="font-mono text-xs"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      If set, this HTML is used instead of the plain text signature above.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <Button onClick={handleSaveSignature} disabled={updateSignatureMutation.isPending} className="gap-2">
+                {updateSignatureMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Signature
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Reply-To Email Address */}
           <Card>
             <CardHeader>

@@ -1,5 +1,4 @@
 import * as db from "../db";
-import { NITIN_SIGNATURE_HTML, getUnsubscribeLinkHtml } from "@shared/signature";
 import { triggerRetellCall } from "./retellAI";
 import { nanoid } from "nanoid";
 
@@ -283,15 +282,15 @@ export async function processScheduledFollowUpEmails() {
           continue;
         }
 
-        // Skip unsubscribed or replied leads
-        if (campaignLead.unsubscribed || campaignLead.replied) {
-          await db.updateFollowUpEmail(followUpEmail.id, { status: "cancelled" });
-          console.log(`[FollowUpScheduler] Skipping follow-up for campaignLead ${campaignLead.id} - ${campaignLead.unsubscribed ? 'unsubscribed' : 'replied'}`);
-          continue;
-        }
-
         // Get lead info
         const lead = await db.getLeadById(campaignLead.leadId);
+
+        // Skip unsubscribed (this campaign, or globally via any other campaign) or replied leads
+        if (campaignLead.unsubscribed || campaignLead.replied || (lead as any)?.unsubscribed) {
+          await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
+          console.log(`[FollowUpScheduler] Skipping follow-up for campaignLead ${campaignLead.id} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
+          continue;
+        }
 
         // === SOCIAL OUTREACH: Before 2nd follow-up email, send connection requests ===
         if (followUpEmail.sequenceNumber === 2 && lead) {
@@ -420,8 +419,8 @@ export async function processScheduledFollowUpEmails() {
           continue;
         }
 
-        // Get user's email signature (use plain text version, converted to HTML)
-        // Using Nitin hardcoded signature
+        // Get user's configured email signature (converted to HTML)
+        const signature = await db.getEmailSignature(campaign.userId);
 
         // Create transporter
         const transporter = nodemailer.default.createTransport({
@@ -457,7 +456,7 @@ export async function processScheduledFollowUpEmails() {
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
 
         // Replace CTA links with tracked versions
-        const ctaUrl = followUpEmail.ctaLink || 'https://calendly.com/nitin-virtualassistant/30min';
+        const ctaUrl = followUpEmail.ctaLink || 'https://cal.com/nitin-virtualassistant-group.com/30min';
         const trackedCtaUrl = `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(ctaUrl)}`;
 
         // Convert plain text to HTML
@@ -482,7 +481,7 @@ export async function processScheduledFollowUpEmails() {
           }
         );
 
-        htmlBody = plainTextToHtml(htmlBody) + NITIN_SIGNATURE_HTML + trackingPixel;
+        htmlBody = plainTextToHtml(htmlBody) + getSignatureHtml(signature) + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -602,8 +601,8 @@ export async function processScheduledEmails() {
         const baseUrl = process.env.SITE_URL || `https://${process.env.DOMAIN || 'leadgenoutreach-gkqazghm.manus.space'}`;
         const trackingPixel = `<img src="${baseUrl}/api/track/pixel/${trackingToken}" width="1" height="1" style="display:none" />`;
 
-        // Get user's email signature
-        // Using Nitin hardcoded signature
+        // Get user's configured email signature (converted to HTML)
+        const signature = await db.getEmailSignature(scheduledEmail.userId);
 
         // Convert plain text to HTML (preserve line breaks and bullet points)
         const { plainTextToHtml } = await import("@shared/emailFormat");
@@ -614,7 +613,7 @@ export async function processScheduledEmails() {
             return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
           }
         );
-        htmlBody = plainTextToHtml(htmlBody) + NITIN_SIGNATURE_HTML + trackingPixel;
+        htmlBody = plainTextToHtml(htmlBody) + getSignatureHtml(signature) + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -706,11 +705,22 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
         const normalizedPhone = normalizePhoneNumber(call.phoneNumber);
         const normalizedFromPhone = normalizePhoneNumber(senderPhoneNumber);
 
-        // Fetch lead data to pass customer context to the AI agent
+        // Fetch lead data to pass customer context to the AI agent, and to
+        // check unsubscribed/replied status before calling
         const campaignLead = await db.getCampaignLeadById(call.campaignLeadId);
+        if (campaignLead?.unsubscribed || campaignLead?.replied) {
+          await db.updateFollowUpCall(call.id, { status: "failed" });
+          console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
+          continue;
+        }
         let leadContext: { customerName?: string; customerEmail?: string; companyName?: string } | undefined;
         if (campaignLead) {
           const lead = await db.getLeadById(campaignLead.leadId);
+          if ((lead as any)?.unsubscribed) {
+            await db.updateFollowUpCall(call.id, { status: "failed" });
+            console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - lead globally unsubscribed`);
+            continue;
+          }
           if (lead) {
             leadContext = {
               customerName: lead.ownerName,
@@ -762,6 +772,20 @@ export async function triggerCallOnFollowUpOpen(
   leadContext?: { customerName?: string; customerEmail?: string; companyName?: string }
 ) {
   try {
+    // Skip unsubscribed (this campaign, or globally via any other campaign) or replied leads
+    const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+    if (campaignLead?.unsubscribed || campaignLead?.replied) {
+      console.log(`[FollowUpScheduler] Skipping instant call for campaignLeadId: ${campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
+      return { success: false, reason: campaignLead.replied ? "replied" : "unsubscribed" };
+    }
+    if (campaignLead) {
+      const lead = await db.getLeadById(campaignLead.leadId);
+      if ((lead as any)?.unsubscribed) {
+        console.log(`[FollowUpScheduler] Skipping instant call for campaignLeadId: ${campaignLeadId} - lead globally unsubscribed`);
+        return { success: false, reason: "unsubscribed" };
+      }
+    }
+
     // Check if lead's local time is between 10 AM - 5 PM
     const timezone = leadTimezone || "America/New_York";
     const leadLocalHour = getLeadLocalHour(timezone);

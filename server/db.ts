@@ -878,9 +878,10 @@ export async function deleteRotationalEmail(id: number) {
 
 // ===== Unsubscribe & Reply =====
 
-// Global, lead-level unsubscribe -- used for one-off scheduled emails, which
-// aren't tied to any campaign so there's no campaignLeadId to scope to.
-// Also cancels any other still-pending scheduled emails for this lead.
+// Global, lead-level unsubscribe -- an opt-out is permanent and applies to
+// every campaign the lead is or will ever be enrolled in, not just the one
+// whose email they clicked unsubscribe on. Also cancels any other still-
+// pending scheduled emails and campaign follow-ups for this lead.
 export async function markLeadUnsubscribedGlobally(leadId: number) {
   const database = await getDb();
   if (!database) return;
@@ -892,6 +893,8 @@ export async function markLeadUnsubscribedGlobally(leadId: number) {
   await database.update(scheduledEmails).set({ status: "cancelled" }).where(
     and(eq(scheduledEmails.leadId, leadId), eq(scheduledEmails.status, "pending"))
   );
+
+  await cancelAllPendingFollowUpsForLead(leadId);
 }
 
 export async function markLeadUnsubscribed(campaignLeadId: number) {
@@ -901,6 +904,30 @@ export async function markLeadUnsubscribed(campaignLeadId: number) {
     unsubscribed: true,
     unsubscribedAt: new Date(),
   } as any).where(eq(campaignLeads.id, campaignLeadId));
+
+  // An unsubscribe on any single campaign is a permanent, cross-campaign
+  // opt-out -- propagate it to the lead globally and to every other
+  // campaign enrollment for this lead.
+  const [cl] = await database.select().from(campaignLeads).where(eq(campaignLeads.id, campaignLeadId));
+  if (cl?.leadId) {
+    await markLeadUnsubscribedGlobally(cl.leadId);
+  }
+}
+
+// Mark every campaign enrollment for this lead as unsubscribed and cancel
+// their pending follow-up emails/calls, so an opt-out on one campaign stops
+// outreach from all of them.
+export async function cancelAllPendingFollowUpsForLead(leadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  const rows = await database.select({ id: campaignLeads.id }).from(campaignLeads).where(eq(campaignLeads.leadId, leadId));
+  for (const row of rows) {
+    await database.update(campaignLeads).set({
+      unsubscribed: true,
+      unsubscribedAt: new Date(),
+    } as any).where(eq(campaignLeads.id, row.id));
+    await cancelPendingFollowUps(row.id);
+  }
 }
 
 export async function markLeadReplied(campaignLeadId: number, responseStatus: string = "positive") {
