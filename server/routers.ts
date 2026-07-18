@@ -589,7 +589,12 @@ export const appRouter = router({
             // restrict results to the requested titles (e.g. asking for "owners and CEO"
             // can still return accountants), so re-check every candidate's actual title
             // client-side against the expanded title list before accepting it.
-            if (filters.jobTitle?.length) {
+            // Skipped when getSeamlessLeads already fell back to a contactKeyword
+            // search (see there) -- those candidates were matched on profile/bio
+            // content, not their literal title field, so re-applying a title regex
+            // here would just reject all of them and defeat the whole point of the
+            // fallback (e.g. a "motivational speaker" whose actual title is "Founder").
+            if (filters.jobTitle?.length && !result.usedContactKeywordFallback) {
               const titleRegexes = filters.jobTitle.map((t: string) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"));
               const beforeTitleFilter = candidates.length;
               candidates = candidates.filter((c: any) => {

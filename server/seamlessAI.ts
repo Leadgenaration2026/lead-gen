@@ -915,7 +915,12 @@ export async function searchAndFilterSeamlessCandidates(
     console.log(`[Seamless.AI] Preview: after country filter: ${candidates.length} of ${before}`);
   }
 
-  if (filters.jobTitle?.length) {
+  // Skipped when getSeamlessLeads already fell back to a contactKeyword search
+  // (see there) -- those candidates were matched on profile/bio content, not
+  // their literal title field, so re-applying a title regex here would just
+  // reject all of them and defeat the whole point of the fallback (e.g. a
+  // "motivational speaker" whose actual title is "Founder").
+  if (filters.jobTitle?.length && !result.usedContactKeywordFallback) {
     const titleRegexes = filters.jobTitle.map(
       (t: string) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
     );
@@ -1134,16 +1139,41 @@ export async function getSeamlessLeads(
   // This is called from routers.ts for lead generation
   // Uses searchContacts() which has proper pagination and field handling
   try {
-    const response = await searchContacts(apiKey, filters, count || 50);
-    
+    let response = await searchContacts(apiKey, filters, count || 50);
+    let usedContactKeywordFallback = false;
+
+    // jobTitle only matches against a contact's literal title field. That's fine
+    // for formal corporate roles ("CEO", "Owner"), but plenty of real searches
+    // describe a profession or activity that rarely appears as anyone's actual
+    // title -- e.g. "motivational speaker" is usually someone's bio/specialty,
+    // not their LinkedIn title (they're more often "Founder" or "President" of
+    // their own speaking business). Confirmed via docs.seamless.ai/searchcontacts:
+    // contactKeyword matches "against their profile (e.g., skills, bio,
+    // specialties)", a much broader surface than jobTitle. This is almost
+    // certainly why Seamless's own AI agent found ~29k matches for "motivational
+    // speakers" while a jobTitle-only search here returned zero. Retry once with
+    // the same terms as contactKeyword (replacing, not combined with, jobTitle --
+    // combining both in one request was tried before and empirically narrows
+    // results via AND logic between filter types) before giving up.
+    if ((response.data?.length || 0) === 0 && filters.jobTitle?.length) {
+      console.log(`[Seamless.AI] jobTitle search returned 0 results, retrying with contactKeyword instead of jobTitle: ${JSON.stringify(filters.jobTitle)}`);
+      const broadenedFilters = { ...filters, jobTitle: undefined, contactKeyword: filters.jobTitle };
+      response = await searchContacts(apiKey, broadenedFilters, count || 50);
+      if ((response.data?.length || 0) > 0) {
+        usedContactKeywordFallback = true;
+        console.log(`[Seamless.AI] contactKeyword fallback found ${response.data?.length} results`);
+      }
+    }
+
     // Convert response to expected format: { contacts: [...] }
     return {
       contacts: response.data || [],
       totalResults: response.supplementalData?.totalResults,
       nextToken: response.supplementalData?.nextToken,
+      usedContactKeywordFallback,
     };
   } catch (error) {
     console.error("[Seamless.AI] Error searching leads:", error);
-    return { contacts: [] };
+    return { contacts: [], usedContactKeywordFallback: false };
   }
 }

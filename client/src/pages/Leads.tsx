@@ -450,8 +450,23 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       }
     } catch (error: any) {
       console.warn("Search filter detection failed:", error?.message);
+      toast.warning("Couldn't auto-detect industry/titles from your instructions — you can still pick them manually below.");
     }
   };
+
+  // Auto-run detection a moment after the user stops typing, instead of only on
+  // blur -- someone who types an instruction and immediately clicks "Generate
+  // Leads" (without ever tabbing/clicking elsewhere first) would otherwise never
+  // trigger the onBlur handler below, leaving the suggestion UI blank even
+  // though detection itself works fine.
+  useEffect(() => {
+    if (!instruction.trim() || instruction.trim().length < 3) return;
+    const timer = setTimeout(() => {
+      handleDetectSearchFilters();
+    }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instruction]);
 
   const handleAddTitleChip = () => {
     const value = titleInputValue.trim();
