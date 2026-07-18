@@ -64,7 +64,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const searchSeamlessPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
   const seamlessIndustriesQuery = trpc.leads.listSeamlessIndustries.useQuery();
   const seamlessIndustries = seamlessIndustriesQuery.data || [];
-  const detectIndustryMutation = trpc.leads.detectSearchIndustry.useMutation();
+  const detectIndustryFromKeywordMutation = trpc.leads.detectIndustryFromKeyword.useMutation();
+  const detectTitlesFromKeywordMutation = trpc.leads.detectTitlesFromKeyword.useMutation();
   const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const scoreSeamlessEngagementMutation = trpc.leads.scoreSeamlessCandidatesEngagement.useMutation();
   const excludeSeamlessContactsMutation = trpc.leads.excludeSeamlessContacts.useMutation();
@@ -181,6 +182,22 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [titleInputValue, setTitleInputValue] = useState("");
   // Same "sticky once touched by hand" idea as industryManuallySet above.
   const [titlesManuallySet, setTitlesManuallySet] = useState(false);
+
+  // Dedicated keyword boxes that directly drive industryOverride/titlesOverride,
+  // replacing the old "detect from one big free-text instruction" flow (users
+  // found it confusing/unreliable -- one narrow box per field is much more
+  // predictable). Each resolves instantly via a local keyword map when
+  // possible, falling back to an LLM call only for wording the local map
+  // doesn't recognize; *NotFound tracks when neither found anything, so the UI
+  // can ask for a more specific keyword instead of silently finding nothing.
+  const [industryKeywordInput, setIndustryKeywordInput] = useState("");
+  const [industryKeywordNotFound, setIndustryKeywordNotFound] = useState(false);
+  const [titleKeywordInput, setTitleKeywordInput] = useState("");
+  const [titleKeywordNotFound, setTitleKeywordNotFound] = useState(false);
+  // True once the user has typed directly into "Your Instructions" -- until
+  // then it's auto-built from the two keyword boxes above, so filling those in
+  // is enough on its own and no separate sentence is required.
+  const [instructionManuallyEdited, setInstructionManuallyEdited] = useState(false);
 
   // Seamless.AI search -> select -> enrich preview flow
   const [seamlessPreviewDialogOpen, setSeamlessPreviewDialogOpen] = useState(false);
@@ -306,14 +323,19 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // completely different one without closing/reopening the dialog.
   const resetGenerateForm = () => {
     setInstruction("");
+    setInstructionManuallyEdited(false);
     setGenerateLeadSetName("");
     setIndustryOverride("");
     setIndustryDetected(false);
     setIndustryManuallySet(false);
+    setIndustryKeywordInput("");
+    setIndustryKeywordNotFound(false);
     setTitlesOverride([]);
     setTitlesDetected(false);
     setTitlesManuallySet(false);
     setTitleInputValue("");
+    setTitleKeywordInput("");
+    setTitleKeywordNotFound(false);
   };
 
   const handleGenerateLeads = async () => {
@@ -435,63 +457,98 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
-  // Tracks the instruction text the most recently *fired* detection request was
+  // Tracks the keyword text the most recently *fired* request of each kind was
   // for, so a response can tell if it's still the latest one once it comes
   // back -- network/LLM latency doesn't guarantee responses arrive in the same
-  // order requests were sent, so without this an older request for earlier,
-  // incomplete text (e.g. "travel agency") could resolve after a newer one for
-  // the finished instruction ("travel agency owners") and clobber it with a
-  // worse answer.
-  const latestDetectRequestRef = useRef("");
+  // order requests were sent, so without this an older request for earlier
+  // text could resolve after a newer one and clobber it with a worse answer.
+  const latestIndustryKeywordRequestRef = useRef("");
+  const latestTitleKeywordRequestRef = useRef("");
 
-  // Detects the industry AND job titles an instruction resolves to (no search
-  // credits spent) and pre-fills both as editable suggestions the user can
-  // confirm or correct before actually running a search.
-  const handleDetectSearchFilters = async () => {
-    if (!instruction.trim() || instruction.trim().length < 3) return;
-    const requestedFor = instruction;
-    latestDetectRequestRef.current = requestedFor;
+  // Resolves the Industry Keyword box to a real Seamless.AI industry value.
+  // Runs on every debounced pause in typing (see the effect below) so it's
+  // always in sync with the latest text, not just on blur.
+  const handleDetectIndustryKeyword = async () => {
+    const keyword = industryKeywordInput.trim();
+    if (keyword.length < 2) return;
+    const requestedFor = keyword;
+    latestIndustryKeywordRequestRef.current = requestedFor;
     try {
-      const result = await detectIndustryMutation.mutateAsync({ instruction });
-      // Discard this response if a newer request has since been fired --
-      // applying it now would overwrite a more accurate in-flight/completed
-      // result with a stale one.
-      if (latestDetectRequestRef.current !== requestedFor) return;
-      // Guard against a manual pick, not merely "already has a value" -- this
-      // runs repeatedly as the user keeps typing (see the debounced effect
-      // below), so an early call on partial/incomplete text (e.g. "travel
-      // agency" before "owners" is typed) would otherwise permanently lock in
-      // whatever it found -- including an empty title guess -- and block every
-      // later, more accurate call for the finished instruction from ever
-      // updating it. Only an explicit user pick (industryManuallySet /
-      // titlesManuallySet) should block a re-detection from overwriting.
-      if (!industryManuallySet) {
-        setIndustryOverride(result.industries[0] || "");
-        setIndustryDetected(true);
-      }
-      if (!titlesManuallySet) {
-        setTitlesOverride(result.titles.slice(0, 10));
-        setTitlesDetected(true);
-      }
+      const result = await detectIndustryFromKeywordMutation.mutateAsync({ keyword });
+      if (latestIndustryKeywordRequestRef.current !== requestedFor) return;
+      setIndustryOverride(result.industry || "");
+      setIndustryDetected(true);
+      setIndustryKeywordNotFound(!result.industry);
     } catch (error: any) {
-      console.warn("Search filter detection failed:", error?.message);
-      toast.warning("Couldn't auto-detect industry/titles from your instructions — you can still pick them manually below.");
+      console.warn("Industry keyword detection failed:", error?.message);
+      setIndustryKeywordNotFound(true);
     }
   };
 
-  // Auto-run detection a moment after the user stops typing, instead of only on
-  // blur -- someone who types an instruction and immediately clicks "Generate
-  // Leads" (without ever tabbing/clicking elsewhere first) would otherwise never
-  // trigger the onBlur handler below, leaving the suggestion UI blank even
-  // though detection itself works fine.
+  // Resolves the Job Title Keyword box to a list of equivalent title variants.
+  // Same debounced-on-every-pause pattern as industry above.
+  const handleDetectTitleKeyword = async () => {
+    const keyword = titleKeywordInput.trim();
+    if (keyword.length < 2) return;
+    const requestedFor = keyword;
+    latestTitleKeywordRequestRef.current = requestedFor;
+    try {
+      const result = await detectTitlesFromKeywordMutation.mutateAsync({ keyword });
+      if (latestTitleKeywordRequestRef.current !== requestedFor) return;
+      setTitlesOverride(result.titles);
+      setTitlesDetected(true);
+      setTitleKeywordNotFound(result.titles.length === 0);
+    } catch (error: any) {
+      console.warn("Title keyword detection failed:", error?.message);
+      setTitleKeywordNotFound(true);
+    }
+  };
+
   useEffect(() => {
-    if (!instruction.trim() || instruction.trim().length < 3) return;
+    if (industryKeywordInput.trim().length < 2) {
+      setIndustryOverride("");
+      setIndustryDetected(false);
+      setIndustryKeywordNotFound(false);
+      return;
+    }
     const timer = setTimeout(() => {
-      handleDetectSearchFilters();
-    }, 800);
+      handleDetectIndustryKeyword();
+    }, 500);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instruction]);
+  }, [industryKeywordInput]);
+
+  useEffect(() => {
+    if (titleKeywordInput.trim().length < 2) {
+      setTitlesOverride([]);
+      setTitlesDetected(false);
+      setTitleKeywordNotFound(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      handleDetectTitleKeyword();
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [titleKeywordInput]);
+
+  // Auto-builds "Your Instructions" from the two keyword boxes so a basic
+  // search never requires typing a separate sentence -- only stops once the
+  // user has typed into that box directly, so a deliberate manual edit isn't
+  // silently overwritten on the next keyword keystroke.
+  useEffect(() => {
+    if (instructionManuallyEdited) return;
+    const title = titleKeywordInput.trim();
+    const industry = industryKeywordInput.trim();
+    if (!title && !industry) {
+      setInstruction("");
+      return;
+    }
+    const parts = [`Generate leads for ${title || "business contacts"}`];
+    if (industry) parts.push(`in the ${industry} industry`);
+    setInstruction(parts.join(" "));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [industryKeywordInput, titleKeywordInput, instructionManuallyEdited]);
 
   const handleAddTitleChip = () => {
     const value = titleInputValue.trim();
@@ -2155,75 +2212,48 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <DialogDescription>Describe what leads you want and AI will generate them</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">Your Instructions</label>
-                      {(instruction || industryOverride || titlesOverride.length > 0) && (
-                        <button
-                          type="button"
-                          onClick={resetGenerateForm}
-                          className="text-xs text-muted-foreground hover:text-foreground underline"
-                        >
-                          Reset form
-                        </button>
-                      )}
-                    </div>
-                    <Textarea
-                      placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..."
-                      value={instruction}
-                      onChange={(e) => {
-                        setInstruction(e.target.value);
-                        // Only invalidate suggestions the user hasn't actually
-                        // touched yet -- otherwise a stale AUTO-DETECTED
-                        // industry/titles from an earlier, unrelated
-                        // instruction silently carries into a new search. But
-                        // once the user has explicitly picked an industry or
-                        // added/removed a title chip themselves, that choice
-                        // is deliberate and must survive further edits to the
-                        // instruction (e.g. fixing a typo) -- clearing it here
-                        // was silently discarding manually-picked filters
-                        // right before the search ran.
-                        //
-                        // Exception: clearing the box out completely (select-all
-                        // + delete, or backspacing everything) is an unambiguous
-                        // "starting a brand new search" signal -- without this,
-                        // a manual pick from one search (e.g. Travel industry +
-                        // CEO/Cofounder/Owner titles) stayed locked in forever
-                        // and silently blocked auto-detection for every
-                        // completely unrelated search typed afterward in the
-                        // same session (e.g. "motivational speakers"), since
-                        // only a successful generate resets these flags.
-                        if (!e.target.value.trim()) {
-                          setIndustryManuallySet(false);
-                          setTitlesManuallySet(false);
-                        }
-                        if (!industryManuallySet || !e.target.value.trim()) {
-                          setIndustryOverride("");
-                          setIndustryDetected(false);
-                        }
-                        if (!titlesManuallySet || !e.target.value.trim()) {
-                          setTitlesOverride([]);
-                          setTitlesDetected(false);
-                        }
-                      }}
-                      onBlur={handleDetectSearchFilters}
-                      className="mt-1 min-h-24"
-                    />
+                  <div className="flex items-center justify-between -mb-2">
+                    <p className="text-xs text-muted-foreground">Fill in an industry keyword and a title keyword below — each is detected on its own.</p>
+                    {(instruction || industryKeywordInput || titleKeywordInput) && (
+                      <button
+                        type="button"
+                        onClick={resetGenerateForm}
+                        className="text-xs text-muted-foreground hover:text-foreground underline shrink-0 ml-2"
+                      >
+                        Reset form
+                      </button>
+                    )}
                   </div>
                   {(generateSource === "seamless" || generateSource === "ai") && (
                     <div>
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Industry Filter</label>
-                        {detectIndustryMutation.isPending && (
+                        <label className="text-sm font-medium">Industry Keyword</label>
+                        {detectIndustryFromKeywordMutation.isPending && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
                           </span>
                         )}
                       </div>
+                      <Input
+                        placeholder="e.g., travel agency, real estate, e-commerce..."
+                        value={industryKeywordInput}
+                        onChange={(e) => setIndustryKeywordInput(e.target.value)}
+                        className="mt-1"
+                      />
+                      {industryOverride && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Detected: <span className="font-medium text-foreground">{industryOverride}</span> — wrong? Pick a different one below.
+                        </p>
+                      )}
+                      {industryKeywordNotFound && (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                          Couldn't match "{industryKeywordInput.trim()}" to a known industry — try being more specific, or pick one directly below.
+                        </p>
+                      )}
                       <Popover open={industryComboboxOpen} onOpenChange={setIndustryComboboxOpen}>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" aria-expanded={industryComboboxOpen} className="w-full justify-between font-normal mt-1">
-                            <span className="truncate">{industryOverride || "Auto-detect from instructions"}</span>
+                          <Button variant="outline" role="combobox" aria-expanded={industryComboboxOpen} className="w-full justify-between font-normal mt-1.5 text-xs h-8">
+                            <span className="truncate">{industryOverride ? `Override: ${industryOverride}` : "Or pick an industry directly..."}</span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </PopoverTrigger>
@@ -2233,8 +2263,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                             <CommandList>
                               <CommandEmpty>No industry found</CommandEmpty>
                               <CommandGroup>
-                                <CommandItem value="auto-detect from instructions" onSelect={() => { setIndustryOverride(""); setIndustryManuallySet(false); setIndustryComboboxOpen(false); }}>
-                                  Auto-detect from instructions
+                                <CommandItem value="clear industry filter" onSelect={() => { setIndustryOverride(""); setIndustryManuallySet(false); setIndustryComboboxOpen(false); }}>
+                                  Clear (no industry filter)
                                 </CommandItem>
                                 {seamlessIndustries.map((ind: string) => (
                                   <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryManuallySet(true); setIndustryComboboxOpen(false); }}>
@@ -2246,29 +2276,30 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           </Command>
                         </PopoverContent>
                       </Popover>
-                      {industryDetected && industryOverride && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Suggested from your instructions — change above if this isn't right.
-                        </p>
-                      )}
-                      {industryDetected && !industryOverride && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          No specific industry detected — search will include all industries. Pick one above to narrow it down.
-                        </p>
-                      )}
                     </div>
                   )}
                   {(generateSource === "seamless" || generateSource === "ai") && (
                     <div>
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Job Titles (up to 10)</label>
-                        {detectIndustryMutation.isPending && (
+                        <label className="text-sm font-medium">Job Title Keyword</label>
+                        {detectTitlesFromKeywordMutation.isPending && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10">
+                      <Input
+                        placeholder="e.g., owners, CEO, marketing director..."
+                        value={titleKeywordInput}
+                        onChange={(e) => setTitleKeywordInput(e.target.value)}
+                        className="mt-1"
+                      />
+                      {titleKeywordNotFound && (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                          Couldn't match "{titleKeywordInput.trim()}" to known titles — try being more specific, or add titles directly below.
+                        </p>
+                      )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10">
                         {titlesOverride.map((title) => (
                           <Badge key={title} variant="secondary" className="gap-1 pr-1">
                             {title}
@@ -2291,22 +2322,31 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                             }
                           }}
                           onBlur={handleAddTitleChip}
-                          placeholder={titlesOverride.length === 0 ? "e.g., Owner, CEO, Founder — type and press Enter" : "Add another title..."}
+                          placeholder={titlesOverride.length === 0 ? "Detected titles show here — or type your own and press Enter" : "Add another title..."}
                           className="flex-1 min-w-32 bg-transparent outline-none text-sm"
                         />
                       </div>
                       {titlesDetected && titlesOverride.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Suggested from your instructions — remove any that aren't specific enough, or add your own.
-                        </p>
-                      )}
-                      {titlesDetected && titlesOverride.length === 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          No specific titles detected — add one or more above to narrow the search (e.g. "Owner", "CEO").
+                          Detected from your keyword — remove any that aren't specific enough, or add your own.
                         </p>
                       )}
                     </div>
                   )}
+                  <details className="group">
+                    <summary className="text-sm font-medium cursor-pointer list-none flex items-center gap-1 text-muted-foreground hover:text-foreground">
+                      <span className="group-open:rotate-90 transition-transform">▸</span> Additional details (optional)
+                    </summary>
+                    <Textarea
+                      placeholder="Auto-filled from the keywords above — edit to add more context (e.g. specific cities, company details)..."
+                      value={instruction}
+                      onChange={(e) => {
+                        setInstruction(e.target.value);
+                        setInstructionManuallyEdited(true);
+                      }}
+                      className="mt-2 min-h-20"
+                    />
+                  </details>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium">Lead Source</label>

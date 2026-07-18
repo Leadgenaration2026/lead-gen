@@ -697,7 +697,7 @@ interface LLMParsedInstruction {
  * the LLM to interpret the full instruction directly instead, so any profession or
  * industry works, not just the ones we happened to hardcode.
  */
-async function parseInstructionWithLLM(instruction: string): Promise<LLMParsedInstruction | null> {
+export async function parseInstructionWithLLM(instruction: string): Promise<LLMParsedInstruction | null> {
   try {
     const { invokeLLM } = await import("./_core/llm");
     const response = await invokeLLM({

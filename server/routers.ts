@@ -1000,19 +1000,49 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
       return SEAMLESS_INDUSTRY_OPTIONS;
     }),
 
-    // Detects the industry (and job titles) an instruction would resolve to,
-    // without spending any Seamless.AI search credits -- lets the UI show it
-    // as a confirmable suggestion ("Detected industry: Leisure, Travel &
-    // Tourism") before the user commits to an actual search.
-    detectSearchIndustry: protectedProcedure
-      .input(z.object({ instruction: z.string().min(3) }))
+    // Resolves a short industry keyword (e.g. "travel agency") to a real
+    // Seamless.AI industry enum value, for the dedicated Industry Keyword box.
+    // Tries the instant local mapper first (no LLM round-trip needed for
+    // anything already covered by SEAMLESS_INDUSTRY_OPTIONS' own wording),
+    // falling back to the LLM only for phrasing the local matcher can't place
+    // -- e.g. an industry described very differently from Seamless's own
+    // category names. Returns industry: null (not an error) when neither
+    // finds anything, so the UI can ask the user to be more specific instead
+    // of silently guessing.
+    detectIndustryFromKeyword: protectedProcedure
+      .input(z.object({ keyword: z.string().min(2) }))
       .mutation(async ({ input }) => {
-        const { parseInstructionToFiltersWithLLM } = await import("./seamlessAI");
-        const filters = await parseInstructionToFiltersWithLLM(input.instruction);
-        return {
-          industries: filters.industry || [],
-          titles: filters.jobTitle || [],
-        };
+        const { mapToValidSeamlessIndustry } = await import("./seamlessAI");
+        const instant = mapToValidSeamlessIndustry(input.keyword);
+        if (instant) {
+          return { industry: instant, source: "instant" as const };
+        }
+        const { parseInstructionWithLLM } = await import("./seamlessAI");
+        const llmResult = await parseInstructionWithLLM(input.keyword).catch(() => null);
+        for (const guess of llmResult?.industries || []) {
+          const mapped = mapToValidSeamlessIndustry(guess);
+          if (mapped) return { industry: mapped, source: "ai" as const };
+        }
+        return { industry: null, source: "none" as const };
+      }),
+
+    // Resolves a short job-title keyword (e.g. "owners") to a list of
+    // equivalent title variants, for the dedicated Job Title Keyword box.
+    // Same instant-first, LLM-fallback pattern as detectIndustryFromKeyword.
+    detectTitlesFromKeyword: protectedProcedure
+      .input(z.object({ keyword: z.string().min(2) }))
+      .mutation(async ({ input }) => {
+        const { matchJobTitle } = await import("./titleExpansionMap");
+        const instant = matchJobTitle(input.keyword);
+        if (instant && instant.length > 0) {
+          return { titles: instant, source: "instant" as const };
+        }
+        const { parseInstructionWithLLM } = await import("./seamlessAI");
+        const llmResult = await parseInstructionWithLLM(input.keyword).catch(() => null);
+        if (llmResult?.titles.length) {
+          return { titles: llmResult.titles, source: "ai" as const };
+        }
+        return { titles: [], source: "none" as const };
       }),
 
     // ═══════════════════════════════════════════════

@@ -87,20 +87,26 @@ export const COMPANY_SIZE_MAP: Record<string, { min?: number; max?: number; labe
 };
 
 /**
- * Expand a single job title to all equivalent titles
+ * Expand a single job title to all equivalent titles via the static map only
+ * (direct or partial key match) -- returns null, rather than falling back to
+ * the original text, when nothing genuinely matched. Callers that need to
+ * distinguish "found a real match" from "found nothing" (e.g. deciding
+ * whether to fall back to an LLM call) should use this instead of
+ * expandJobTitle().
  */
-export function expandJobTitle(title: string): string[] {
+export function matchJobTitle(title: string): string[] | null {
   const normalized = title.toLowerCase().trim();
-  
+  if (!normalized) return null;
+
   // Direct match
   if (TITLE_EXPANSION_MAP[normalized]) {
     return TITLE_EXPANSION_MAP[normalized];
   }
-  
+
   // Partial match (e.g., "sales" matches "sales director", "sales manager", etc.)
   const matches: string[] = [];
   const seen: Record<string, boolean> = {};
-  
+
   for (const [key, titles] of Object.entries(TITLE_EXPANSION_MAP)) {
     if (key.includes(normalized) || normalized.includes(key)) {
       for (const t of titles) {
@@ -111,14 +117,20 @@ export function expandJobTitle(title: string): string[] {
       }
     }
   }
-  
+
   if (matches.length > 0) {
     // Limit to 10 titles max (Seamless.AI API limit)
     return matches.sort().slice(0, 10);
   }
-  
-  // Fallback: return the original title
-  return [title];
+
+  return null;
+}
+
+/**
+ * Expand a single job title to all equivalent titles
+ */
+export function expandJobTitle(title: string): string[] {
+  return matchJobTitle(title) ?? [title];
 }
 
 /**
