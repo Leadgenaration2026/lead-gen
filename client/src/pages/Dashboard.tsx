@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle, MailWarning, Search } from "lucide-react";
+import { Loader2, Plus, Mail, Phone, BarChart3, FolderPlus, Eye, ExternalLink, MousePointerClick, ShieldCheck, AlertTriangle, MailWarning, Search, LayoutDashboard, Users, Megaphone, MessageSquare, Settings as SettingsIcon, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import LeadsPage from "./Leads";
 import SettingsPage from "./Settings";
@@ -14,6 +14,20 @@ import AnalyticsPage from "./Analytics";
 import EmailComposerPage from "./EmailComposer";
 import SocialOutreachPage from "./SocialOutreach";
 import CampaignsPage from "./Campaigns";
+
+// Each tab gets its own accent color -- carried through into the active
+// state (background tint + icon + text) so the bar reads as a set of
+// distinct sections at a glance rather than a plain text list, and matches
+// the same section-color convention used in the sidebar nav.
+const DASHBOARD_TABS = [
+  { value: "overview", label: "Overview", icon: LayoutDashboard, active: "data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 dark:data-[state=active]:bg-blue-950/40 dark:data-[state=active]:text-blue-400" },
+  { value: "leads", label: "Leads", icon: Users, active: "data-[state=active]:bg-violet-50 data-[state=active]:text-violet-700 dark:data-[state=active]:bg-violet-950/40 dark:data-[state=active]:text-violet-400" },
+  { value: "compose", label: "Email Composer", icon: Mail, active: "data-[state=active]:bg-sky-50 data-[state=active]:text-sky-700 dark:data-[state=active]:bg-sky-950/40 dark:data-[state=active]:text-sky-400" },
+  { value: "campaigns", label: "Campaigns", icon: Megaphone, active: "data-[state=active]:bg-pink-50 data-[state=active]:text-pink-700 dark:data-[state=active]:bg-pink-950/40 dark:data-[state=active]:text-pink-400" },
+  { value: "social", label: "Social Outreach", icon: MessageSquare, active: "data-[state=active]:bg-rose-50 data-[state=active]:text-rose-700 dark:data-[state=active]:bg-rose-950/40 dark:data-[state=active]:text-rose-400" },
+  { value: "analytics", label: "Analytics", icon: BarChart3, active: "data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 dark:data-[state=active]:bg-emerald-950/40 dark:data-[state=active]:text-emerald-400" },
+  { value: "settings", label: "Settings", icon: SettingsIcon, active: "data-[state=active]:bg-slate-100 data-[state=active]:text-slate-700 dark:data-[state=active]:bg-slate-800/50 dark:data-[state=active]:text-slate-300" },
+] as const;
 
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -51,26 +65,35 @@ export default function Dashboard() {
     <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-              Lead Generation & Outreach
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Manage your leads, campaigns, and automated outreach
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                Lead Generation & Outreach
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Manage your leads, campaigns, and automated outreach
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Main Navigation Tabs */}
+        {/* Main Navigation Tabs -- each section keeps its own accent color
+            through the active state, matching the sidebar's per-item colors. */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="compose">Email Composer</TabsTrigger>
-            <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-            <TabsTrigger value="social">Social Outreach</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-7 h-auto p-1 bg-muted/60">
+            {DASHBOARD_TABS.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className={`flex-col sm:flex-row gap-1 sm:gap-1.5 py-2 sm:py-1.5 text-[11px] sm:text-sm font-medium transition-colors ${tab.active}`}
+              >
+                <tab.icon className="w-4 h-4 shrink-0" />
+                <span className="truncate">{tab.label}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           {/* Overview Tab */}

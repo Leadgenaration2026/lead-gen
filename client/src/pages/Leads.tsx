@@ -2110,14 +2110,19 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       {/* Action Buttons Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Manual Lead Entry */}
-        <Card className="border-dashed">
+        <Card className="border-blue-200 bg-gradient-to-b from-blue-50/60 to-transparent dark:border-blue-900/50 dark:from-blue-950/20 hover:shadow-md transition-shadow">
           <CardContent className="pt-6">
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed hover:border-primary hover:bg-primary/5 transition-all">
-                  <UserPlus className="w-6 h-6 text-primary" />
-                  <span className="text-sm font-medium">Add Lead Manually</span>
-                </Button>
+                <button className="w-full flex items-center gap-3 rounded-lg p-2 -m-2 text-left hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors">
+                  <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 shrink-0">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold block">Add Lead Manually</span>
+                    <span className="text-xs text-muted-foreground">Enter one lead's details by hand</span>
+                  </div>
+                </button>
               </DialogTrigger>
               <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
                 <DialogHeader>
@@ -2221,17 +2226,25 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         </Card>
 
         {/* CSV Import */}
-        <Card className="border-dashed">
+        <Card className="border-green-200 bg-gradient-to-b from-green-50/60 to-transparent dark:border-green-900/50 dark:from-green-950/20 hover:shadow-md transition-shadow">
           <CardContent className="pt-6">
             <input ref={fileInputRef} type="file" accept=".csv,.txt" onChange={handleCSVFileSelect} className="hidden" />
-            <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/10 transition-all" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="w-6 h-6 text-green-600" />
-              <span className="text-sm font-medium">Import from CSV</span>
-            </Button>
+            <button
+              className="w-full flex items-center gap-3 rounded-lg p-2 -m-2 text-left hover:bg-green-100/50 dark:hover:bg-green-900/20 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-green-100 text-green-600 dark:bg-green-950/50 dark:text-green-400 shrink-0">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-sm font-semibold block">Import from CSV</span>
+                <span className="text-xs text-muted-foreground">Bulk upload from a spreadsheet</span>
+              </div>
+            </button>
             <button
               type="button"
               onClick={() => downloadCSVTemplate()}
-              className="text-xs text-green-600 hover:text-green-700 hover:underline mt-1 cursor-pointer"
+              className="text-xs text-green-600 hover:text-green-700 hover:underline mt-2 cursor-pointer"
             >
               Download sample CSV format
             </button>
@@ -2239,14 +2252,19 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         </Card>
 
         {/* AI Generation */}
-        <Card className="border-dashed">
+        <Card className="border-violet-200 bg-gradient-to-b from-violet-50/60 to-transparent dark:border-violet-900/50 dark:from-violet-950/20 hover:shadow-md transition-shadow">
           <CardContent className="pt-6">
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-all">
-                  <Wand2 className="w-6 h-6 text-violet-600" />
-                  <span className="text-sm font-medium">Generate with AI</span>
-                </Button>
+                <button className="w-full flex items-center gap-3 rounded-lg p-2 -m-2 text-left hover:bg-violet-100/50 dark:hover:bg-violet-900/20 transition-colors">
+                  <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400 shrink-0">
+                    <Wand2 className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold block">Generate with AI</span>
+                    <span className="text-xs text-muted-foreground">Describe leads, AI finds them</span>
+                  </div>
+                </button>
               </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
