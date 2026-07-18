@@ -517,6 +517,7 @@ export async function searchContacts(
     industry?: string[];
     contactCountry?: string[];
     contactState?: string[];
+    contactZipCode?: string[];
     companySize?: string[];
     companyEmployeeCountMin?: number;
     companyEmployeeCountMax?: number;
@@ -553,6 +554,9 @@ export async function searchContacts(
   if (filters.country) body.country = filters.country;
   if (filters.contactCountry?.length) body.contactCountry = filters.contactCountry;
   if (filters.contactState?.length) body.contactState = filters.contactState;
+  // Confirmed via docs.seamless.ai/searchcontacts: this is the real zip/postal
+  // code filter -- there is no equivalent "city" parameter in the API at all.
+  if (filters.contactZipCode?.length) body.contactZipCode = filters.contactZipCode;
   // Confirmed via Seamless.AI's official docs: the real employee-count filter is
   // "companySize", an array of specific predefined range strings (e.g. "201 - 500"),
   // not a numeric min/max pair — companyEmployeeCountMin/Max below are unrelated to
@@ -977,7 +981,15 @@ export async function searchAndFilterSeamlessCandidates(
   industryOverride?: string,
   // Same idea for job titles -- used exactly as given (no further expansion),
   // since picking specific titles is meant to narrow the search, not broaden it.
-  titlesOverride?: string[]
+  titlesOverride?: string[],
+  // For the "find a specific business's owner" lookup -- Seamless.AI's real
+  // companyName filter (confirmed via docs.seamless.ai/searchcontacts),
+  // matched with relevance/fuzzy logic, not exact string equality.
+  companyNameOverride?: string,
+  // Seamless.AI's real postal-code filter (contactZipCode, confirmed via the
+  // same docs) -- note there is no equivalent city filter in their API at
+  // all, so a city name has nowhere reliable to go and isn't accepted here.
+  zipCode?: string
 ): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (industryOverride) {
@@ -986,6 +998,18 @@ export async function searchAndFilterSeamlessCandidates(
   }
   if (titlesOverride?.length) {
     filters.jobTitle = titlesOverride;
+  }
+  if (companyNameOverride?.trim()) {
+    filters.companyName = [companyNameOverride.trim()];
+    // Looking up one exact, named company -- the company name itself is
+    // already the qualifier, and it can easily contain industry-sounding
+    // words (e.g. "Acme Travel Agency") that would otherwise make the LLM
+    // infer an industry from the instruction sentence and incorrectly
+    // narrow the search by it. Drop any inferred industry filter here.
+    filters.industry = undefined;
+  }
+  if (zipCode?.trim()) {
+    filters.contactZipCode = [zipCode.trim()];
   }
   if (country) {
     filters.contactCountry = [country];

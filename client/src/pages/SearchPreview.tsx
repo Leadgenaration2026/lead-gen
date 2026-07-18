@@ -6,7 +6,30 @@ import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, CheckCircle2, Loader2, Search, Download } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User } from "lucide-react";
+
+// Same title variants used for the "owner" keyword everywhere else in the app
+// (TITLE_EXPANSION_MAP["owner"] in server/titleExpansionMap.ts) -- duplicated
+// here rather than imported since server code isn't bundled into the client.
+const OWNER_TITLES = ["Owner", "Founder", "CEO", "President", "Managing Director", "Principal", "Co-Founder", "Business Owner", "Partner"];
+
+type OwnerCandidate = {
+  searchResultId: string;
+  ownerName: string;
+  companyName: string;
+  jobTitle?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  industry?: string;
+  website?: string;
+  linkedinUrl?: string;
+};
+
+type RevealedContact = {
+  email?: string;
+  phoneNumber?: string;
+};
 
 export default function SearchPreview() {
   const [instruction, setInstruction] = useState("");
@@ -30,6 +53,77 @@ export default function SearchPreview() {
     importId ? { importId } : undefined,
     { enabled: !!importId }
   );
+
+  // "Find a Business's Owner" -- a separate, targeted single-company lookup,
+  // distinct from the bulk instruction-driven search below.
+  const [businessName, setBusinessName] = useState("");
+  const [businessState, setBusinessState] = useState("");
+  const [businessZip, setBusinessZip] = useState("");
+  const [ownerCandidates, setOwnerCandidates] = useState<OwnerCandidate[]>([]);
+  const [ownerSearchError, setOwnerSearchError] = useState<string | null>(null);
+  const [revealedContacts, setRevealedContacts] = useState<Record<string, RevealedContact>>({});
+  const [revealingId, setRevealingId] = useState<string | null>(null);
+
+  const findOwnerMutation = trpc.leads.searchSeamlessPreview.useMutation();
+  const revealContactMutation = trpc.leads.enrichSeamlessSelection.useMutation();
+
+  const handleFindOwner = async () => {
+    if (!businessName.trim()) return;
+    setOwnerSearchError(null);
+    setOwnerCandidates([]);
+    setRevealedContacts({});
+    try {
+      const result = await findOwnerMutation.mutateAsync({
+        instruction: `Find the owner of ${businessName.trim()}`,
+        count: 10,
+        country: "United States",
+        state: businessState.trim() || undefined,
+        companyNameOverride: businessName.trim(),
+        zipCode: businessZip.trim() || undefined,
+        titlesOverride: OWNER_TITLES,
+      });
+      if (result.candidates.length === 0) {
+        setOwnerSearchError(`No match found for "${businessName.trim()}" on Seamless.AI. Try without the state/ZIP to broaden it, or double-check the spelling.`);
+        return;
+      }
+      setOwnerCandidates(result.candidates);
+    } catch (error: any) {
+      setOwnerSearchError(error?.message || error?.data?.message || "Search failed");
+    }
+  };
+
+  const handleRevealContact = async (candidate: OwnerCandidate) => {
+    setRevealingId(candidate.searchResultId);
+    try {
+      const result = await revealContactMutation.mutateAsync({
+        leadSetName: `Business Owner Lookup - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+        candidates: [{
+          searchResultId: candidate.searchResultId,
+          ownerName: candidate.ownerName,
+          companyName: candidate.companyName,
+          jobTitle: candidate.jobTitle,
+          city: candidate.city,
+          state: candidate.state,
+          country: candidate.country,
+          website: candidate.website,
+          industry: candidate.industry,
+          linkedinUrl: candidate.linkedinUrl,
+        }],
+      });
+      const enriched = result.leads?.[0];
+      setRevealedContacts((prev) => ({
+        ...prev,
+        [candidate.searchResultId]: {
+          email: enriched?.email || undefined,
+          phoneNumber: enriched?.phoneNumber || undefined,
+        },
+      }));
+    } catch (error: any) {
+      setOwnerSearchError(error?.message || error?.data?.message || "Failed to reveal contact info");
+    } finally {
+      setRevealingId(null);
+    }
+  };
 
   const handleSearch = async () => {
     if (!instruction.trim()) {
@@ -77,6 +171,123 @@ export default function SearchPreview() {
           Search for leads, preview results, and import without consuming credits
         </p>
       </div>
+
+      {/* Find a Business's Owner -- a targeted single-company lookup, separate
+          from the bulk instruction-driven search below. Business name and
+          state/ZIP are real Seamless.AI filters (companyName, contactState,
+          contactZipCode); city and phone-number search are NOT supported by
+          Seamless's API at all, so they're deliberately not offered here. */}
+      <Card className="p-6 border-violet-200 bg-gradient-to-b from-violet-50/40 to-transparent dark:border-violet-900/50 dark:from-violet-950/10">
+        <div className="flex items-center gap-2 mb-1">
+          <Building2 className="w-5 h-5 text-violet-600" />
+          <h2 className="text-xl font-semibold">Find a Business's Owner</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Look up one specific business and reveal the owner's name, email, and phone number.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Business Name *</label>
+            <Input
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder="e.g., Acme Plumbing"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">State (Optional)</label>
+              <Input
+                value={businessState}
+                onChange={(e) => setBusinessState(e.target.value)}
+                placeholder="e.g., Texas"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">ZIP / Postal Code (Optional)</label>
+              <Input
+                value={businessZip}
+                onChange={(e) => setBusinessZip(e.target.value)}
+                placeholder="e.g., 78701"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Seamless.AI has no city or phone-number search of its own — state and ZIP code are the most precise location filters it supports.
+          </p>
+
+          <Button
+            onClick={handleFindOwner}
+            disabled={!businessName.trim() || findOwnerMutation.isPending}
+            className="w-full gap-2"
+          >
+            {findOwnerMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" />Searching...</>
+            ) : (
+              <><Search className="w-4 h-4" />Find Owner</>
+            )}
+          </Button>
+
+          {ownerSearchError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <p className="text-sm">{ownerSearchError}</p>
+            </Alert>
+          )}
+        </div>
+
+        {ownerCandidates.length > 0 && (
+          <div className="mt-6 space-y-3">
+            <h3 className="font-semibold text-sm">
+              Found {ownerCandidates.length} possible match{ownerCandidates.length !== 1 ? "es" : ""}
+            </h3>
+            {ownerCandidates.map((c) => {
+              const revealed = revealedContacts[c.searchResultId];
+              return (
+                <div key={c.searchResultId} className="p-4 border rounded-lg flex items-center justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="font-medium flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      {c.ownerName || "Unknown"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{c.jobTitle || "—"} at {c.companyName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}
+                    </p>
+                  </div>
+                  {revealed ? (
+                    <div className="text-right text-sm shrink-0">
+                      <p className="flex items-center justify-end gap-1.5 font-medium text-green-700 dark:text-green-500">
+                        <Mail className="w-3.5 h-3.5" />
+                        {revealed.email || "No email found"}
+                      </p>
+                      <p className="flex items-center justify-end gap-1.5 text-muted-foreground mt-0.5">
+                        <Phone className="w-3.5 h-3.5" />
+                        {revealed.phoneNumber || "No phone found"}
+                      </p>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => handleRevealContact(c)}
+                      disabled={revealingId === c.searchResultId}
+                    >
+                      {revealingId === c.searchResultId ? (
+                        <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Revealing...</>
+                      ) : (
+                        "Reveal Contact Info (1 credit)"
+                      )}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
