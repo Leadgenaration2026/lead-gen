@@ -435,18 +435,41 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
+  // Tracks the instruction text the most recently *fired* detection request was
+  // for, so a response can tell if it's still the latest one once it comes
+  // back -- network/LLM latency doesn't guarantee responses arrive in the same
+  // order requests were sent, so without this an older request for earlier,
+  // incomplete text (e.g. "travel agency") could resolve after a newer one for
+  // the finished instruction ("travel agency owners") and clobber it with a
+  // worse answer.
+  const latestDetectRequestRef = useRef("");
+
   // Detects the industry AND job titles an instruction resolves to (no search
   // credits spent) and pre-fills both as editable suggestions the user can
   // confirm or correct before actually running a search.
   const handleDetectSearchFilters = async () => {
     if (!instruction.trim() || instruction.trim().length < 3) return;
+    const requestedFor = instruction;
+    latestDetectRequestRef.current = requestedFor;
     try {
       const result = await detectIndustryMutation.mutateAsync({ instruction });
-      if (!industryOverride) { // Don't clobber an industry the user already confirmed/picked
+      // Discard this response if a newer request has since been fired --
+      // applying it now would overwrite a more accurate in-flight/completed
+      // result with a stale one.
+      if (latestDetectRequestRef.current !== requestedFor) return;
+      // Guard against a manual pick, not merely "already has a value" -- this
+      // runs repeatedly as the user keeps typing (see the debounced effect
+      // below), so an early call on partial/incomplete text (e.g. "travel
+      // agency" before "owners" is typed) would otherwise permanently lock in
+      // whatever it found -- including an empty title guess -- and block every
+      // later, more accurate call for the finished instruction from ever
+      // updating it. Only an explicit user pick (industryManuallySet /
+      // titlesManuallySet) should block a re-detection from overwriting.
+      if (!industryManuallySet) {
         setIndustryOverride(result.industries[0] || "");
         setIndustryDetected(true);
       }
-      if (titlesOverride.length === 0) { // Don't clobber titles the user already edited
+      if (!titlesManuallySet) {
         setTitlesOverride(result.titles.slice(0, 10));
         setTitlesDetected(true);
       }
