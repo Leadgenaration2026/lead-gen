@@ -1149,19 +1149,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         return { candidates: filtered, skippedAlreadyOwned, skippedExcluded, totalAvailable, estimatedSearchCredits };
       }),
 
-    // Permanently mark Seamless.AI contacts as excluded so future searches
-    // never show them again (used when the user deletes/discards candidates
-    // from a search preview without enriching them).
-    excludeSeamlessContacts: protectedProcedure
-      .input(z.object({
-        searchResultIds: z.array(z.string()).min(1).max(1000),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        await db.excludeSeamlessContacts(ctx.user.id, input.searchResultIds);
-        return { success: true };
-      }),
-
-    // How many Seamless.AI contacts this user has permanently discarded --
+    // How many Seamless.AI contacts this user has permanently excluded by
+    // deleting them as a saved lead (see leads.delete/bulkDelete/etc.) --
     // shown so "no new contacts found (N previously deleted by you)" has a
     // concrete number the user can act on rather than a vague dead end.
     getExcludedSeamlessContactsCount: protectedProcedure.query(async ({ ctx }) => {

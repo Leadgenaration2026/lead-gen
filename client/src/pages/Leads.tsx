@@ -68,7 +68,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const detectTitlesFromKeywordMutation = trpc.leads.detectTitlesFromKeyword.useMutation();
   const enrichSeamlessSelectionMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const scoreSeamlessEngagementMutation = trpc.leads.scoreSeamlessCandidatesEngagement.useMutation();
-  const excludeSeamlessContactsMutation = trpc.leads.excludeSeamlessContacts.useMutation();
   const clearExcludedSeamlessContactsMutation = trpc.leads.clearExcludedSeamlessContacts.useMutation();
   const deleteLeadMutation = trpc.leads.delete.useMutation();
   const addLeadMutation = trpc.leads.addManual.useMutation();
@@ -778,8 +777,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
-  // Permanently discard a candidate the user doesn't want, without enriching it.
-  // Recorded server-side so it never shows up again in a future search.
+  // Removes a candidate from THIS preview list only -- deliberately does NOT
+  // exclude it server-side. A candidate here hasn't been saved as a lead yet,
+  // so passing on it now (wrong title this round, don't like the company,
+  // etc.) isn't the same signal as deleting an actual saved lead later (e.g.
+  // for a risky/unverified email or low engagement score) -- that's a much
+  // more deliberate rejection and is what permanently excludes a contact from
+  // future searches (see leads.delete/bulkDelete/etc.). An unsaved candidate
+  // you merely didn't pick this round should still be able to come up again
+  // in a completely different future search.
   const handleRemoveSeamlessCandidate = (searchResultId: string) => {
     const remaining = seamlessCandidates.filter((c) => c.searchResultId !== searchResultId);
     setSeamlessCandidates(remaining);
@@ -793,7 +799,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       delete next[searchResultId];
       return next;
     });
-    excludeSeamlessContactsMutation.mutate({ searchResultIds: [searchResultId] });
     if (remaining.length === 0) {
       setSeamlessPreviewDialogOpen(false);
     }
