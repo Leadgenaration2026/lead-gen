@@ -22,6 +22,11 @@ export async function getDb() {
     } catch (error) {
       console.warn("[Database] Failed to ensure leads/tracking columns:", error);
     }
+    try {
+      await repairImportedListLeadSetIdConflation(_db);
+    } catch (error) {
+      console.warn("[Database] Failed to repair imported-list leadSetId conflation:", error);
+    }
   }
   return _db;
 }
@@ -41,6 +46,24 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS respondedAt TIMESTAMP NULL`);
   await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS socialDailyLimits JSON NULL`);
   leadsAndTrackingColumnsReady = true;
+}
+
+// One-time data repair (not a schema change) for a bug where every lead
+// created via CSV import, AI-generate, or Seamless enrichment was saved with
+// leadSetId set to the same value as sourceListId. The "Imported Lists"
+// filter on the Leads page treats leadSetId as "this lead has been manually
+// tagged" and specifically requires it to be empty to recognize a lead as
+// still belonging to its original import list -- so every affected lead was
+// invisible under Imported Lists despite being saved correctly otherwise.
+// leadSetId === sourceListId can only happen via this exact bug (a real tag
+// assignment is a different leadSet row with a different id), so it's safe
+// to clear leadSetId back to null wherever they match; sourceListId (the
+// lead's original list) is left untouched.
+let importedListLeadSetIdConflationRepaired = false;
+async function repairImportedListLeadSetIdConflation(database: NonNullable<typeof _db>) {
+  if (importedListLeadSetIdConflationRepaired) return;
+  await database.execute(sql`UPDATE leads SET leadSetId = NULL WHERE leadSetId = sourceListId`);
+  importedListLeadSetIdConflationRepaired = true;
 }
 
 // Conservative default caps per platform/action, used when the user hasn't

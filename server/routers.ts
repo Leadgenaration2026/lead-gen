@@ -884,7 +884,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               facebookUrl: leadData.facebookUrl || undefined,
               userId: ctx.user.id,
               status: "new",
-              leadSetId,
+              // Deliberately NOT setting leadSetId here -- a freshly
+              // imported/generated lead should only be "in a list"
+              // (sourceListId), not "tagged" (leadSetId), until the user
+              // explicitly assigns a tag. The Imported Lists filter in
+              // Leads.tsx specifically requires leadSetId to still be empty
+              // to recognize a lead as belonging to its original import list;
+              // setting both to the same value here made every newly
+              // created lead invisible to that filter.
               sourceListId: leadSetId || undefined,
               seamlessId: (leadData as any).seamlessId || undefined,
               enrichmentCreditsUsed: (leadData as any).enrichmentCreditsUsed || 0,
@@ -1182,7 +1189,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               facebookUrl: leadData.facebookUrl || undefined,
               userId: ctx.user.id,
               status: "new",
-              leadSetId,
+              // Deliberately NOT setting leadSetId here -- a freshly
+              // imported/generated lead should only be "in a list"
+              // (sourceListId), not "tagged" (leadSetId), until the user
+              // explicitly assigns a tag. The Imported Lists filter in
+              // Leads.tsx specifically requires leadSetId to still be empty
+              // to recognize a lead as belonging to its original import list;
+              // setting both to the same value here made every newly
+              // created lead invisible to that filter.
               sourceListId: leadSetId || undefined,
               enrichmentCreditsUsed: leadData.enrichmentCreditsUsed || 0,
             });
@@ -1373,7 +1387,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               country: leadData.country || undefined,
               userId: ctx.user.id,
               status: "new",
-              leadSetId,
+              // Deliberately NOT setting leadSetId here -- a freshly
+              // imported/generated lead should only be "in a list"
+              // (sourceListId), not "tagged" (leadSetId), until the user
+              // explicitly assigns a tag. The Imported Lists filter in
+              // Leads.tsx specifically requires leadSetId to still be empty
+              // to recognize a lead as belonging to its original import list;
+              // setting both to the same value here made every newly
+              // created lead invisible to that filter.
               sourceListId: leadSetId || undefined,
             });
             // Update tag if provided
