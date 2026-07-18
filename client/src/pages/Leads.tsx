@@ -2147,11 +2147,25 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                         // instruction (e.g. fixing a typo) -- clearing it here
                         // was silently discarding manually-picked filters
                         // right before the search ran.
-                        if (!industryManuallySet) {
+                        //
+                        // Exception: clearing the box out completely (select-all
+                        // + delete, or backspacing everything) is an unambiguous
+                        // "starting a brand new search" signal -- without this,
+                        // a manual pick from one search (e.g. Travel industry +
+                        // CEO/Cofounder/Owner titles) stayed locked in forever
+                        // and silently blocked auto-detection for every
+                        // completely unrelated search typed afterward in the
+                        // same session (e.g. "motivational speakers"), since
+                        // only a successful generate resets these flags.
+                        if (!e.target.value.trim()) {
+                          setIndustryManuallySet(false);
+                          setTitlesManuallySet(false);
+                        }
+                        if (!industryManuallySet || !e.target.value.trim()) {
                           setIndustryOverride("");
                           setIndustryDetected(false);
                         }
-                        if (!titlesManuallySet) {
+                        if (!titlesManuallySet || !e.target.value.trim()) {
                           setTitlesOverride([]);
                           setTitlesDetected(false);
                         }
