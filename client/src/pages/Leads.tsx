@@ -350,6 +350,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
+      importedListsQuery.refetch();
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to generate leads";
       toast.error(msg, { duration: 8000 });
@@ -631,6 +632,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
       leadsQuery.refetch();
       leadSetsQuery.refetch();
+      importedListsQuery.refetch();
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to enrich selected contacts";
       toast.error(msg, { duration: 8000 });
@@ -758,6 +760,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvScoringIndices(new Set());
       leadsQuery.refetch();
       leadSetsQuery.refetch();
+      importedListsQuery.refetch();
     } catch (error: any) {
       console.error("Import leads error:", error);
       toast.error(error?.message || error?.data?.message || "Failed to import leads", { duration: 8000 });
@@ -801,6 +804,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setCsvScoringIndices(new Set());
         leadsQuery.refetch();
         leadSetsQuery.refetch();
+        importedListsQuery.refetch();
       } catch (error: any) {
         console.error("Overwrite import error:", error);
         toast.error(error?.message || error?.data?.message || "Failed to import leads", { duration: 8000 });
@@ -1155,7 +1159,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvScoringIndices(new Set());
       leadsQuery.refetch();
       leadSetsQuery.refetch();
-      
+      importedListsQuery.refetch();
+
       // Auto-trigger engagement scoring for newly imported leads
       if (result.imported > 0 && result.leadIds && result.leadIds.length > 0) {
         toast.info("Scoring engagement for imported leads (LinkedIn + Website)...", { duration: 5000 });
