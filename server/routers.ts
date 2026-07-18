@@ -278,7 +278,16 @@ export const appRouter = router({
       if (!lead || lead.userId !== ctx.user.id) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
-      return db.deleteLead(leadId);
+      const result = await db.deleteLead(leadId);
+      // A deleted lead that came from Seamless.AI should never silently
+      // resurface in a later search -- without this, deleting it (e.g. for a
+      // bad/risky email) only removes today's row; our own dedup check only
+      // looks at leads that currently exist, so the exact same contact could
+      // come back as "new" the next time a search happens to match them again.
+      if (lead.seamlessId) {
+        await db.excludeSeamlessContacts(ctx.user.id, [lead.seamlessId]);
+      }
+      return result;
     }),
 
     bulkDelete: protectedProcedure
@@ -286,12 +295,18 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         // Verify all leads belong to the user
         const leads = await Promise.all(input.leadIds.map(id => db.getLeadById(id)));
-        const validIds = leads.filter(l => l && l.userId === ctx.user.id).map(l => l!.id);
-        if (validIds.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No valid leads found" });
-        for (const id of validIds) {
-          await db.deleteLead(id);
+        const validLeads = leads.filter((l): l is NonNullable<typeof l> => !!l && l.userId === ctx.user.id);
+        if (validLeads.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No valid leads found" });
+        for (const lead of validLeads) {
+          await db.deleteLead(lead.id);
         }
-        return { deleted: validIds.length };
+        // Same as the single-delete path above -- keep every deleted
+        // Seamless.AI contact from silently resurfacing in a future search.
+        const seamlessIds = validLeads.map((l) => l.seamlessId).filter((id): id is string => !!id);
+        if (seamlessIds.length > 0) {
+          await db.excludeSeamlessContacts(ctx.user.id, seamlessIds);
+        }
+        return { deleted: validLeads.length };
       }),
 
     deleteByVerificationStatus: protectedProcedure
@@ -303,6 +318,10 @@ export const appRouter = router({
         for (const lead of toDelete) {
           await db.deleteLead(lead.id);
         }
+        const seamlessIds = toDelete.map((l: any) => l.seamlessId).filter((id: any): id is string => !!id);
+        if (seamlessIds.length > 0) {
+          await db.excludeSeamlessContacts(ctx.user.id, seamlessIds);
+        }
         return { deleted: toDelete.length };
       }),
 
@@ -312,6 +331,10 @@ export const appRouter = router({
         if (allLeads.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads to delete" });
         for (const lead of allLeads) {
           await db.deleteLead(lead.id);
+        }
+        const seamlessIds = (allLeads as any[]).map((l: any) => l.seamlessId).filter((id: any): id is string => !!id);
+        if (seamlessIds.length > 0) {
+          await db.excludeSeamlessContacts(ctx.user.id, seamlessIds);
         }
         return { deleted: allLeads.length };
       }),
