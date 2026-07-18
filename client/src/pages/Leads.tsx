@@ -300,6 +300,22 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     });
   };
 
+  // Clears the instruction and every search-criteria field back to a blank
+  // slate -- used both after a successful generate and by the manual "Reset"
+  // button for when the user wants to abandon the current search and start a
+  // completely different one without closing/reopening the dialog.
+  const resetGenerateForm = () => {
+    setInstruction("");
+    setGenerateLeadSetName("");
+    setIndustryOverride("");
+    setIndustryDetected(false);
+    setIndustryManuallySet(false);
+    setTitlesOverride([]);
+    setTitlesDetected(false);
+    setTitlesManuallySet(false);
+    setTitleInputValue("");
+  };
+
   const handleGenerateLeads = async () => {
     if (!instruction.trim()) {
       toast.error("Please enter an instruction");
@@ -317,7 +333,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         industryOverride: industryOverride.trim() || undefined,
         titlesOverride: titlesOverride.length > 0 ? titlesOverride : undefined,
       });
-      
+
       // Handle different response scenarios
       if (result.count === 0 && result.duplicatesSkipped && result.duplicatesSkipped > 0) {
         // All results were duplicates
@@ -326,27 +342,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         const dupMsg = result.duplicatesSkipped ? ` (${result.duplicatesSkipped} duplicates skipped)` : "";
         const seamlessMsg = result.extractedFromSeamless ? ` - ${result.extractedFromSeamless} extracted from Seamless.AI` : "";
         toast.success(`Generated ${result.count} new leads!${dupMsg}${seamlessMsg}`);
-        setInstruction("");
-        setGenerateLeadSetName("");
-        setIndustryOverride("");
-        setIndustryDetected(false);
-        setIndustryManuallySet(false);
-        setTitlesOverride([]);
-        setTitlesDetected(false);
-        setTitlesManuallySet(false);
+        resetGenerateForm();
         // New leads sort newest-first and land on page 1 — jump there so they're
         // visible immediately instead of only after manually navigating back.
         setCurrentPage(1);
       } else {
         toast.success(`Lead generation complete!`);
-        setInstruction("");
-        setGenerateLeadSetName("");
-        setIndustryOverride("");
-        setIndustryDetected(false);
-        setIndustryManuallySet(false);
-        setTitlesOverride([]);
-        setTitlesDetected(false);
-        setTitlesManuallySet(false);
+        resetGenerateForm();
       }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
@@ -2131,7 +2133,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium">Your Instructions</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Your Instructions</label>
+                      {(instruction || industryOverride || titlesOverride.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={resetGenerateForm}
+                          className="text-xs text-muted-foreground hover:text-foreground underline"
+                        >
+                          Reset form
+                        </button>
+                      )}
+                    </div>
                     <Textarea
                       placeholder="E.g., Generate leads for SaaS companies in the US with 50-500 employees in the tech industry..."
                       value={instruction}

@@ -235,7 +235,8 @@ export function parseSearchInstruction(instruction: string) {
     "restaurant", "construction", "legal", "accounting", "consulting",
     "travel", "tourism", "hospitality", "insurance", "agriculture",
     "automotive", "aerospace", "pharmaceutical", "biotechnology",
-    "non-profit", "nonprofit", "logistics", "transportation"
+    "non-profit", "nonprofit", "logistics", "transportation",
+    "e-commerce", "ecommerce", "software"
   ];
   
   // Only add industry if it's explicitly mentioned as a standalone word
