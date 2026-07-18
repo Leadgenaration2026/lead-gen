@@ -2219,126 +2219,145 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <DialogTitle className="flex items-center gap-2"><Wand2 className="w-5 h-5" />AI Lead Generation</DialogTitle>
                   <DialogDescription>Describe what leads you want and AI will generate them</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between -mb-2">
-                    <p className="text-xs text-muted-foreground">Fill in an industry keyword and a title keyword below — each is detected on its own.</p>
+                <div className="space-y-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Two keywords, detected instantly — no need to write a sentence.
+                    </p>
                     {(instruction || industryKeywordInput || titleKeywordInput) && (
                       <button
                         type="button"
                         onClick={resetGenerateForm}
-                        className="text-xs text-muted-foreground hover:text-foreground underline shrink-0 ml-2"
+                        className="text-xs text-muted-foreground hover:text-foreground underline shrink-0"
                       >
                         Reset form
                       </button>
                     )}
                   </div>
                   {(generateSource === "seamless" || generateSource === "ai") && (
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Industry Keyword</label>
-                        {detectIndustryFromKeywordMutation.isPending && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
-                          </span>
-                        )}
-                      </div>
-                      <Input
-                        placeholder="e.g., travel agency, real estate, e-commerce..."
-                        value={industryKeywordInput}
-                        onChange={(e) => setIndustryKeywordInput(e.target.value)}
-                        className="mt-1"
-                      />
-                      {industryOverride && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Detected: <span className="font-medium text-foreground">{industryOverride}</span> — wrong? Pick a different one below.
-                        </p>
-                      )}
-                      {industryKeywordNotFound && (
-                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                          No industry match for "{industryKeywordInput.trim()}" — that's fine, your search will run on the job title alone (across all industries). Try being more specific here, or pick one directly below, if you do want to narrow it down.
-                        </p>
-                      )}
-                      <Popover open={industryComboboxOpen} onOpenChange={setIndustryComboboxOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" role="combobox" aria-expanded={industryComboboxOpen} className="w-full justify-between font-normal mt-1.5 text-xs h-8">
-                            <span className="truncate">{industryOverride ? `Override: ${industryOverride}` : "Or pick an industry directly..."}</span>
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80 p-0" align="start">
-                          <Command>
-                            <CommandInput placeholder="Search industries..." />
-                            <CommandList>
-                              <CommandEmpty>No industry found</CommandEmpty>
-                              <CommandGroup>
-                                <CommandItem value="clear industry filter" onSelect={() => { setIndustryOverride(""); setIndustryManuallySet(false); setIndustryComboboxOpen(false); }}>
-                                  Clear (no industry filter)
-                                </CommandItem>
-                                {seamlessIndustries.map((ind: string) => (
-                                  <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryManuallySet(true); setIndustryComboboxOpen(false); }}>
-                                    {ind}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  )}
-                  {(generateSource === "seamless" || generateSource === "ai") && (
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-medium">Job Title Keyword</label>
-                        {detectTitlesFromKeywordMutation.isPending && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
-                          </span>
-                        )}
-                      </div>
-                      <Input
-                        placeholder="e.g., owners, CEO, marketing director..."
-                        value={titleKeywordInput}
-                        onChange={(e) => setTitleKeywordInput(e.target.value)}
-                        className="mt-1"
-                      />
-                      {titleKeywordNotFound && (
-                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                          Couldn't match "{titleKeywordInput.trim()}" to known titles — try being more specific, or add titles directly below.
-                        </p>
-                      )}
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10">
-                        {titlesOverride.map((title) => (
-                          <Badge key={title} variant="secondary" className="gap-1 pr-1">
-                            {title}
+                    <div className="rounded-lg border bg-muted/30 p-3.5 space-y-4">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium">Industry Keyword</label>
+                          {detectIndustryFromKeywordMutation.isPending && (
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
+                            </span>
+                          )}
+                        </div>
+                        <Input
+                          placeholder="e.g., travel agency, real estate, e-commerce..."
+                          value={industryKeywordInput}
+                          onChange={(e) => setIndustryKeywordInput(e.target.value)}
+                          className="mt-1.5 bg-background"
+                        />
+                        <Popover open={industryComboboxOpen} onOpenChange={setIndustryComboboxOpen}>
+                          <PopoverTrigger asChild>
                             <button
                               type="button"
-                              onClick={() => handleRemoveTitleChip(title)}
-                              className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                              className={
+                                "mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors " +
+                                (industryOverride
+                                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                  : industryKeywordNotFound
+                                  ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                                  : "border-dashed text-muted-foreground hover:text-foreground hover:bg-muted")
+                              }
                             >
-                              <X className="w-3 h-3" />
+                              {industryOverride ? (
+                                <Check className="w-3 h-3 shrink-0" />
+                              ) : industryKeywordNotFound ? (
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                              ) : null}
+                              <span className="truncate">
+                                {industryOverride
+                                  ? industryOverride
+                                  : industryKeywordNotFound
+                                  ? "No match — will search all industries"
+                                  : "Pick an industry manually"}
+                              </span>
+                              <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-60" />
                             </button>
-                          </Badge>
-                        ))}
-                        <input
-                          value={titleInputValue}
-                          onChange={(e) => setTitleInputValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === ",") {
-                              e.preventDefault();
-                              handleAddTitleChip();
-                            }
-                          }}
-                          onBlur={handleAddTitleChip}
-                          placeholder={titlesOverride.length === 0 ? "Detected titles show here — or type your own and press Enter" : "Add another title..."}
-                          className="flex-1 min-w-32 bg-transparent outline-none text-sm"
-                        />
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search industries..." />
+                              <CommandList>
+                                <CommandEmpty>No industry found</CommandEmpty>
+                                <CommandGroup>
+                                  <CommandItem value="clear industry filter" onSelect={() => { setIndustryOverride(""); setIndustryManuallySet(false); setIndustryComboboxOpen(false); }}>
+                                    Clear (no industry filter)
+                                  </CommandItem>
+                                  {seamlessIndustries.map((ind: string) => (
+                                    <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryManuallySet(true); setIndustryComboboxOpen(false); }}>
+                                      {ind}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        {industryKeywordNotFound && (
+                          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                            That's fine — the search will still run on your job title, just across every industry.
+                          </p>
+                        )}
                       </div>
-                      {titlesDetected && titlesOverride.length > 0 && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Detected from your keyword — remove any that aren't specific enough, or add your own.
-                        </p>
-                      )}
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium">Job Title Keyword</label>
+                          {detectTitlesFromKeywordMutation.isPending && (
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Detecting...
+                            </span>
+                          )}
+                        </div>
+                        <Input
+                          placeholder="e.g., owners, CEO, marketing director..."
+                          value={titleKeywordInput}
+                          onChange={(e) => setTitleKeywordInput(e.target.value)}
+                          className="mt-1.5 bg-background"
+                        />
+                        {titleKeywordNotFound && (
+                          <p className="text-xs text-amber-600 dark:text-amber-500 mt-1.5 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                            No title match for "{titleKeywordInput.trim()}" — try being more specific, or add titles directly below.
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10 bg-background">
+                          {titlesOverride.map((title) => (
+                            <Badge key={title} variant="secondary" className="gap-1 pr-1">
+                              {title}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTitleChip(title)}
+                                className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                          <input
+                            value={titleInputValue}
+                            onChange={(e) => setTitleInputValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === ",") {
+                                e.preventDefault();
+                                handleAddTitleChip();
+                              }
+                            }}
+                            onBlur={handleAddTitleChip}
+                            placeholder={titlesOverride.length === 0 ? "Detected titles show here — or type your own and press Enter" : "Add another title..."}
+                            className="flex-1 min-w-32 bg-transparent outline-none text-sm"
+                          />
+                        </div>
+                        {titlesDetected && titlesOverride.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1.5">
+                            Detected from your keyword — remove any that aren't specific enough, or add your own.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                   <details className="group">
