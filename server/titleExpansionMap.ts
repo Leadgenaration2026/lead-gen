@@ -232,7 +232,10 @@ export function parseSearchInstruction(instruction: string) {
   const industryKeywords = [
     "technology", "finance", "healthcare", "retail", "manufacturing",
     "real estate", "education", "media", "telecom", "energy",
-    "restaurant", "construction", "legal", "accounting", "consulting"
+    "restaurant", "construction", "legal", "accounting", "consulting",
+    "travel", "tourism", "hospitality", "insurance", "agriculture",
+    "automotive", "aerospace", "pharmaceutical", "biotechnology",
+    "non-profit", "nonprofit", "logistics", "transportation"
   ];
   
   // Only add industry if it's explicitly mentioned as a standalone word
