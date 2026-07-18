@@ -2727,31 +2727,23 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               </DialogContent>
             </Dialog>
             {!seamlessPreviewDialogOpen && seamlessCandidates.length > 0 && (
-              <div className="flex items-center gap-1 mt-2">
+              // Only "Resume" here, deliberately -- a blanket "discard everything
+              // pending" button next to it was confusing: those candidates get
+              // permanently excluded from every future search by searchResultId,
+              // which isn't obvious from a plain X icon and made it look like the
+              // only way to get rid of unwanted results. To remove specific leads,
+              // select them in the table below and use "Delete Selected" instead
+              // -- that only touches leads actually saved to your list, and never
+              // blocks them from showing up again in a future search.
+              <div className="mt-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="flex-1 text-violet-600 hover:text-violet-700"
+                  className="w-full text-violet-600 hover:text-violet-700"
                   onClick={() => setSeamlessPreviewDialogOpen(true)}
                 >
                   Resume Seamless.AI Results ({seamlessCandidates.length} pending)
                 </Button>
-                <button
-                  onClick={() => {
-                    excludeSeamlessContactsMutation.mutate({
-                      searchResultIds: seamlessCandidates.map((c) => c.searchResultId),
-                    });
-                    setSeamlessCandidates([]);
-                    setSelectedSeamlessIds(new Set());
-                    setSeamlessEngagementScores({});
-                    setScoringEngagementIds(new Set());
-                    toast("Discarded pending Seamless.AI results — they won't show up in future searches");
-                  }}
-                  className="text-muted-foreground hover:text-red-600 p-1"
-                  title="Discard these pending results"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </div>
             )}
           </CardContent>
