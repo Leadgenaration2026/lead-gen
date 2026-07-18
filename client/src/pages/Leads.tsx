@@ -536,19 +536,27 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // search never requires typing a separate sentence -- only stops once the
   // user has typed into that box directly, so a deliberate manual edit isn't
   // silently overwritten on the next keyword keystroke.
+  //
+  // Deliberately uses industryOverride (the RESOLVED industry) rather than the
+  // raw industryKeywordInput text -- a keyword that doesn't match any real
+  // Seamless.AI industry (e.g. "motivational speaker", which is a profession,
+  // not an industry) correctly leaves industryOverride empty so the search
+  // runs on title alone, but if this sentence still said "...in the
+  // motivational speaker industry" it would misrepresent what's actually
+  // being searched, and could feed a wrong guess into the backend's own
+  // separate LLM parsing of this same sentence.
   useEffect(() => {
     if (instructionManuallyEdited) return;
     const title = titleKeywordInput.trim();
-    const industry = industryKeywordInput.trim();
-    if (!title && !industry) {
+    if (!title && !industryOverride) {
       setInstruction("");
       return;
     }
     const parts = [`Generate leads for ${title || "business contacts"}`];
-    if (industry) parts.push(`in the ${industry} industry`);
+    if (industryOverride) parts.push(`in the ${industryOverride} industry`);
     setInstruction(parts.join(" "));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [industryKeywordInput, titleKeywordInput, instructionManuallyEdited]);
+  }, [titleKeywordInput, industryOverride, instructionManuallyEdited]);
 
   const handleAddTitleChip = () => {
     const value = titleInputValue.trim();
@@ -2247,7 +2255,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       )}
                       {industryKeywordNotFound && (
                         <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                          Couldn't match "{industryKeywordInput.trim()}" to a known industry — try being more specific, or pick one directly below.
+                          No industry match for "{industryKeywordInput.trim()}" — that's fine, your search will run on the job title alone (across all industries). Try being more specific here, or pick one directly below, if you do want to narrow it down.
                         </p>
                       )}
                       <Popover open={industryComboboxOpen} onOpenChange={setIndustryComboboxOpen}>
