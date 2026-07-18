@@ -2958,10 +2958,14 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               <CardTitle>Your Leads ({filteredLeads.length})</CardTitle>
               <CardDescription>Manage, tag, and organize your leads</CardDescription>
             </div>
-            <div className="flex gap-2 items-center flex-wrap">
+            <div className="flex flex-col gap-2.5 w-full sm:w-auto">
+            {/* Filters -- non-destructive view/search controls, visually grouped
+                in their own tinted bar so they read as one unit distinct from
+                the actions below. */}
+            <div className="flex gap-2 items-center flex-wrap p-2 rounded-lg bg-muted/40 border">
               <div className="relative">
                 <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48" />
+                <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48 bg-background" />
               </div>
               <Select value={filterSourceListId} onValueChange={setFilterSourceListId}>
                 <SelectTrigger className="w-44">
@@ -3057,7 +3061,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-44 bg-background">
                   <ArrowUpDown className="w-3.5 h-3.5 mr-1.5" />
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
@@ -3068,6 +3072,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                    <SelectItem value="name_asc">Name: A → Z</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Actions -- selection, bulk data operations, and destructive/
+                export actions, color-coded by intent so the row scans easily
+                instead of reading as one undifferentiated button list. */}
+            <div className="flex gap-2 items-center flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
@@ -3172,7 +3182,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   }
                 }}
                 disabled={verifyEmailsMutation.isPending}
-                className="gap-1.5"
+                className="gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-900 dark:hover:bg-blue-950/30"
               >
                 {verifyEmailsMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                 Verify Emails
@@ -3235,7 +3245,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   }
                 }}
                 disabled={apiFirstEnrichMutation.isPending || selectedLeadIds.size === 0}
-                className="gap-1.5"
+                className="gap-1.5 text-violet-600 border-violet-200 hover:bg-violet-50 dark:text-violet-400 dark:border-violet-900 dark:hover:bg-violet-950/30"
               >
                 {apiFirstEnrichMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                 Enrich via REST API ({selectedLeadIds.size})
@@ -3310,11 +3320,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   URL.revokeObjectURL(url);
                   toast.success(`Exported ${filteredLeads.length} leads to CSV`);
                 }}
-                className="gap-1.5"
+                className="gap-1.5 text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-900 dark:hover:bg-green-950/30"
               >
                 <Download className="w-3.5 h-3.5" />
                 Export CSV
               </Button>
+            </div>
             </div>
           </div>
         </CardHeader>
