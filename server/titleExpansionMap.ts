@@ -6,14 +6,14 @@
 
 export const TITLE_EXPANSION_MAP: Record<string, string[]> = {
   // Executive / Owner roles
-  "owner": ["Owner", "Founder", "CEO", "President", "Managing Director", "Principal", "Co-Founder", "Business Owner"],
+  "owner": ["Owner", "Founder", "CEO", "President", "Managing Director", "Principal", "Co-Founder", "Business Owner", "Partner"],
   "founder": ["Founder", "Co-Founder", "CEO", "President", "Owner"],
   "ceo": ["CEO", "Chief Executive Officer", "President", "Founder", "Owner"],
   "president": ["President", "CEO", "Founder", "Owner", "Managing Director"],
   "managing director": ["Managing Director", "Director", "CEO", "President"],
   "principal": ["Principal", "Owner", "Founder", "Managing Director"],
   "co-founder": ["Co-Founder", "Founder", "CEO", "Owner"],
-  "business owner": ["Owner", "Founder", "CEO", "President", "Business Owner", "Entrepreneur"],
+  "business owner": ["Owner", "Founder", "CEO", "President", "Business Owner", "Entrepreneur", "Partner"],
   
   // Sales roles
   "sales director": ["Sales Director", "VP of Sales", "Head of Sales", "Sales Manager", "Sales Lead"],
@@ -57,7 +57,7 @@ export const TITLE_EXPANSION_MAP: Record<string, string[]> = {
   "team lead": ["Team Lead", "Lead", "Manager", "Supervisor"],
   
   // Small business specific
-  "small business owner": ["Owner", "Founder", "CEO", "President", "Managing Director", "Principal", "Co-Founder", "Business Owner", "Entrepreneur"],
+  "small business owner": ["Owner", "Founder", "CEO", "President", "Managing Director", "Principal", "Co-Founder", "Business Owner", "Entrepreneur", "Partner"],
   "entrepreneur": ["Entrepreneur", "Founder", "Owner", "CEO", "Business Owner"],
   
   // Consultant

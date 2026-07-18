@@ -36,4 +36,16 @@ describe("mapToValidSeamlessIndustry", () => {
     expect(mapToValidSeamlessIndustry("Agency")).toBeNull();
     expect(mapToValidSeamlessIndustry("Services Company")).toBeNull();
   });
+
+  it("prefers a confirmed synonym over a generic word-overlap match to a different, wrong option (regression: 'legal firms' shares the word 'legal' with 'Legal Services' and matched there, but Seamless.AI's own search resolves this phrase to 'Law Practice' instead)", () => {
+    expect(mapToValidSeamlessIndustry("legal firms")).toBe("Law Practice");
+    expect(mapToValidSeamlessIndustry("law firm")).toBe("Law Practice");
+    expect(mapToValidSeamlessIndustry("law firms")).toBe("Law Practice");
+    expect(mapToValidSeamlessIndustry("attorneys")).toBe("Law Practice");
+    expect(mapToValidSeamlessIndustry("lawyer")).toBe("Law Practice");
+  });
+
+  it("does not guess when a typo is equally close to two different, unrelated options (regression: 'prctice' alone is one edit from both 'Medical Practice' and 'Law Practice' once the short word 'law' is filtered out -- guessing wrong here is worse than finding nothing)", () => {
+    expect(mapToValidSeamlessIndustry("law prctice")).toBeNull();
+  });
 });

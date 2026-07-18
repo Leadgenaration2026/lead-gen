@@ -69,6 +69,40 @@ export const SEAMLESS_INDUSTRY_OPTIONS = [
   "Wholesale & Distribution", "Business Supplies & Equipment", "Import & Export", "Warehousing", "Wholesale",
 ] as const;
 
+// Explicit overrides for common real-world phrases that would otherwise
+// resolve to the WRONG (but still plausible) enum value via the generic
+// heuristics below. Confirmed directly against Seamless.AI's own search:
+// "legal firms" shares the word "legal" with "Legal Services" and the
+// word-overlap check below would match there, but Seamless's own tool
+// resolves that exact phrase to "Law Practice" instead -- both are real
+// categories, this is a ranking problem (which of two valid options is
+// actually right), not a missing-value one. Add entries here only when
+// there's a confirmed mismatch like this, not preemptively.
+const INDUSTRY_SYNONYMS: Record<string, string> = {
+  "law firm": "Law Practice",
+  "law firms": "Law Practice",
+  "legal firm": "Law Practice",
+  "legal firms": "Law Practice",
+  "attorney": "Law Practice",
+  "attorneys": "Law Practice",
+  "lawyer": "Law Practice",
+  "lawyers": "Law Practice",
+};
+
+function levenshteinDistance(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
 /**
  * Map a free-text industry guess (from the LLM or elsewhere) to the closest
  * real Seamless.AI industry enum value. Returns null if nothing reasonably
@@ -85,6 +119,10 @@ export function mapToValidSeamlessIndustry(guess: string): string | null {
   // Tourism"), don't block an otherwise-obvious match.
   const normalize = (s: string) => s.toLowerCase().replace(/&/g, "and").replace(/[\s,-]/g, "");
   const guessNormalized = normalize(guessLower);
+
+  // Confirmed synonym override takes priority over every heuristic below --
+  // it exists specifically because a heuristic guessed wrong for this phrase.
+  if (INDUSTRY_SYNONYMS[guessLower]) return INDUSTRY_SYNONYMS[guessLower];
 
   // Exact match first
   const exact = SEAMLESS_INDUSTRY_OPTIONS.find((opt) => opt.toLowerCase() === guessLower);
@@ -125,6 +163,24 @@ export function mapToValidSeamlessIndustry(guess: string): string | null {
       return guessWords.some((w) => optWords.has(w));
     });
     if (wordMatch) return wordMatch;
+
+    // Single-typo tolerance (e.g. "prctice" for "practice") -- catches minor
+    // misspellings that fail every exact/substring/word check above. Capped
+    // at edit distance 1 and only checked against significant words (same
+    // filter as word-overlap). Only returned when exactly ONE distinct
+    // option matches -- a fuzzy word can legitimately be one typo away from
+    // several unrelated options (e.g. "prctice" is distance 1 from both
+    // "Medical Practice" and "Law Practice" once the short, disambiguating
+    // word "law" itself gets filtered out below the significant-word length
+    // cutoff), and guessing the wrong one is worse than not guessing --
+    // dropping the industry filter still lets the search run on title alone.
+    const fuzzyMatches = new Set(
+      SEAMLESS_INDUSTRY_OPTIONS.filter((opt) => {
+        const optWords = significantWords(opt);
+        return guessWords.some((gw) => optWords.some((ow) => levenshteinDistance(gw, ow) <= 1));
+      })
+    );
+    if (fuzzyMatches.size === 1) return [...fuzzyMatches][0];
   }
 
   return null;
