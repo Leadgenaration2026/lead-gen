@@ -2124,7 +2124,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   <span className="text-sm font-medium">Generate with AI</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2"><Wand2 className="w-5 h-5" />AI Lead Generation</DialogTitle>
                   <DialogDescription>Describe what leads you want and AI will generate them</DialogDescription>
