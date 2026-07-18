@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapToValidSeamlessIndustry } from "./seamlessAI";
+import { mapToValidSeamlessIndustry, findAmbiguousIndustryMatches } from "./seamlessAI";
 
 describe("mapToValidSeamlessIndustry", () => {
   it("maps a multi-word guess to the option sharing its meaningful word (regression: 'Travel Agency' silently dropped, falling back to job-title-only search across unrelated industries like real estate/construction)", () => {
@@ -47,5 +47,21 @@ describe("mapToValidSeamlessIndustry", () => {
 
   it("does not guess when a typo is equally close to two different, unrelated options (regression: 'prctice' alone is one edit from both 'Medical Practice' and 'Law Practice' once the short word 'law' is filtered out -- guessing wrong here is worse than finding nothing)", () => {
     expect(mapToValidSeamlessIndustry("law prctice")).toBeNull();
+  });
+});
+
+describe("findAmbiguousIndustryMatches", () => {
+  it("flags a keyword that plausibly matches 2+ real, unrelated categories instead of letting the caller silently pick whichever comes first (regression: 'law' matches both 'Law Enforcement' and 'Law Practice', and mapToValidSeamlessIndustry alone would silently resolve to 'Law Enforcement' -- very likely wrong for someone searching law firms)", () => {
+    const matches = findAmbiguousIndustryMatches("law");
+    expect(matches).toContain("Law Enforcement");
+    expect(matches).toContain("Law Practice");
+    expect(matches.length).toBe(2);
+  });
+
+  it("does not flag a confirmed synonym, an exact match, or a keyword with only one plausible match as ambiguous", () => {
+    expect(findAmbiguousIndustryMatches("law firm")).toEqual([]);
+    expect(findAmbiguousIndustryMatches("Law Practice")).toEqual([]);
+    expect(findAmbiguousIndustryMatches("travel")).toEqual([]);
+    expect(findAmbiguousIndustryMatches("")).toEqual([]);
   });
 });

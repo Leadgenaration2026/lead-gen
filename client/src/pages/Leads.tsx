@@ -192,6 +192,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // can ask for a more specific keyword instead of silently finding nothing.
   const [industryKeywordInput, setIndustryKeywordInput] = useState("");
   const [industryKeywordNotFound, setIndustryKeywordNotFound] = useState(false);
+  // Populated when a keyword plausibly matches 2+ real, unrelated industries
+  // (e.g. "law" -> Law Enforcement or Law Practice) -- rather than silently
+  // picking one, the picker below auto-opens pre-filtered to these so the
+  // user chooses.
+  const [industryAmbiguousCandidates, setIndustryAmbiguousCandidates] = useState<string[]>([]);
+  const [industryComboboxSearch, setIndustryComboboxSearch] = useState("");
   const [titleKeywordInput, setTitleKeywordInput] = useState("");
   const [titleKeywordNotFound, setTitleKeywordNotFound] = useState(false);
   // True once the user has typed directly into "Your Instructions" -- until
@@ -330,6 +336,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     setIndustryManuallySet(false);
     setIndustryKeywordInput("");
     setIndustryKeywordNotFound(false);
+    setIndustryAmbiguousCandidates([]);
+    setIndustryComboboxSearch("");
     setTitlesOverride([]);
     setTitlesDetected(false);
     setTitlesManuallySet(false);
@@ -476,6 +484,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     try {
       const result = await detectIndustryFromKeywordMutation.mutateAsync({ keyword });
       if (latestIndustryKeywordRequestRef.current !== requestedFor) return;
+      if (result.candidates && result.candidates.length > 1) {
+        // Genuinely ambiguous between 2+ real categories -- don't guess,
+        // open the picker pre-filtered to these so the user chooses.
+        setIndustryOverride("");
+        setIndustryDetected(false);
+        setIndustryKeywordNotFound(false);
+        setIndustryAmbiguousCandidates(result.candidates);
+        setIndustryComboboxSearch(keyword);
+        setIndustryComboboxOpen(true);
+        return;
+      }
+      setIndustryAmbiguousCandidates([]);
       setIndustryOverride(result.industry || "");
       setIndustryDetected(true);
       setIndustryKeywordNotFound(!result.industry);
@@ -505,6 +525,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   };
 
   useEffect(() => {
+    // Clear any ambiguous-match state from a previous keyword immediately --
+    // otherwise stale candidates from an earlier search could still be shown
+    // while a new detection request for the just-edited keyword is in flight.
+    setIndustryAmbiguousCandidates([]);
     if (industryKeywordInput.trim().length < 2) {
       setIndustryOverride("");
       setIndustryDetected(false);
@@ -2251,53 +2275,106 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           onChange={(e) => setIndustryKeywordInput(e.target.value)}
                           className="mt-1.5 bg-background"
                         />
-                        <Popover open={industryComboboxOpen} onOpenChange={setIndustryComboboxOpen}>
-                          <PopoverTrigger asChild>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <Popover
+                            open={industryComboboxOpen}
+                            onOpenChange={(open) => {
+                              setIndustryComboboxOpen(open);
+                              if (!open) setIndustryComboboxSearch("");
+                            }}
+                          >
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className={
+                                  "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors " +
+                                  (industryOverride
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                    : industryAmbiguousCandidates.length > 0
+                                    ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400"
+                                    : industryKeywordNotFound
+                                    ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                                    : "border-dashed text-muted-foreground hover:text-foreground hover:bg-muted")
+                                }
+                              >
+                                {industryOverride ? (
+                                  <Check className="w-3 h-3 shrink-0" />
+                                ) : industryKeywordNotFound || industryAmbiguousCandidates.length > 0 ? (
+                                  <AlertTriangle className="w-3 h-3 shrink-0" />
+                                ) : null}
+                                <span className="truncate">
+                                  {industryOverride
+                                    ? industryOverride
+                                    : industryAmbiguousCandidates.length > 0
+                                    ? `${industryAmbiguousCandidates.length} matches — pick one`
+                                    : industryKeywordNotFound
+                                    ? "No match — will search all industries"
+                                    : "Pick an industry manually"}
+                                </span>
+                                <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-60" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="start">
+                              <Command>
+                                <CommandInput
+                                  placeholder="Search industries..."
+                                  value={industryComboboxSearch}
+                                  onValueChange={setIndustryComboboxSearch}
+                                />
+                                <CommandList>
+                                  <CommandEmpty>No industry found</CommandEmpty>
+                                  <CommandGroup>
+                                    <CommandItem
+                                      value="clear industry filter"
+                                      onSelect={() => {
+                                        setIndustryOverride("");
+                                        setIndustryManuallySet(false);
+                                        setIndustryAmbiguousCandidates([]);
+                                        setIndustryComboboxOpen(false);
+                                      }}
+                                    >
+                                      Clear (no industry filter)
+                                    </CommandItem>
+                                    {seamlessIndustries.map((ind: string) => (
+                                      <CommandItem
+                                        key={ind}
+                                        value={ind}
+                                        onSelect={() => {
+                                          setIndustryOverride(ind);
+                                          setIndustryManuallySet(true);
+                                          setIndustryKeywordNotFound(false);
+                                          setIndustryAmbiguousCandidates([]);
+                                          setIndustryComboboxOpen(false);
+                                        }}
+                                      >
+                                        {ind}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          {industryOverride && (
                             <button
                               type="button"
-                              className={
-                                "mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors " +
-                                (industryOverride
-                                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
-                                  : industryKeywordNotFound
-                                  ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
-                                  : "border-dashed text-muted-foreground hover:text-foreground hover:bg-muted")
-                              }
+                              onClick={() => {
+                                setIndustryOverride("");
+                                setIndustryManuallySet(false);
+                                setIndustryDetected(false);
+                              }}
+                              className="text-muted-foreground hover:text-red-600 p-1 shrink-0"
+                              title="Clear industry filter"
                             >
-                              {industryOverride ? (
-                                <Check className="w-3 h-3 shrink-0" />
-                              ) : industryKeywordNotFound ? (
-                                <AlertTriangle className="w-3 h-3 shrink-0" />
-                              ) : null}
-                              <span className="truncate">
-                                {industryOverride
-                                  ? industryOverride
-                                  : industryKeywordNotFound
-                                  ? "No match — will search all industries"
-                                  : "Pick an industry manually"}
-                              </span>
-                              <ChevronsUpDown className="w-3 h-3 shrink-0 opacity-60" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-80 p-0" align="start">
-                            <Command>
-                              <CommandInput placeholder="Search industries..." />
-                              <CommandList>
-                                <CommandEmpty>No industry found</CommandEmpty>
-                                <CommandGroup>
-                                  <CommandItem value="clear industry filter" onSelect={() => { setIndustryOverride(""); setIndustryManuallySet(false); setIndustryComboboxOpen(false); }}>
-                                    Clear (no industry filter)
-                                  </CommandItem>
-                                  {seamlessIndustries.map((ind: string) => (
-                                    <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryManuallySet(true); setIndustryComboboxOpen(false); }}>
-                                      {ind}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
+                          )}
+                        </div>
+                        {industryAmbiguousCandidates.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                            "{industryKeywordInput.trim()}" matches more than one industry — pick the right one from the dropdown above.
+                          </p>
+                        )}
                         {industryKeywordNotFound && (
                           <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                             That's fine — the search will still run on your job title, just across every industry.

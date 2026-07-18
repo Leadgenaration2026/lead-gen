@@ -1012,18 +1012,26 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
     detectIndustryFromKeyword: protectedProcedure
       .input(z.object({ keyword: z.string().min(2) }))
       .mutation(async ({ input }) => {
-        const { mapToValidSeamlessIndustry } = await import("./seamlessAI");
+        const { mapToValidSeamlessIndustry, findAmbiguousIndustryMatches } = await import("./seamlessAI");
+        // A keyword that plausibly matches 2+ real, unrelated categories (e.g.
+        // "law" -> Law Enforcement or Law Practice) shouldn't be silently
+        // resolved to whichever comes first -- surface every candidate so the
+        // UI can let the user pick instead.
+        const candidates = findAmbiguousIndustryMatches(input.keyword);
+        if (candidates.length > 1) {
+          return { industry: null, candidates, source: "ambiguous" as const };
+        }
         const instant = mapToValidSeamlessIndustry(input.keyword);
         if (instant) {
-          return { industry: instant, source: "instant" as const };
+          return { industry: instant, candidates: [], source: "instant" as const };
         }
         const { parseInstructionWithLLM } = await import("./seamlessAI");
         const llmResult = await parseInstructionWithLLM(input.keyword).catch(() => null);
         for (const guess of llmResult?.industries || []) {
           const mapped = mapToValidSeamlessIndustry(guess);
-          if (mapped) return { industry: mapped, source: "ai" as const };
+          if (mapped) return { industry: mapped, candidates: [], source: "ai" as const };
         }
-        return { industry: null, source: "none" as const };
+        return { industry: null, candidates: [], source: "none" as const };
       }),
 
     // Resolves a short job-title keyword (e.g. "owners") to a list of

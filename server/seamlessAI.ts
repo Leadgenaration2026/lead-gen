@@ -104,6 +104,31 @@ function levenshteinDistance(a: string, b: string): number {
 }
 
 /**
+ * Finds every Seamless.AI industry option that plausibly matches a guess via
+ * substring containment, for detecting when a keyword is genuinely ambiguous
+ * between two or more real, unrelated categories -- e.g. "law" substring-
+ * matches both "Law Enforcement" and "Law Practice", and mapToValidSeamlessIndustry
+ * would silently pick whichever happens to come first in
+ * SEAMLESS_INDUSTRY_OPTIONS (currently "Law Enforcement", which is very
+ * likely NOT what someone searching for law firms/attorneys wants). Returns
+ * an empty array when the guess is empty, has a confirmed synonym, or
+ * exactly matches an option -- none of those are ambiguous by definition --
+ * or when there's only a single substring match, since that has an obvious
+ * single answer and isn't worth interrupting the user over.
+ */
+export function findAmbiguousIndustryMatches(guess: string): string[] {
+  const guessLower = guess.trim().toLowerCase();
+  if (!guessLower) return [];
+  if (INDUSTRY_SYNONYMS[guessLower]) return [];
+  if (SEAMLESS_INDUSTRY_OPTIONS.some((opt) => opt.toLowerCase() === guessLower)) return [];
+
+  const substringMatches = SEAMLESS_INDUSTRY_OPTIONS.filter(
+    (opt) => opt.toLowerCase().includes(guessLower) || guessLower.includes(opt.toLowerCase())
+  );
+  return substringMatches.length > 1 ? substringMatches : [];
+}
+
+/**
  * Map a free-text industry guess (from the LLM or elsewhere) to the closest
  * real Seamless.AI industry enum value. Returns null if nothing reasonably
  * matches, in which case the industry filter should be dropped entirely
