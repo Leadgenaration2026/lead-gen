@@ -167,6 +167,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [industryOverride, setIndustryOverride] = useState("");
   const [industryDetected, setIndustryDetected] = useState(false);
   const [industryComboboxOpen, setIndustryComboboxOpen] = useState(false);
+  // True once the user has explicitly picked an industry themselves (as
+  // opposed to it being auto-filled from detection) -- a manual pick is
+  // "sticky" and must survive further edits to the instruction text, unlike
+  // an auto-detected suggestion which should be invalidated by them.
+  const [industryManuallySet, setIndustryManuallySet] = useState(false);
 
   // Job title suggestion -- same idea as industry above, but titles aren't a
   // fixed enum (Seamless.AI matches on relevance, up to 10 free-text titles),
@@ -174,6 +179,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [titlesOverride, setTitlesOverride] = useState<string[]>([]);
   const [titlesDetected, setTitlesDetected] = useState(false);
   const [titleInputValue, setTitleInputValue] = useState("");
+  // Same "sticky once touched by hand" idea as industryManuallySet above.
+  const [titlesManuallySet, setTitlesManuallySet] = useState(false);
 
   // Seamless.AI search -> select -> enrich preview flow
   const [seamlessPreviewDialogOpen, setSeamlessPreviewDialogOpen] = useState(false);
@@ -323,8 +330,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setGenerateLeadSetName("");
         setIndustryOverride("");
         setIndustryDetected(false);
+        setIndustryManuallySet(false);
         setTitlesOverride([]);
         setTitlesDetected(false);
+        setTitlesManuallySet(false);
         // New leads sort newest-first and land on page 1 — jump there so they're
         // visible immediately instead of only after manually navigating back.
         setCurrentPage(1);
@@ -334,8 +343,10 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setGenerateLeadSetName("");
         setIndustryOverride("");
         setIndustryDetected(false);
+        setIndustryManuallySet(false);
         setTitlesOverride([]);
         setTitlesDetected(false);
+        setTitlesManuallySet(false);
       }
       leadsQuery.refetch();
       leadSetsQuery.refetch();
@@ -454,11 +465,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
     setTitlesOverride([...titlesOverride, value]);
     setTitlesDetected(true);
+    setTitlesManuallySet(true);
     setTitleInputValue("");
   };
 
   const handleRemoveTitleChip = (title: string) => {
     setTitlesOverride(titlesOverride.filter((t) => t !== title));
+    setTitlesManuallySet(true);
   };
 
   // Score engagement (LinkedIn + website) for a batch of preview candidates that
@@ -608,6 +621,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setSeamlessPreviewDialogOpen(false);
         setInstruction("");
         setGenerateLeadSetName("");
+        setIndustryOverride("");
+        setIndustryDetected(false);
+        setIndustryManuallySet(false);
+        setTitlesOverride([]);
+        setTitlesDetected(false);
+        setTitlesManuallySet(false);
       }
 
       leadsQuery.refetch();
@@ -2098,16 +2117,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       value={instruction}
                       onChange={(e) => {
                         setInstruction(e.target.value);
-                        // Any edit invalidates the previous suggestions/choices --
-                        // otherwise a stale industry/titles from an earlier,
-                        // unrelated instruction (e.g. "Leisure, Travel &
-                        // Tourism" from a prior "travel agency owners" search)
-                        // silently carries over and gets applied to a
-                        // completely different search.
-                        setIndustryOverride("");
-                        setIndustryDetected(false);
-                        setTitlesOverride([]);
-                        setTitlesDetected(false);
+                        // Only invalidate suggestions the user hasn't actually
+                        // touched yet -- otherwise a stale AUTO-DETECTED
+                        // industry/titles from an earlier, unrelated
+                        // instruction silently carries into a new search. But
+                        // once the user has explicitly picked an industry or
+                        // added/removed a title chip themselves, that choice
+                        // is deliberate and must survive further edits to the
+                        // instruction (e.g. fixing a typo) -- clearing it here
+                        // was silently discarding manually-picked filters
+                        // right before the search ran.
+                        if (!industryManuallySet) {
+                          setIndustryOverride("");
+                          setIndustryDetected(false);
+                        }
+                        if (!titlesManuallySet) {
+                          setTitlesOverride([]);
+                          setTitlesDetected(false);
+                        }
                       }}
                       onBlur={handleDetectSearchFilters}
                       className="mt-1 min-h-24"
@@ -2136,11 +2163,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                             <CommandList>
                               <CommandEmpty>No industry found</CommandEmpty>
                               <CommandGroup>
-                                <CommandItem value="auto-detect from instructions" onSelect={() => { setIndustryOverride(""); setIndustryComboboxOpen(false); }}>
+                                <CommandItem value="auto-detect from instructions" onSelect={() => { setIndustryOverride(""); setIndustryManuallySet(false); setIndustryComboboxOpen(false); }}>
                                   Auto-detect from instructions
                                 </CommandItem>
                                 {seamlessIndustries.map((ind: string) => (
-                                  <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryComboboxOpen(false); }}>
+                                  <CommandItem key={ind} value={ind} onSelect={() => { setIndustryOverride(ind); setIndustryManuallySet(true); setIndustryComboboxOpen(false); }}>
                                     {ind}
                                   </CommandItem>
                                 ))}
