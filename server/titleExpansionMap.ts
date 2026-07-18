@@ -63,6 +63,14 @@ export const TITLE_EXPANSION_MAP: Record<string, string[]> = {
   // Consultant
   "consultant": ["Consultant", "Senior Consultant", "Management Consultant", "Business Consultant"],
   "partner": ["Partner", "Managing Partner", "Principal", "Owner"],
+
+  // Speaking/presenting -- added directly here (rather than relying solely on
+  // the LLM fallback) since this exact phrase kept coming back empty in
+  // practice despite being the flagship few-shot example in the LLM prompt,
+  // suggesting the LLM call itself isn't reliable enough to depend on for it.
+  "motivational speaker": ["Motivational Speaker", "Keynote Speaker", "Professional Speaker", "Inspirational Speaker", "Public Speaker", "Speaker", "International Speaker", "Conference Speaker", "TEDx Speaker"],
+  "keynote speaker": ["Keynote Speaker", "Motivational Speaker", "Professional Speaker", "Public Speaker", "Speaker", "International Speaker", "Conference Speaker"],
+  "public speaker": ["Public Speaker", "Speaker", "Motivational Speaker", "Keynote Speaker", "Professional Speaker"],
 };
 
 /**

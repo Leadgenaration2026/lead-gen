@@ -58,6 +58,16 @@ describe("titleExpansionMap", () => {
       expect(result).toContain("Founder");
       expect(result).toContain("CEO");
     });
+
+    it("resolves 'motivational speaker' locally without needing the LLM fallback (regression: this exact phrase kept coming back empty in practice despite being the flagship few-shot example in the LLM prompt, suggesting the LLM call itself wasn't reliable enough to depend on for it)", () => {
+      const result = expandJobTitle("motivational Speaker");
+      expect(result).toContain("Motivational Speaker");
+      expect(result).toContain("Keynote Speaker");
+      expect(result).toContain("Public Speaker");
+      expect(result.length).toBeGreaterThan(1);
+      // Plural should still match via partial matching against the singular key.
+      expect(expandJobTitle("motivational speakers")).toContain("Motivational Speaker");
+    });
   });
 
   describe("parseCompanySize", () => {
