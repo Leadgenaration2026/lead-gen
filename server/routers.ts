@@ -1036,21 +1036,35 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
     // Resolves a short job-title keyword (e.g. "owners") to a list of
     // equivalent title variants, for the dedicated Job Title Keyword box.
-    // Same instant-first, LLM-fallback pattern as detectIndustryFromKeyword.
+    // Same instant-first, LLM-fallback pattern as detectIndustryFromKeyword,
+    // plus a literal-text final fallback (see below) and an industry hint
+    // for professions Seamless.AI itself associates with a specific industry
+    // (e.g. "motivational speaker" -> Events Services).
     detectTitlesFromKeyword: protectedProcedure
       .input(z.object({ keyword: z.string().min(2) }))
       .mutation(async ({ input }) => {
         const { matchJobTitle } = await import("./titleExpansionMap");
+        const { parseInstructionWithLLM, inferIndustryFromProfession } = await import("./seamlessAI");
+        const impliedIndustry = inferIndustryFromProfession(input.keyword);
+
         const instant = matchJobTitle(input.keyword);
         if (instant && instant.length > 0) {
-          return { titles: instant, source: "instant" as const };
+          return { titles: instant, source: "instant" as const, impliedIndustry };
         }
-        const { parseInstructionWithLLM } = await import("./seamlessAI");
         const llmResult = await parseInstructionWithLLM(input.keyword).catch(() => null);
         if (llmResult?.titles.length) {
-          return { titles: llmResult.titles, source: "ai" as const };
+          return { titles: llmResult.titles, source: "ai" as const, impliedIndustry };
         }
-        return { titles: [], source: "none" as const };
+        // Neither the local map nor the LLM found a confident title variant --
+        // rather than dropping the title filter entirely (which would broaden
+        // the search to every job title, not narrow it the way the user
+        // intended), fall back to searching the keyword exactly as typed.
+        // Seamless.AI's own jobTitle filter does relevance-based matching (per
+        // docs.seamless.ai/searchcontacts), so an unusual phrase still has a
+        // real chance of matching something server-side even when our own
+        // heuristics don't recognize it as a known title.
+        const literal = input.keyword.trim().replace(/\b\w/g, (c) => c.toUpperCase());
+        return { titles: [literal], source: "literal" as const, impliedIndustry };
       }),
 
     // ═══════════════════════════════════════════════

@@ -89,6 +89,38 @@ const INDUSTRY_SYNONYMS: Record<string, string> = {
   "lawyers": "Law Practice",
 };
 
+// Confirmed profession/company-type -> industry inferences, matching what
+// Seamless.AI's own search does even though the searched phrase is a role or
+// business type, not an industry name itself -- e.g. searching "motivational
+// speaker" on Seamless.AI's own site auto-selects "Events Services" as the
+// industry, and "cleaning companies" auto-selects "Facilities Services".
+// Neither of those phrases would ever match via mapToValidSeamlessIndustry's
+// own heuristics (they don't share a meaningful word with either enum value),
+// so this is a separate, deliberately small, curated list -- only added for
+// phrases confirmed against Seamless's actual behavior, not preemptively
+// guessed. Used to suggest an industry alongside a JOB TITLE keyword (see
+// inferIndustryFromProfession), not as a general industry-keyword matcher.
+const PROFESSION_INDUSTRY_HINTS: Array<{ words: string[]; industry: string }> = [
+  { words: ["motivational", "keynote"], industry: "Events Services" },
+  { words: ["cleaning", "janitorial", "custodial"], industry: "Facilities Services" },
+];
+
+/**
+ * Suggests an industry implied by a job-title/profession keyword, for
+ * phrases where the profession itself strongly implies an industry Seamless
+ * itself associates with it (see PROFESSION_INDUSTRY_HINTS above). Returns
+ * null for anything not in that curated list -- this is a hint, not a guess,
+ * so it stays conservative rather than trying to infer an industry from
+ * every possible job title.
+ */
+export function inferIndustryFromProfession(keyword: string): string | null {
+  const words = keyword.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for (const hint of PROFESSION_INDUSTRY_HINTS) {
+    if (words.some((w) => hint.words.includes(w))) return hint.industry;
+  }
+  return null;
+}
+
 function levenshteinDistance(a: string, b: string): number {
   const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) dp[i][0] = i;

@@ -517,7 +517,17 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       if (latestTitleKeywordRequestRef.current !== requestedFor) return;
       setTitlesOverride(result.titles);
       setTitlesDetected(true);
-      setTitleKeywordNotFound(result.titles.length === 0);
+      // No known title variant matched -- the search still runs (on the
+      // keyword exactly as typed, via Seamless.AI's own relevance matching),
+      // this just flags that it's an exact-text search rather than an
+      // expanded one, so it reads differently from "found nothing at all".
+      setTitleKeywordNotFound(result.source === "literal");
+      // Suggest an industry Seamless.AI itself associates with this
+      // profession (e.g. "motivational speaker" -> Events Services), but only
+      // if the user hasn't already typed their own industry keyword.
+      if (result.impliedIndustry && !industryKeywordInput.trim()) {
+        setIndustryKeywordInput(result.impliedIndustry);
+      }
     } catch (error: any) {
       console.warn("Title keyword detection failed:", error?.message);
       setTitleKeywordNotFound(true);
@@ -2399,7 +2409,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                         {titleKeywordNotFound && (
                           <p className="text-xs text-amber-600 dark:text-amber-500 mt-1.5 flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3 shrink-0" />
-                            No title match for "{titleKeywordInput.trim()}" — try being more specific, or add titles directly below.
+                            No known title variants for "{titleKeywordInput.trim()}" — searching that exact phrase instead. Add more titles below if you want to broaden it.
                           </p>
                         )}
                         <div className="mt-2 flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10 bg-background">

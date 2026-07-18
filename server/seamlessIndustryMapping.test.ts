@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapToValidSeamlessIndustry, findAmbiguousIndustryMatches } from "./seamlessAI";
+import { mapToValidSeamlessIndustry, findAmbiguousIndustryMatches, inferIndustryFromProfession } from "./seamlessAI";
 
 describe("mapToValidSeamlessIndustry", () => {
   it("maps a multi-word guess to the option sharing its meaningful word (regression: 'Travel Agency' silently dropped, falling back to job-title-only search across unrelated industries like real estate/construction)", () => {
@@ -63,5 +63,22 @@ describe("findAmbiguousIndustryMatches", () => {
     expect(findAmbiguousIndustryMatches("Law Practice")).toEqual([]);
     expect(findAmbiguousIndustryMatches("travel")).toEqual([]);
     expect(findAmbiguousIndustryMatches("")).toEqual([]);
+  });
+});
+
+describe("inferIndustryFromProfession", () => {
+  it("suggests the industry Seamless.AI's own search associates with a profession that isn't itself an industry name (confirmed against Seamless.AI's actual behavior: searching 'motivational speaker' there auto-selects 'Events Services', 'cleaning companies' auto-selects 'Facilities Services')", () => {
+    expect(inferIndustryFromProfession("motivational speaker")).toBe("Events Services");
+    expect(inferIndustryFromProfession("motivational services")).toBe("Events Services");
+    expect(inferIndustryFromProfession("keynote speaker")).toBe("Events Services");
+    expect(inferIndustryFromProfession("cleaning company")).toBe("Facilities Services");
+    expect(inferIndustryFromProfession("cleaning services")).toBe("Facilities Services");
+    expect(inferIndustryFromProfession("janitorial")).toBe("Facilities Services");
+  });
+
+  it("does not suggest an industry for a profession with no confirmed association", () => {
+    expect(inferIndustryFromProfession("CEO")).toBeNull();
+    expect(inferIndustryFromProfession("owner")).toBeNull();
+    expect(inferIndustryFromProfession("")).toBeNull();
   });
 });
