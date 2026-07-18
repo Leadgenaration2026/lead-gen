@@ -2952,23 +2952,24 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
       {/* Leads List with Filters */}
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <CardTitle>Your Leads ({filteredLeads.length})</CardTitle>
-              <CardDescription>Manage, tag, and organize your leads</CardDescription>
-            </div>
-            <div className="flex flex-col gap-2.5 w-full sm:w-auto">
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle className="text-xl">Your Leads ({filteredLeads.length})</CardTitle>
+            <CardDescription>Manage, tag, and organize your leads</CardDescription>
+          </div>
+          <div className="flex flex-col gap-3 w-full">
             {/* Filters -- non-destructive view/search controls, visually grouped
                 in their own tinted bar so they read as one unit distinct from
-                the actions below. */}
-            <div className="flex gap-2 items-center flex-wrap p-2 rounded-lg bg-muted/40 border">
-              <div className="relative">
+                the actions below. Each control grows to fill the available
+                width instead of clustering at a fixed size, so the bar uses
+                the full width of the page rather than leaving it empty. */}
+            <div className="flex gap-3 items-center flex-wrap p-3 rounded-lg bg-muted/40 border">
+              <div className="relative flex-1 min-w-[180px]">
                 <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-48 bg-background" />
+                <Input placeholder="Search leads..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 w-full bg-background" />
               </div>
               <Select value={filterSourceListId} onValueChange={setFilterSourceListId}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="flex-1 min-w-[170px] bg-background">
                   <Layers className="w-3.5 h-3.5 mr-1.5" />
                   <SelectValue placeholder="Filter by list" />
                 </SelectTrigger>
@@ -2987,7 +2988,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     variant="outline"
                     role="combobox"
                     aria-expanded={tagComboboxOpen}
-                    className="w-44 justify-between font-normal"
+                    className="flex-1 min-w-[170px] justify-between font-normal bg-background"
                   >
                     <span className="flex items-center min-w-0">
                       <Layers className="w-3.5 h-3.5 mr-1.5 shrink-0" />
@@ -3036,7 +3037,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </PopoverContent>
               </Popover>
               <Select value={filterIndustry} onValueChange={setFilterIndustry}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="flex-1 min-w-[160px] bg-background">
                   <Building2 className="w-3.5 h-3.5 mr-1.5" />
                   <SelectValue placeholder="Filter by industry" />
                 </SelectTrigger>
@@ -3050,7 +3051,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </SelectContent>
               </Select>
               <Select value={filterHasPhone} onValueChange={setFilterHasPhone}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="flex-1 min-w-[170px] bg-background">
                   <Zap className="w-3.5 h-3.5 mr-1.5" />
                   <SelectValue placeholder="Filter by phone" />
                 </SelectTrigger>
@@ -3061,7 +3062,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </SelectContent>
               </Select>
               <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-44 bg-background">
+                <SelectTrigger className="flex-1 min-w-[170px] bg-background">
                   <ArrowUpDown className="w-3.5 h-3.5 mr-1.5" />
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
@@ -3325,7 +3326,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <Download className="w-3.5 h-3.5" />
                 Export CSV
               </Button>
-            </div>
             </div>
           </div>
         </CardHeader>
