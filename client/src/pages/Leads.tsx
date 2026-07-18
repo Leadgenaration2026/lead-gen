@@ -1285,12 +1285,17 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         matchesListFilter = !lead.leadSetId;
       } else if (filterLeadSet !== "all") {
         matchesListFilter = lead.leadSetId === parseInt(filterLeadSet);
-      } else {
-        // Both filters at their default "show everything" state. Once a lead
-        // has been tagged, it should only be found by explicitly selecting
-        // that tag (or "Unassigned"/a specific imported list) — not show up
-        // in this general default view too.
+      } else if (searchQuery.trim() || filterIndustry !== "all" || filterHasPhone !== "all") {
+        // Neither the Imported List nor Tag filter is engaged, but the user is
+        // actively searching/filtering some other way -- still show untagged
+        // leads so search results aren't wiped out by this rule.
         matchesListFilter = !lead.leadSetId;
+      } else {
+        // Nothing selected at all -- "All Imported Lists" is not a real,
+        // browsable bucket on its own; a lead should only ever be found by
+        // explicitly picking its specific list (or a specific tag, or
+        // "Unassigned"), never through a generic combined view.
+        matchesListFilter = false;
       }
       const matchesIndustry =
         filterIndustry === "all" || lead.industry === filterIndustry;
