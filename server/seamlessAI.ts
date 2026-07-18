@@ -928,23 +928,33 @@ export async function searchAndFilterSeamlessCandidates(
     console.log(`[Seamless.AI] Preview: after strict title filter: ${candidates.length} of ${before}`);
   }
 
-  // Strict industry filter: Seamless.AI's own search doesn't reliably restrict
+  // Industry filter: Seamless.AI's own search doesn't reliably restrict
   // results to the requested industry either (same unreliability documented
   // above for job titles) -- re-check each candidate's actual industry
   // client-side, canonicalizing both sides through mapToValidSeamlessIndustry
   // so wording differences (e.g. "Travel" vs "Leisure, Travel & Tourism") don't
   // cause false rejections. Without this, a search for "Travel Agency" could
   // come back full of unrelated industries Seamless returned anyway.
+  //
+  // Unlike the title filter above, a MISSING industry is given the benefit of
+  // the doubt (kept, not excluded) -- confirmed against Seamless's own docs
+  // that industry data is commonly sparse/absent and isn't used to exclude
+  // contacts on their end either. Individual professionals (e.g. "motivational
+  // speaker" searches) very often have no company-industry on file at all
+  // despite being a perfect job-title match; excluding them here is what
+  // silently zeroed out searches like that (Seamless's own tool found ~29k
+  // matches for the same query -- it isn't filtering out the industry-less
+  // ones the way our old strict check did).
   if (filters.industry?.length) {
     const targetIndustries = new Set(filters.industry as string[]);
     const before = candidates.length;
     candidates = candidates.filter((c: any) => {
       const rawIndustry = Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined);
-      if (!rawIndustry) return false; // Can't verify — exclude rather than risk a mismatch
+      if (!rawIndustry) return true; // No data to check -- benefit of the doubt, same policy as country
       const canonical = mapToValidSeamlessIndustry(rawIndustry);
-      return canonical ? targetIndustries.has(canonical) : false;
+      return canonical ? targetIndustries.has(canonical) : true; // Unrecognized industry text -- can't disprove a match either
     });
-    console.log(`[Seamless.AI] Preview: after strict industry filter: ${candidates.length} of ${before}`);
+    console.log(`[Seamless.AI] Preview: after industry filter: ${candidates.length} of ${before}`);
   }
 
   candidates = candidates.slice(0, count);

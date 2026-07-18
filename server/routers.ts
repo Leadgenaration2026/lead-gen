@@ -600,22 +600,32 @@ export const appRouter = router({
               console.log(`[Seamless.AI] After strict title filter: ${candidates.length} of ${beforeTitleFilter} contacts match requested titles`);
             }
 
-            // Strict industry filter: Seamless.AI's own search doesn't reliably
+            // Industry filter: Seamless.AI's own search doesn't reliably
             // restrict results to the requested industry either (same
             // unreliability as job titles above) -- re-check each candidate's
             // actual industry client-side, canonicalizing both sides through
             // mapToValidSeamlessIndustry so wording differences (e.g. "Travel"
-            // vs "Leisure Travel & Tourism") don't cause false rejections.
+            // vs "Leisure, Travel & Tourism") don't cause false rejections.
+            //
+            // Unlike the title filter above, a MISSING industry is given the
+            // benefit of the doubt (kept, not excluded) -- confirmed against
+            // Seamless's own docs that industry data is commonly sparse/absent
+            // and isn't used to exclude contacts on their end either.
+            // Individual professionals (e.g. "motivational speaker" searches)
+            // very often have no company-industry on file despite being a
+            // perfect job-title match; excluding them here is what silently
+            // zeroed out searches like that (Seamless's own tool found ~29k
+            // matches for the same query).
             if (filters.industry?.length) {
               const targetIndustries = new Set(filters.industry as string[]);
               const beforeIndustryFilter = candidates.length;
               candidates = candidates.filter((c: any) => {
                 const rawIndustry = Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined);
-                if (!rawIndustry) return false; // Can't verify — exclude rather than risk a mismatch
+                if (!rawIndustry) return true; // No data to check -- benefit of the doubt, same policy as country
                 const canonical = mapToValidSeamlessIndustry(rawIndustry);
-                return canonical ? targetIndustries.has(canonical) : false;
+                return canonical ? targetIndustries.has(canonical) : true; // Unrecognized industry text -- can't disprove a match either
               });
-              console.log(`[Seamless.AI] After strict industry filter: ${candidates.length} of ${beforeIndustryFilter} contacts match requested industry`);
+              console.log(`[Seamless.AI] After industry filter: ${candidates.length} of ${beforeIndustryFilter} contacts match requested industry`);
             }
 
             // Skip candidates already saved as leads (matched by Seamless.AI's own
