@@ -1107,6 +1107,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         titlesOverride: z.array(z.string()).max(10).optional(), // User-confirmed/corrected job titles
         companyNameOverride: z.string().optional(), // "Find a business's owner" lookup
         zipCode: z.string().optional(), // Same lookup -- Seamless.AI's real postal-code filter
+        companyDomainOverride: z.string().optional(), // Same lookup, by website instead of/alongside name
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
@@ -1128,7 +1129,8 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           input.industryOverride,
           input.titlesOverride,
           input.companyNameOverride,
-          input.zipCode
+          input.zipCode,
+          input.companyDomainOverride
         );
 
         if (candidates.length === 0) {

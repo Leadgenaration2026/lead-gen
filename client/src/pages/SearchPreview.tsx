@@ -58,6 +58,7 @@ export default function SearchPreview() {
   // "Find a Business's Owner" -- a separate, targeted single-company lookup,
   // distinct from the bulk instruction-driven search below.
   const [businessName, setBusinessName] = useState("");
+  const [businessWebsite, setBusinessWebsite] = useState("");
   const [businessState, setBusinessState] = useState("");
   const [businessZip, setBusinessZip] = useState("");
   // Editable title chips, same pattern as the Job Title Keyword picker in the
@@ -93,22 +94,23 @@ export default function SearchPreview() {
   };
 
   const handleFindOwner = async () => {
-    if (!businessName.trim()) return;
+    if (!businessName.trim() && !businessWebsite.trim()) return;
     setOwnerSearchError(null);
     setOwnerCandidates([]);
     setRevealedContacts({});
     try {
       const result = await findOwnerMutation.mutateAsync({
-        instruction: `Find the owner of ${businessName.trim()}`,
+        instruction: `Find the owner of ${businessName.trim() || businessWebsite.trim()}`,
         count: 10,
         country: "United States",
         state: businessState.trim() || undefined,
-        companyNameOverride: businessName.trim(),
+        companyNameOverride: businessName.trim() || undefined,
+        companyDomainOverride: businessWebsite.trim() || undefined,
         zipCode: businessZip.trim() || undefined,
         titlesOverride: ownerTitles.length > 0 ? ownerTitles : undefined,
       });
       if (result.candidates.length === 0) {
-        setOwnerSearchError(`No match found for "${businessName.trim()}" on Seamless.AI. Try without the state/ZIP to broaden it, or double-check the spelling.`);
+        setOwnerSearchError(`No match found for "${businessName.trim() || businessWebsite.trim()}" on Seamless.AI. Try without the state/ZIP to broaden it, or double-check the spelling/URL.`);
         return;
       }
       setOwnerCandidates(result.candidates);
@@ -212,14 +214,27 @@ export default function SearchPreview() {
         </p>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Business Name *</label>
-            <Input
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="e.g., Acme Plumbing"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Business Name</label>
+              <Input
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="e.g., Acme Plumbing"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Website</label>
+              <Input
+                value={businessWebsite}
+                onChange={(e) => setBusinessWebsite(e.target.value)}
+                placeholder="e.g., acmeplumbing.com"
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Enter at least one of Business Name or Website — giving both narrows the match further.
+          </p>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">State (Optional)</label>
@@ -278,7 +293,7 @@ export default function SearchPreview() {
 
           <Button
             onClick={handleFindOwner}
-            disabled={!businessName.trim() || findOwnerMutation.isPending}
+            disabled={(!businessName.trim() && !businessWebsite.trim()) || findOwnerMutation.isPending}
             className="w-full gap-2"
           >
             {findOwnerMutation.isPending ? (

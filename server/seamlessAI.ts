@@ -121,6 +121,20 @@ export function inferIndustryFromProfession(keyword: string): string | null {
   return null;
 }
 
+/**
+ * Strips a pasted URL down to the bare domain Seamless.AI's companyDomain
+ * filter expects (confirmed via docs.seamless.ai/searchcontacts: it wants
+ * "example.com", not "https://www.example.com/" or similar) -- protocol,
+ * "www.", and any path/query/hash are all removed.
+ */
+export function normalizeDomain(input: string): string {
+  let d = input.trim().toLowerCase();
+  d = d.replace(/^https?:\/\//, "");
+  d = d.replace(/^www\./, "");
+  d = d.split(/[/?#]/)[0];
+  return d;
+}
+
 function levenshteinDistance(a: string, b: string): number {
   const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
   for (let i = 0; i <= a.length; i++) dp[i][0] = i;
@@ -510,6 +524,7 @@ export async function searchContacts(
     country?: string;
     linkedinUrl?: string;
     companyName?: string[];
+    companyDomain?: string[];
     jobTitle?: string[];
     contactKeyword?: string[];
     department?: string[];
@@ -540,6 +555,7 @@ export async function searchContacts(
   
   const body: Record<string, any> = {};
   if (filters.companyName?.length) body.companyName = filters.companyName;
+  if (filters.companyDomain?.length) body.companyDomain = filters.companyDomain;
   if (filters.jobTitle?.length) body.jobTitle = filters.jobTitle;
   if (filters.contactKeyword?.length) body.contactKeyword = filters.contactKeyword;
   if (filters.department?.length) body.department = filters.department;
@@ -989,7 +1005,11 @@ export async function searchAndFilterSeamlessCandidates(
   // Seamless.AI's real postal-code filter (contactZipCode, confirmed via the
   // same docs) -- note there is no equivalent city filter in their API at
   // all, so a city name has nowhere reliable to go and isn't accepted here.
-  zipCode?: string
+  zipCode?: string,
+  // Same lookup, by website instead of/alongside company name -- Seamless.
+  // AI's real companyDomain filter (confirmed via the same docs), which
+  // accepts either on its own or both together for a tighter match.
+  companyDomainOverride?: string
 ): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (industryOverride) {
@@ -1001,11 +1021,17 @@ export async function searchAndFilterSeamlessCandidates(
   }
   if (companyNameOverride?.trim()) {
     filters.companyName = [companyNameOverride.trim()];
-    // Looking up one exact, named company -- the company name itself is
+  }
+  if (companyDomainOverride?.trim()) {
+    filters.companyDomain = [normalizeDomain(companyDomainOverride)];
+  }
+  if (companyNameOverride?.trim() || companyDomainOverride?.trim()) {
+    // Looking up one exact, named/known company -- the name/domain itself is
     // already the qualifier, and it can easily contain industry-sounding
-    // words (e.g. "Acme Travel Agency") that would otherwise make the LLM
-    // infer an industry from the instruction sentence and incorrectly
-    // narrow the search by it. Drop any inferred industry filter here.
+    // words (e.g. "Acme Travel Agency" or "acmetravelagency.com") that would
+    // otherwise make the LLM infer an industry from the instruction sentence
+    // and incorrectly narrow the search by it. Drop any inferred industry
+    // filter here.
     filters.industry = undefined;
   }
   if (zipCode?.trim()) {
