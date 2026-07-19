@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User, Globe, Linkedin, UserPlus } from "lucide-react";
 
 // Same title variants used for the "owner" keyword everywhere else in the app
 // (TITLE_EXPANSION_MAP["owner"] in server/titleExpansionMap.ts) -- duplicated
@@ -255,10 +255,50 @@ export default function SearchPreview() {
                     <p className="text-xs text-muted-foreground">
                       {[c.city, c.state, c.country].filter(Boolean).join(", ") || "—"}
                     </p>
+                    {/* Free to check, no credit spent -- confirms this is the right
+                        business before paying a credit to reveal/save the contact. */}
+                    <div className="flex items-center gap-3 mt-1.5">
+                      {c.website ? (
+                        <a
+                          href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <Globe className="w-3 h-3" />
+                          Website
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Globe className="w-3 h-3" />
+                          No website on file
+                        </span>
+                      )}
+                      {c.linkedinUrl ? (
+                        <a
+                          href={c.linkedinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <Linkedin className="w-3 h-3" />
+                          LinkedIn
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Linkedin className="w-3 h-3" />
+                          No LinkedIn on file
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {revealed ? (
                     <div className="text-right text-sm shrink-0">
-                      <p className="flex items-center justify-end gap-1.5 font-medium text-green-700 dark:text-green-500">
+                      <p className="flex items-center justify-end gap-1.5 text-xs font-medium text-green-700 dark:text-green-500 mb-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Added to your leads
+                      </p>
+                      <p className="flex items-center justify-end gap-1.5 font-medium">
                         <Mail className="w-3.5 h-3.5" />
                         {revealed.email || "No email found"}
                       </p>
@@ -271,14 +311,14 @@ export default function SearchPreview() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="shrink-0"
+                      className="shrink-0 gap-1.5"
                       onClick={() => handleRevealContact(c)}
                       disabled={revealingId === c.searchResultId}
                     >
                       {revealingId === c.searchResultId ? (
-                        <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Revealing...</>
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" />Adding...</>
                       ) : (
-                        "Reveal Contact Info (1 credit)"
+                        <><UserPlus className="w-3.5 h-3.5" />Add Lead (1 credit)</>
                       )}
                     </Button>
                   )}
