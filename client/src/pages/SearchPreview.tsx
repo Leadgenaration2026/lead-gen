@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User, Globe, Linkedin, UserPlus } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User, Globe, Linkedin, UserPlus, X } from "lucide-react";
 
 // Same title variants used for the "owner" keyword everywhere else in the app
 // (TITLE_EXPANSION_MAP["owner"] in server/titleExpansionMap.ts) -- duplicated
@@ -59,6 +60,11 @@ export default function SearchPreview() {
   const [businessName, setBusinessName] = useState("");
   const [businessState, setBusinessState] = useState("");
   const [businessZip, setBusinessZip] = useState("");
+  // Editable title chips, same pattern as the Job Title Keyword picker in the
+  // Generate Leads (AI) flow on the Leads page -- defaults to the common
+  // owner-type titles but the user can remove/add their own.
+  const [ownerTitles, setOwnerTitles] = useState<string[]>(OWNER_TITLES);
+  const [ownerTitleInput, setOwnerTitleInput] = useState("");
   const [ownerCandidates, setOwnerCandidates] = useState<OwnerCandidate[]>([]);
   const [ownerSearchError, setOwnerSearchError] = useState<string | null>(null);
   const [revealedContacts, setRevealedContacts] = useState<Record<string, RevealedContact>>({});
@@ -66,6 +72,25 @@ export default function SearchPreview() {
 
   const findOwnerMutation = trpc.leads.searchSeamlessPreview.useMutation();
   const revealContactMutation = trpc.leads.enrichSeamlessSelection.useMutation();
+
+  const handleAddOwnerTitleChip = () => {
+    const value = ownerTitleInput.trim();
+    if (!value) return;
+    if (ownerTitles.some((t) => t.toLowerCase() === value.toLowerCase())) {
+      setOwnerTitleInput("");
+      return;
+    }
+    if (ownerTitles.length >= 10) {
+      setOwnerTitleInput("");
+      return;
+    }
+    setOwnerTitles([...ownerTitles, value]);
+    setOwnerTitleInput("");
+  };
+
+  const handleRemoveOwnerTitleChip = (title: string) => {
+    setOwnerTitles(ownerTitles.filter((t) => t !== title));
+  };
 
   const handleFindOwner = async () => {
     if (!businessName.trim()) return;
@@ -80,7 +105,7 @@ export default function SearchPreview() {
         state: businessState.trim() || undefined,
         companyNameOverride: businessName.trim(),
         zipCode: businessZip.trim() || undefined,
-        titlesOverride: OWNER_TITLES,
+        titlesOverride: ownerTitles.length > 0 ? ownerTitles : undefined,
       });
       if (result.candidates.length === 0) {
         setOwnerSearchError(`No match found for "${businessName.trim()}" on Seamless.AI. Try without the state/ZIP to broaden it, or double-check the spelling.`);
@@ -216,6 +241,40 @@ export default function SearchPreview() {
           <p className="text-xs text-muted-foreground">
             Seamless.AI has no city or phone-number search of its own — state and ZIP code are the most precise location filters it supports.
           </p>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Titles to look for (up to 10)</label>
+            <div className="flex flex-wrap items-center gap-1.5 border rounded-md p-2 min-h-10">
+              {ownerTitles.map((title) => (
+                <Badge key={title} variant="secondary" className="gap-1 pr-1">
+                  {title}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveOwnerTitleChip(title)}
+                    className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+              <input
+                value={ownerTitleInput}
+                onChange={(e) => setOwnerTitleInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    handleAddOwnerTitleChip();
+                  }
+                }}
+                onBlur={handleAddOwnerTitleChip}
+                placeholder={ownerTitles.length === 0 ? "e.g., CEO, Owner, Partner — type and press Enter" : "Add another title..."}
+                className="flex-1 min-w-32 bg-transparent outline-none text-sm"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Defaults to common owner-type titles — remove any that aren't relevant, or add your own (e.g. CFO, General Manager).
+            </p>
+          </div>
 
           <Button
             onClick={handleFindOwner}
