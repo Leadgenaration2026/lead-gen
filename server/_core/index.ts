@@ -77,7 +77,8 @@ async function startServer() {
         const callsResult = await processScheduledFollowUpCalls(
           ownerSettings.retellApiKey,
           ownerSettings.retellAgentId,
-          ownerSettings.senderPhoneNumber
+          ownerSettings.senderPhoneNumber,
+          (ownerSettings as any).companyName || undefined
         );
         console.log(`[Heartbeat] Follow-up calls: ${JSON.stringify(callsResult)}`);
         res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: callsResult });

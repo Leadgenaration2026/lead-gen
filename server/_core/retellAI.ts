@@ -21,7 +21,13 @@ export interface RetellCallResponse {
 export interface RetellLeadContext {
   customerName?: string;
   customerEmail?: string;
-  companyName?: string;
+  // The LEAD's/customer's own business (e.g. the plumbing company being
+  // called), sent as "customer_company_name" -- NOT the caller's own company.
+  // This was previously named `companyName` and sent as the "company_name"
+  // variable, which the agent's script reads as "the company I'm calling
+  // FROM" -- that caused the agent to introduce itself using the customer's
+  // own business name instead of the caller's (see callerCompanyName below).
+  customerCompanyName?: string;
 }
 
 /**
@@ -34,7 +40,11 @@ export async function triggerRetellCall(
   agentId: string,
   senderPhoneNumber: string,
   triggerReason: "email_open" | "email_click",
-  leadContext?: RetellLeadContext
+  leadContext?: RetellLeadContext,
+  // The CALLER's own business name (from Settings, e.g. "Virtual Assistant
+  // Group") -- this is what the agent's "company_name" variable is meant to
+  // represent ("calling from {{company_name}}").
+  callerCompanyName?: string
 ): Promise<string | null> {
   try {
     if (!apiKey || !agentId || !senderPhoneNumber) {
@@ -43,7 +53,7 @@ export async function triggerRetellCall(
     }
 
     console.log(`[RetellAI] Creating phone call - to: ${phoneNumber}, from: ${senderPhoneNumber}, agent: ${agentId}, customer: ${leadContext?.customerName || 'unknown'}`);
-    
+
     // Build dynamic variables to pass customer context to the AI agent
     const retell_llm_dynamic_variables: Record<string, string> = {};
     if (leadContext?.customerName) {
@@ -52,8 +62,11 @@ export async function triggerRetellCall(
     if (leadContext?.customerEmail) {
       retell_llm_dynamic_variables.customer_email = leadContext.customerEmail;
     }
-    if (leadContext?.companyName) {
-      retell_llm_dynamic_variables.company_name = leadContext.companyName;
+    if (callerCompanyName) {
+      retell_llm_dynamic_variables.company_name = callerCompanyName;
+    }
+    if (leadContext?.customerCompanyName) {
+      retell_llm_dynamic_variables.customer_company_name = leadContext.customerCompanyName;
     }
 
     // Make API call to Retell.AI (v2 endpoint)
@@ -258,7 +271,8 @@ async function retryWithSecondaryPhone(callLog: any, endReason: string) {
       settings.retellAgentId,
       settings.senderPhoneNumber,
       callLog.triggerType || "email_open",
-      { customerName: lead.ownerName || undefined, customerEmail: lead.email || undefined, companyName: lead.companyName || undefined }
+      { customerName: lead.ownerName || undefined, customerEmail: lead.email || undefined, customerCompanyName: lead.companyName || undefined },
+      settings.companyName || undefined
     );
 
     if (callId) {

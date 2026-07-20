@@ -36,6 +36,7 @@ export default function SettingsPage() {
   });
 
   const [formData, setFormData] = useState({
+    companyName: "",
     retellApiKey: "",
     retellAgentId: "",
     senderPhoneNumber: "",
@@ -141,6 +142,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settingsQuery.data) {
       setFormData({
+        companyName: settingsQuery.data.companyName || "",
         retellApiKey: "",
         retellAgentId: settingsQuery.data.retellAgentId || "",
         senderPhoneNumber: settingsQuery.data.senderPhoneNumber || "",
@@ -204,6 +206,7 @@ export default function SettingsPage() {
   const handleSaveRetell = async () => {
     try {
       const payload: Record<string, any> = {
+        companyName: formData.companyName,
         retellAgentId: formData.retellAgentId,
         senderPhoneNumber: formData.senderPhoneNumber,
       };
@@ -491,6 +494,17 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Your Company Name</Label>
+                <Input
+                  placeholder="e.g., Virtual Assistant Group"
+                  value={formData.companyName}
+                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  This is YOUR business, used when the AI agent introduces itself ("calling from {formData.companyName || "your company"}") — not the lead's company being called.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   API Key

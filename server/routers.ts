@@ -66,6 +66,7 @@ const generateLeadsSchema = z.object({
 });
 
 const updateUserSettingsSchema = z.object({
+  companyName: z.string().optional(),
   retellApiKey: z.string().optional(),
   retellAgentId: z.string().optional(),
   senderPhoneNumber: z.string().optional(),
@@ -2853,6 +2854,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
       if (!settings) {
           return {
           userId: ctx.user.id,
+          companyName: "",
           retellApiKey: "",
           retellAgentId: "",
           senderPhoneNumber: "",
@@ -2890,6 +2892,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
       // Don't return sensitive data to frontend
       return {
         userId: settings.userId,
+        companyName: settings.companyName || "",
         retellAgentId: settings.retellAgentId,
         senderPhoneNumber: settings.senderPhoneNumber,
         smtpHost: settings.smtpHost,

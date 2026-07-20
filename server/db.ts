@@ -45,6 +45,7 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS responseStatus ENUM('none','accepted','replied','declined') DEFAULT 'none' NOT NULL`);
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS respondedAt TIMESTAMP NULL`);
   await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS socialDailyLimits JSON NULL`);
+  await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS companyName VARCHAR(255) NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 

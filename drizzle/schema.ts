@@ -339,6 +339,11 @@ export const socialOutreach = mysqlTable("socialOutreach", {
 export const userSettings = mysqlTable("userSettings", {
 	id: int().autoincrement().notNull(),
 	userId: int().notNull(),
+	// The user's OWN business name (e.g. "Virtual Assistant Group") -- passed to
+	// Retell.AI as the "company_name" dynamic variable so the voice agent says
+	// who it's calling FROM. Distinct from leads.companyName, which is the
+	// customer/lead's own business being called.
+	companyName: varchar({ length: 255 }),
 	retellApiKey: varchar({ length: 255 }),
 	retellAgentId: varchar({ length: 255 }),
 	senderPhoneNumber: varchar({ length: 20 }),

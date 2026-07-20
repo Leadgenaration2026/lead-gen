@@ -671,7 +671,7 @@ export async function processScheduledEmails() {
  * Process scheduled follow-up calls (called by cron job).
  * Checks for calls that are due and triggers them via Retell.AI.
  */
-export async function processScheduledFollowUpCalls(retellApiKey: string, retellAgentId: string, senderPhoneNumber: string) {
+export async function processScheduledFollowUpCalls(retellApiKey: string, retellAgentId: string, senderPhoneNumber: string, callerCompanyName?: string) {
   try {
     const now = new Date();
     console.log("[FollowUpScheduler] Processing scheduled follow-up calls at", now.toISOString());
@@ -713,7 +713,7 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
           console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
           continue;
         }
-        let leadContext: { customerName?: string; customerEmail?: string; companyName?: string } | undefined;
+        let leadContext: { customerName?: string; customerEmail?: string; customerCompanyName?: string } | undefined;
         if (campaignLead) {
           const lead = await db.getLeadById(campaignLead.leadId);
           if ((lead as any)?.unsubscribed) {
@@ -725,7 +725,7 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
             leadContext = {
               customerName: lead.ownerName,
               customerEmail: lead.email,
-              companyName: lead.companyName,
+              customerCompanyName: lead.companyName,
             };
           }
         }
@@ -740,7 +740,8 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
           retellAgentId,
           normalizedFromPhone,
           "email_open",
-          leadContext
+          leadContext,
+          callerCompanyName
         );
 
         console.log(`[FollowUpScheduler] Triggered follow-up call #${call.attemptNumber} for campaignLeadId: ${call.campaignLeadId}`);
@@ -769,7 +770,8 @@ export async function triggerCallOnFollowUpOpen(
   senderPhoneNumber: string,
   triggerType: "email_open" | "email_click",
   leadTimezone?: string,
-  leadContext?: { customerName?: string; customerEmail?: string; companyName?: string }
+  leadContext?: { customerName?: string; customerEmail?: string; customerCompanyName?: string },
+  callerCompanyName?: string
 ) {
   try {
     // Skip unsubscribed (this campaign, or globally via any other campaign) or replied leads
@@ -829,7 +831,8 @@ export async function triggerCallOnFollowUpOpen(
       retellAgentId,
       normalizedFromPhone,
       triggerType,
-      leadContext
+      leadContext,
+      callerCompanyName
     );
 
     return { success: true, callId: callResult };
