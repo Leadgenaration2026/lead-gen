@@ -67,8 +67,22 @@ function buildTimeline(lead: any): TimelineEvent[] {
     });
   }
 
-  // Email clicked
-  if (lead.initialEmail.clicked) {
+  // Email clicked -- one event per actual click recorded (trackingEvents),
+  // each showing the real destination URL, instead of a single generic
+  // "clicked a link" entry tied to the first-click timestamp only.
+  const clickEvents = (lead.trackingEvents || []).filter((t: any) => t.type === "click");
+  if (clickEvents.length > 0) {
+    for (const evt of clickEvents) {
+      events.push({
+        type: "email_clicked",
+        timestamp: evt.occurredAt,
+        label: "Link Clicked",
+        detail: evt.clickUrl ? `Clicked: ${evt.clickUrl}` : "Lead clicked a link in the email",
+        status: "success",
+      });
+    }
+  } else if (lead.initialEmail.clicked) {
+    // Fallback for older records with no individual tracking-event rows
     events.push({
       type: "email_clicked",
       timestamp: lead.initialEmail.clickedAt,

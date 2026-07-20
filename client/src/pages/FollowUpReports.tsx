@@ -585,9 +585,20 @@ export default function FollowUpReports() {
                                   {lead.initialEmail.opened && (
                                     <p className="text-xs text-purple-600 mt-0.5">Opened: {formatDate(lead.initialEmail.openedAt)}</p>
                                   )}
-                                  {lead.initialEmail.clicked && (
-                                    <p className="text-xs text-green-600 mt-0.5">Clicked: {formatDate(lead.initialEmail.clickedAt)}</p>
-                                  )}
+                                  {(() => {
+                                    const clickEvents = (lead.trackingEvents || []).filter((t: any) => t.type === "click");
+                                    if (clickEvents.length > 0) {
+                                      return clickEvents.map((evt: any, idx: number) => (
+                                        <p key={idx} className="text-xs text-green-600 mt-0.5">
+                                          Clicked{evt.clickUrl ? `: ${evt.clickUrl}` : ""} ({formatDate(evt.occurredAt)})
+                                        </p>
+                                      ));
+                                    }
+                                    if (lead.initialEmail.clicked) {
+                                      return <p className="text-xs text-green-600 mt-0.5">Clicked: {formatDate(lead.initialEmail.clickedAt)}</p>;
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </div>
 

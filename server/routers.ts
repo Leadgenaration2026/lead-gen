@@ -3178,10 +3178,14 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               callsMade: callsDone.length,
               callsPending: callsPending.length,
             },
-            // Tracking events
+            // Tracking events -- clickUrl is the actual destination link that
+            // was clicked (only meaningful for eventType "click"), so the
+            // report can show which specific link a lead clicked instead of
+            // just a generic "clicked" flag.
             trackingEvents: trackingEvents.map((t: any) => ({
               type: t.eventType,
               occurredAt: t.createdAt,
+              clickUrl: t.clickUrl || null,
             })),
           });
         }
