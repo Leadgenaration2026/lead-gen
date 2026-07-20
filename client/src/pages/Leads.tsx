@@ -3011,13 +3011,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                           <Check className={`mr-2 h-4 w-4 ${filterLeadSet === "all" ? "opacity-100" : "opacity-0"}`} />
                           All Tags
                         </CommandItem>
-                        <CommandItem
-                          value="unassigned"
-                          onSelect={() => { setFilterLeadSet("unassigned"); setTagComboboxOpen(false); }}
-                        >
-                          <Check className={`mr-2 h-4 w-4 ${filterLeadSet === "unassigned" ? "opacity-100" : "opacity-0"}`} />
-                          Unassigned
-                        </CommandItem>
+                        {/* Deliberately no "Unassigned" option here -- nearly every
+                            imported/generated lead starts untagged by design (only
+                            an explicit "Assign to Tag" sets leadSetId), so this
+                            option always showed a large, confusing pile of leads
+                            the user never tagged and didn't expect to see under a
+                            "Tags" list. The Lead Sets page still links here with
+                            ?setId=unassigned for its own "review untagged leads"
+                            stat card, so the underlying filter still works -- it's
+                            just not offered as a thing to casually click into. */}
                         {leadSets.map((set: any) => (
                           <CommandItem
                             key={set.id}
