@@ -53,10 +53,20 @@ export const searchPreviewRouter = router({
         if (input.state) {
           filters.contactState = [input.state];
         }
+        // This step only needs to show a total-available count and a small
+        // sample, not pull a full page -- Seamless.AI has no separate
+        // "count only" endpoint (the total comes bundled with the same
+        // response that returns real contact rows), and real rows returned
+        // here cost real credits (confirmed elsewhere in this codebase:
+        // ~1 credit per 10 results returned) despite this endpoint's own
+        // previous "no credits consumed" assumption. Capping this at a small
+        // preview size keeps that cost minimal instead of always pulling
+        // Seamless's full default page (up to 50) just to preview a count.
+        (filters as any).limit = 10;
 
         console.log("[SearchPreview] Filters:", JSON.stringify(filters, null, 2));
 
-        // Call Seamless.AI Search API (no enrichment)
+        // Call Seamless.AI Search API
         const response = await fetch("https://api.seamless.ai/api/client/v1/contacts/search", {
           method: "POST",
           headers: {
@@ -76,8 +86,13 @@ export const searchPreviewRouter = router({
         }
 
         const data = await response.json();
-        const totalResults = data.supplementalData?.totalResults || 0;
+        // Confirmed elsewhere in this codebase (server/seamlessAI.ts) via a
+        // live response envelope that the real field is "total", not
+        // "totalResults" -- this endpoint was reading the wrong field and
+        // would always show 0 available results regardless of the real count.
+        const totalResults = data.supplementalData?.total ?? data.supplementalData?.totalResults ?? 0;
         const nextToken = data.nextToken;
+        const retrievedCount = (data.contacts || []).length;
 
         // Generate unique searchId for this search
         const searchId = nanoid();
@@ -97,9 +112,12 @@ export const searchPreviewRouter = router({
         return {
           searchId,
           totalResults,
-          leadsRetrieved: (data.contacts || []).length,
+          leadsRetrieved: retrievedCount,
           nextToken,
-          creditsConsumed: 0, // Search consumes no credits
+          // Same rate used everywhere else in the app (~1 credit per 10
+          // results returned) -- this step DOES spend real Seamless.AI
+          // credits, it was never actually free despite the old comment here.
+          creditsConsumed: Math.ceil(retrievedCount / 10),
         };
       } catch (error) {
         console.error("[SearchPreview] Search failed:", error);

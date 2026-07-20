@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User, Globe, Linkedin, UserPlus, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Search, Download, Building2, Mail, Phone, User, Globe, Linkedin, UserPlus, X, ShieldCheck } from "lucide-react";
 
 // Same title variants used for the "owner" keyword everywhere else in the app
 // (TITLE_EXPANSION_MAP["owner"] in server/titleExpansionMap.ts) -- duplicated
@@ -30,6 +30,8 @@ type OwnerCandidate = {
 type RevealedContact = {
   email?: string;
   phoneNumber?: string;
+  bouncerStatus?: string;
+  bouncerReason?: string;
 };
 
 export default function SearchPreview() {
@@ -70,9 +72,11 @@ export default function SearchPreview() {
   const [ownerSearchError, setOwnerSearchError] = useState<string | null>(null);
   const [revealedContacts, setRevealedContacts] = useState<Record<string, RevealedContact>>({});
   const [revealingId, setRevealingId] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   const findOwnerMutation = trpc.leads.searchSeamlessPreview.useMutation();
   const revealContactMutation = trpc.leads.enrichSeamlessSelection.useMutation();
+  const bouncerVerifyMutation = trpc.verification.verifyEmails.useMutation();
 
   const handleAddOwnerTitleChip = () => {
     const value = ownerTitleInput.trim();
@@ -149,6 +153,30 @@ export default function SearchPreview() {
       setOwnerSearchError(error?.message || error?.data?.message || "Failed to reveal contact info");
     } finally {
       setRevealingId(null);
+    }
+  };
+
+  // Checks the revealed email's deliverability via Bouncer -- lets the user
+  // confirm it's real before deciding whether to keep this lead or delete it
+  // (deleting also excludes it from ever resurfacing in a future search, see
+  // leads.delete).
+  const handleVerifyWithBouncer = async (searchResultId: string, email: string) => {
+    setVerifyingId(searchResultId);
+    try {
+      const result = await bouncerVerifyMutation.mutateAsync({ emails: [email] });
+      const verified = result.results?.[0];
+      setRevealedContacts((prev) => ({
+        ...prev,
+        [searchResultId]: {
+          ...prev[searchResultId],
+          bouncerStatus: verified?.status || "unknown",
+          bouncerReason: verified?.subStatus || undefined,
+        },
+      }));
+    } catch (error: any) {
+      setOwnerSearchError(error?.message || error?.data?.message || "Bouncer verification failed");
+    } finally {
+      setVerifyingId(null);
     }
   };
 
@@ -380,6 +408,37 @@ export default function SearchPreview() {
                         <Phone className="w-3.5 h-3.5" />
                         {revealed.phoneNumber || "No phone found"}
                       </p>
+                      {revealed.email && (
+                        revealed.bouncerStatus ? (
+                          <p className={
+                            "flex items-center justify-end gap-1.5 mt-1.5 text-xs font-medium " +
+                            (revealed.bouncerStatus === "deliverable"
+                              ? "text-green-700 dark:text-green-500"
+                              : revealed.bouncerStatus === "risky"
+                              ? "text-amber-600 dark:text-amber-500"
+                              : revealed.bouncerStatus === "undeliverable"
+                              ? "text-red-600 dark:text-red-500"
+                              : "text-muted-foreground")
+                          }>
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            Bouncer: {revealed.bouncerStatus}{revealed.bouncerReason ? ` (${revealed.bouncerReason})` : ""}
+                          </p>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-1.5 h-7 px-2 text-xs gap-1"
+                            onClick={() => handleVerifyWithBouncer(c.searchResultId, revealed.email!)}
+                            disabled={verifyingId === c.searchResultId}
+                          >
+                            {verifyingId === c.searchResultId ? (
+                              <><Loader2 className="w-3 h-3 animate-spin" />Checking...</>
+                            ) : (
+                              <><ShieldCheck className="w-3 h-3" />Verify with Bouncer</>
+                            )}
+                          </Button>
+                        )
+                      )}
                     </div>
                   ) : (
                     <Button
@@ -502,7 +561,7 @@ export default function SearchPreview() {
                       <strong>Leads Retrieved:</strong> {searchMutation.data.leadsRetrieved}
                     </p>
                     <p>
-                      <strong>Credits Consumed:</strong> {searchMutation.data.creditsConsumed} (None!)
+                      <strong>Credits Consumed:</strong> {searchMutation.data.creditsConsumed}
                     </p>
                   </div>
                 </div>
