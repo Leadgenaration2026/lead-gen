@@ -1325,6 +1325,148 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         };
       }),
 
+    // Reveals ONE candidate's real email/phone (spends the 1 enrichment
+    // credit) WITHOUT saving it as a lead -- lets the caller check the email
+    // via Bouncer (verification.verifyEmails) before deciding whether to
+    // commit it, instead of the lead already being saved before that choice
+    // is made. Pair with saveEnrichedSeamlessLead below to actually save it,
+    // which does NOT re-enrich (no extra credit spent on save).
+    previewEnrichSeamlessCandidate: protectedProcedure
+      .input(z.object({
+        searchResultId: z.string(),
+        ownerName: z.string(),
+        companyName: z.string(),
+        jobTitle: z.string().optional(),
+        email: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+        country: z.string().optional(),
+        website: z.string().optional(),
+        industry: z.string().optional(),
+        linkedinUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.seamlessApiKey) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Seamless.AI API key not configured. Go to Settings → Seamless.ai to add your API key.",
+          });
+        }
+
+        const { enrichSeamlessCandidatesToLeadData } = await import("./seamlessAI");
+        const { leadsData, seamlessCreditsSpent } =
+          await enrichSeamlessCandidatesToLeadData(settings.seamlessApiKey, [input]);
+
+        if (leadsData.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "This contact didn't have a complete phone number, email, and name after enrichment.",
+          });
+        }
+
+        return { leadData: leadsData[0], enrichmentCreditsUsed: seamlessCreditsSpent };
+      }),
+
+    // Saves ONE already-enriched contact (from previewEnrichSeamlessCandidate
+    // above) as a lead. Deliberately does NOT call Seamless.AI again -- the
+    // data is already enriched, so no additional credit is spent here.
+    saveEnrichedSeamlessLead: protectedProcedure
+      .input(z.object({
+        leadSetName: z.string().optional(),
+        leadData: z.object({
+          companyName: z.string(),
+          ownerName: z.string(),
+          jobTitle: z.string().optional(),
+          email: z.string(),
+          phoneNumber: z.string(),
+          website: z.string().optional(),
+          industry: z.string().optional(),
+          companySize: z.string().optional(),
+          timezone: z.string().optional(),
+          city: z.string().optional(),
+          state: z.string().optional(),
+          country: z.string().optional(),
+          linkedinUrl: z.string().optional(),
+          seamlessId: z.string().optional(),
+          enrichmentCreditsUsed: z.number().optional(),
+        }),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const leadData = input.leadData;
+
+        // Dedup by email against existing leads
+        if (leadData.email) {
+          const existingLeads = await db.getLeadsByEmails([leadData.email], ctx.user.id);
+          if (existingLeads.length > 0) {
+            return { success: true, alreadyExists: true, message: "This contact is already in your system." };
+          }
+        }
+
+        // Always file into a named list, even if the user didn't type one --
+        // otherwise the lead is saved with no leadSetId at all and never
+        // shows up under any "Imported List" filter.
+        const resolvedLeadSetName = input.leadSetName?.trim() ||
+          `Seamless Import - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+        let leadSetId: number | null = null;
+        {
+          const existingSets = await db.getLeadSetsByUserId(ctx.user.id);
+          const existing = existingSets.find((s) => s.name.toLowerCase() === resolvedLeadSetName.toLowerCase());
+          if (existing) {
+            leadSetId = existing.id;
+          } else {
+            leadSetId = await db.createLeadSet({
+              userId: ctx.user.id,
+              name: resolvedLeadSetName,
+              description: `Manually selected from Seamless.AI search`,
+              type: "list",
+            });
+          }
+        }
+
+        await db.createLead({
+          companyName: leadData.companyName || "Unknown",
+          ownerName: leadData.ownerName || "Unknown",
+          jobTitle: leadData.jobTitle || undefined,
+          email: leadData.email || "",
+          phoneNumber: leadData.phoneNumber || "",
+          website: leadData.website,
+          industry: leadData.industry,
+          companySize: leadData.companySize || undefined,
+          timezone: leadData.timezone || "America/New_York",
+          city: leadData.city || undefined,
+          state: leadData.state || undefined,
+          country: leadData.country || undefined,
+          linkedinUrl: leadData.linkedinUrl || undefined,
+          seamlessId: leadData.seamlessId || undefined,
+          instagramUrl: undefined,
+          facebookUrl: undefined,
+          userId: ctx.user.id,
+          status: "new",
+          // Same reasoning as enrichSeamlessSelection above -- deliberately
+          // not setting leadSetId so this shows up under its imported list.
+          sourceListId: leadSetId || undefined,
+          enrichmentCreditsUsed: leadData.enrichmentCreditsUsed || 0,
+        });
+
+        if (leadData.seamlessId) {
+          setImmediate(async () => {
+            try {
+              const justCreated = await db.getLeadsBySeamlessIds([leadData.seamlessId!], ctx.user.id);
+              const idsToScore = justCreated.map((l: any) => l.id);
+              if (idsToScore.length > 0) {
+                const { scoreLeadsBatch } = await import("./engagementScoring");
+                await scoreLeadsBatch(idsToScore);
+              }
+            } catch (e: any) {
+              console.warn("[Engagement] Single Seamless.AI lead scoring failed:", e.message);
+            }
+          });
+        }
+
+        return { success: true, alreadyExists: false };
+      }),
+
     // Score engagement (LinkedIn profile signals + website liveness) for unsaved
     // Seamless.AI preview candidates, before the user decides whether to enrich/
     // save them. Uses the raw linkedinUrl/website already present pre-enrichment

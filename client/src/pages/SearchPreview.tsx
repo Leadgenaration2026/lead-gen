@@ -27,11 +27,31 @@ type OwnerCandidate = {
   linkedinUrl?: string;
 };
 
+type EnrichedLeadData = {
+  companyName: string;
+  ownerName: string;
+  jobTitle?: string;
+  email: string;
+  phoneNumber: string;
+  website?: string;
+  industry?: string;
+  companySize?: string;
+  timezone?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  linkedinUrl?: string;
+  seamlessId?: string;
+  enrichmentCreditsUsed?: number;
+};
+
 type RevealedContact = {
   email?: string;
   phoneNumber?: string;
   bouncerStatus?: string;
   bouncerReason?: string;
+  leadData: EnrichedLeadData;
+  added: boolean;
 };
 
 export default function SearchPreview() {
@@ -75,8 +95,10 @@ export default function SearchPreview() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   const findOwnerMutation = trpc.leads.searchSeamlessPreview.useMutation();
-  const revealContactMutation = trpc.leads.enrichSeamlessSelection.useMutation();
+  const revealContactMutation = trpc.leads.previewEnrichSeamlessCandidate.useMutation();
+  const saveLeadMutation = trpc.leads.saveEnrichedSeamlessLead.useMutation();
   const bouncerVerifyMutation = trpc.verification.verifyEmails.useMutation();
+  const [addingId, setAddingId] = useState<string | null>(null);
 
   const handleAddOwnerTitleChip = () => {
     const value = ownerTitleInput.trim();
@@ -123,30 +145,32 @@ export default function SearchPreview() {
     }
   };
 
+  // Reveals the real email/phone (spends the 1 enrichment credit) but does
+  // NOT save a lead yet -- that's a deliberate separate step below
+  // (handleAddToLeads), so the email can be checked via Bouncer first
+  // instead of the lead already existing before that choice is made.
   const handleRevealContact = async (candidate: OwnerCandidate) => {
     setRevealingId(candidate.searchResultId);
     try {
       const result = await revealContactMutation.mutateAsync({
-        leadSetName: `Business Owner Lookup - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-        candidates: [{
-          searchResultId: candidate.searchResultId,
-          ownerName: candidate.ownerName,
-          companyName: candidate.companyName,
-          jobTitle: candidate.jobTitle,
-          city: candidate.city,
-          state: candidate.state,
-          country: candidate.country,
-          website: candidate.website,
-          industry: candidate.industry,
-          linkedinUrl: candidate.linkedinUrl,
-        }],
+        searchResultId: candidate.searchResultId,
+        ownerName: candidate.ownerName,
+        companyName: candidate.companyName,
+        jobTitle: candidate.jobTitle,
+        city: candidate.city,
+        state: candidate.state,
+        country: candidate.country,
+        website: candidate.website,
+        industry: candidate.industry,
+        linkedinUrl: candidate.linkedinUrl,
       });
-      const enriched = result.leads?.[0];
       setRevealedContacts((prev) => ({
         ...prev,
         [candidate.searchResultId]: {
-          email: enriched?.email || undefined,
-          phoneNumber: enriched?.phoneNumber || undefined,
+          email: result.leadData.email || undefined,
+          phoneNumber: result.leadData.phoneNumber || undefined,
+          leadData: result.leadData,
+          added: false,
         },
       }));
     } catch (error: any) {
@@ -157,9 +181,8 @@ export default function SearchPreview() {
   };
 
   // Checks the revealed email's deliverability via Bouncer -- lets the user
-  // confirm it's real before deciding whether to keep this lead or delete it
-  // (deleting also excludes it from ever resurfacing in a future search, see
-  // leads.delete).
+  // confirm it's real BEFORE adding it as a lead, rather than only finding
+  // out after it's already saved.
   const handleVerifyWithBouncer = async (searchResultId: string, email: string) => {
     setVerifyingId(searchResultId);
     try {
@@ -177,6 +200,27 @@ export default function SearchPreview() {
       setOwnerSearchError(error?.message || error?.data?.message || "Bouncer verification failed");
     } finally {
       setVerifyingId(null);
+    }
+  };
+
+  // Actually saves the already-enriched contact as a lead -- deliberately a
+  // separate, explicit step from revealing it, so verifying with Bouncer
+  // first is a real option, not an afterthought once the lead already exists.
+  const handleAddToLeads = async (searchResultId: string, leadData: EnrichedLeadData) => {
+    setAddingId(searchResultId);
+    try {
+      await saveLeadMutation.mutateAsync({
+        leadSetName: `Business Owner Lookup - ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+        leadData,
+      });
+      setRevealedContacts((prev) => ({
+        ...prev,
+        [searchResultId]: { ...prev[searchResultId], added: true },
+      }));
+    } catch (error: any) {
+      setOwnerSearchError(error?.message || error?.data?.message || "Failed to add lead");
+    } finally {
+      setAddingId(null);
     }
   };
 
@@ -396,10 +440,12 @@ export default function SearchPreview() {
                   </div>
                   {revealed ? (
                     <div className="text-right text-sm shrink-0">
-                      <p className="flex items-center justify-end gap-1.5 text-xs font-medium text-green-700 dark:text-green-500 mb-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Added to your leads
-                      </p>
+                      {revealed.added && (
+                        <p className="flex items-center justify-end gap-1.5 text-xs font-medium text-green-700 dark:text-green-500 mb-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Added to your leads
+                        </p>
+                      )}
                       <p className="flex items-center justify-end gap-1.5 font-medium">
                         <Mail className="w-3.5 h-3.5" />
                         {revealed.email || "No email found"}
@@ -439,6 +485,21 @@ export default function SearchPreview() {
                           </Button>
                         )
                       )}
+                      {!revealed.added && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 gap-1.5"
+                          onClick={() => handleAddToLeads(c.searchResultId, revealed.leadData)}
+                          disabled={addingId === c.searchResultId}
+                        >
+                          {addingId === c.searchResultId ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" />Adding...</>
+                          ) : (
+                            <><UserPlus className="w-3.5 h-3.5" />Add to Leads</>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <Button
@@ -449,9 +510,9 @@ export default function SearchPreview() {
                       disabled={revealingId === c.searchResultId}
                     >
                       {revealingId === c.searchResultId ? (
-                        <><Loader2 className="w-3.5 h-3.5 animate-spin" />Adding...</>
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" />Revealing...</>
                       ) : (
-                        <><UserPlus className="w-3.5 h-3.5" />Add Lead (1 credit)</>
+                        <><UserPlus className="w-3.5 h-3.5" />Reveal Contact Info (1 credit)</>
                       )}
                     </Button>
                   )}
