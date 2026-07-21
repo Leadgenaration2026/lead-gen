@@ -46,6 +46,9 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS respondedAt TIMESTAMP NULL`);
   await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS socialDailyLimits JSON NULL`);
   await database.execute(sql`ALTER TABLE userSettings ADD COLUMN IF NOT EXISTS companyName VARCHAR(255) NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS meetingBooked TINYINT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS meetingBookedAt TIMESTAMP NULL`);
+  await database.execute(sql`ALTER TABLE emailTrackingEvents ADD COLUMN IF NOT EXISTS clickUrl VARCHAR(2048) NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 
