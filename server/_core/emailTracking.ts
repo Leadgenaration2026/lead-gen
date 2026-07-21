@@ -437,6 +437,7 @@ export function registerEmailTrackingRoutes(app: Express) {
       } else if (payload?.campaignLeadId) {
         // Direct ID format
         await db.markLeadReplied(payload.campaignLeadId, "positive");
+        await db.markMeetingBooked(payload.campaignLeadId);
         await db.cancelPendingFollowUps(payload.campaignLeadId);
         loggedCampaignLeadId = payload.campaignLeadId;
         console.log(`[EmailTracking] Cal.com booking: marked campaignLead ${payload.campaignLeadId} as positive`);
@@ -458,6 +459,7 @@ export function registerEmailTrackingRoutes(app: Express) {
         const activeCampaignLeads = await db.findCampaignLeadsByEmail(inviteeEmail);
         for (const cl of activeCampaignLeads) {
           await db.markLeadReplied(cl.id, "positive");
+          await db.markMeetingBooked(cl.id);
           await db.cancelPendingFollowUps(cl.id);
           loggedCampaignLeadId = cl.id;
           console.log(`[EmailTracking] Cal.com booking: marked campaignLead ${cl.id} as positive (email: ${inviteeEmail})`);

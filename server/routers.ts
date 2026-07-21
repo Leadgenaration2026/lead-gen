@@ -3117,6 +3117,10 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             phone: lead.phoneNumber,
             tag: lead.tag || null,
             leadSetName,
+            // Meeting booked via Cal.com/Calendly webhook -- distinct from a
+            // plain email reply (see markMeetingBooked in db.ts).
+            meetingBooked: (cl as any).meetingBooked || false,
+            meetingBookedAt: (cl as any).meetingBookedAt || null,
             // Initial email status
             initialEmail: {
               sent: cl.emailSent,
@@ -3208,6 +3212,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const totalBounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
         const totalReplied = campaignLeadsList.filter((cl: any) => cl.replied).length;
         const totalUnsubscribed = campaignLeadsList.filter((cl: any) => cl.unsubscribed).length;
+        const totalMeetingsBooked = campaignLeadsList.filter((cl: any) => cl.meetingBooked).length;
 
         // Social outreach stats for this campaign
         let socialOutreachStats = { totalSent: 0, totalAccepted: 0, totalPending: 0, byPlatform: { linkedin: { sent: 0, accepted: 0, pending: 0 }, instagram: { sent: 0, accepted: 0, pending: 0 }, facebook: { sent: 0, accepted: 0, pending: 0 } } };
@@ -3266,6 +3271,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             totalBounced,
             totalReplied,
             totalUnsubscribed,
+            totalMeetingsBooked,
             socialOutreach: socialOutreachStats,
           },
           leads: report,
@@ -4355,6 +4361,7 @@ Respond in this exact JSON format:
       let totalCalls = 0;
       let totalReplied = 0;
       let totalUnsubscribed = 0;
+      let totalMeetingsBooked = 0;
       const campaignMetrics: Array<{
         id: number;
         name: string;
@@ -4367,6 +4374,7 @@ Respond in this exact JSON format:
         bounced: number;
         replied: number;
         unsubscribed: number;
+        meetingsBooked: number;
         openRate: number;
         clickRate: number;
         bounceRate: number;
@@ -4383,6 +4391,7 @@ Respond in this exact JSON format:
         const bounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
         const replied = campaignLeadsList.filter((cl: any) => cl.replied).length;
         const unsubscribed = campaignLeadsList.filter((cl: any) => cl.unsubscribed).length;
+        const meetingsBooked = campaignLeadsList.filter((cl: any) => cl.meetingBooked).length;
 
         totalSent += sent;
         totalOpened += opened;
@@ -4390,6 +4399,7 @@ Respond in this exact JSON format:
         totalCalls += calls;
         totalReplied += replied;
         totalUnsubscribed += unsubscribed;
+        totalMeetingsBooked += meetingsBooked;
 
         campaignMetrics.push({
           id: campaign.id,
@@ -4403,6 +4413,7 @@ Respond in this exact JSON format:
           bounced,
           replied,
           unsubscribed,
+          meetingsBooked,
           openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
           clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
           bounceRate: sent > 0 ? Math.round((bounced / sent) * 100) : 0,
@@ -4450,9 +4461,11 @@ Respond in this exact JSON format:
           // Global opt-outs (leads.unsubscribed), not just per-campaign --
           // a lead can unsubscribe once and that blocks all future campaigns.
           totalUnsubscribed: (allLeads as any[]).filter((l: any) => l.unsubscribed).length,
+          meetingsBooked: totalMeetingsBooked,
           overallOpenRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
           overallClickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
           overallReplyRate: totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0,
+          overallMeetingRate: totalSent > 0 ? Math.round((totalMeetingsBooked / totalSent) * 100) : 0,
           socialOutreach: socialTotals,
         },
         campaigns: campaignMetrics,

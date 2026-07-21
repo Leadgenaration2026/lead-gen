@@ -28,6 +28,7 @@ import {
   RefreshCw,
   MessageSquare,
   StopCircle,
+  CalendarCheck,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
@@ -35,7 +36,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Eye, FileText } from "lucide-react";
 
 type TimelineEvent = {
-  type: "email_sent" | "email_opened" | "email_clicked" | "call_triggered" | "call_completed" | "call_failed" | "call_no_answer" | "replied" | "unsubscribed" | "follow_up_email" | "follow_up_call";
+  type: "email_sent" | "email_opened" | "email_clicked" | "call_triggered" | "call_completed" | "call_failed" | "call_no_answer" | "replied" | "meeting_booked" | "unsubscribed" | "follow_up_email" | "follow_up_call";
   timestamp: Date | string | null;
   label: string;
   detail?: string;
@@ -99,6 +100,17 @@ function buildTimeline(lead: any): TimelineEvent[] {
       timestamp: lead.initialEmail.repliedAt,
       label: "Reply Received",
       detail: lead.initialEmail.responseStatus === "positive" ? "Lead replied positively — follow-ups stopped" : "Lead replied — follow-ups stopped",
+      status: "success",
+    });
+  }
+
+  // Meeting booked (Cal.com/Calendly webhook) -- distinct from a plain reply
+  if (lead.meetingBooked) {
+    events.push({
+      type: "meeting_booked",
+      timestamp: lead.meetingBookedAt,
+      label: "Meeting Booked",
+      detail: "Lead booked a meeting via the scheduling link",
       status: "success",
     });
   }
@@ -191,6 +203,7 @@ function getEventIcon(type: TimelineEvent["type"]) {
     case "call_failed": return <PhoneOff className="w-4 h-4" />;
     case "call_no_answer": return <PhoneOff className="w-4 h-4" />;
     case "replied": return <Reply className="w-4 h-4" />;
+    case "meeting_booked": return <CalendarCheck className="w-4 h-4" />;
     case "unsubscribed": return <Ban className="w-4 h-4" />;
     case "follow_up_email": return <Mail className="w-4 h-4" />;
     case "follow_up_call": return <Phone className="w-4 h-4" />;
@@ -321,6 +334,11 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
             {lead.initialEmail.replied && (
               <Badge variant="outline" className="gap-1 text-xs border-emerald-200 text-emerald-700 bg-emerald-50">
                 <Reply className="w-3 h-3" /> Replied
+              </Badge>
+            )}
+            {lead.meetingBooked && (
+              <Badge variant="outline" className="gap-1 text-xs border-teal-200 text-teal-700 bg-teal-50">
+                <CalendarCheck className="w-3 h-3" /> Meeting Booked
               </Badge>
             )}
             {lead.initialCall.triggered && (
@@ -686,6 +704,20 @@ export default function CampaignDetail() {
               </Card>
               <Card>
                 <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-teal-600">{(report.summary as any).totalMeetingsBooked || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Meetings Booked</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-teal-500">
+                    {report.summary.totalEmailsSent > 0 ? Math.round((((report.summary as any).totalMeetingsBooked || 0) / report.summary.totalEmailsSent) * 100) : 0}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">Meeting Rate</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
                   <p className="text-2xl font-bold text-gray-600">{(report.summary as any).totalUnsubscribed || 0}</p>
                   <p className="text-xs text-muted-foreground mt-1">Unsubscribed</p>
                 </CardContent>
@@ -708,9 +740,10 @@ export default function CampaignDetail() {
                     { label: "Calls Made", value: report.summary.totalCallsMade, total: report.summary.totalEmailsClicked || report.summary.totalEmailsOpened || 1, color: "bg-orange-500" },
                     { label: "Bounced", value: report.summary.totalBounced || 0, total: report.summary.totalEmailsSent || 1, color: "bg-red-500" },
                     { label: "Replied", value: report.summary.totalReplied || 0, total: report.summary.totalEmailsSent || 1, color: "bg-emerald-500" },
+                    { label: "Meetings Booked", value: (report.summary as any).totalMeetingsBooked || 0, total: report.summary.totalEmailsSent || 1, color: "bg-teal-500" },
                   ].map((step) => (
                     <div key={step.label} className="flex items-center gap-3">
-                      <span className="text-sm w-24 text-muted-foreground">{step.label}</span>
+                      <span className="text-sm w-28 shrink-0 text-muted-foreground">{step.label}</span>
                       <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
                         <div
                           className={`h-full ${step.color} rounded-full transition-all duration-500 flex items-center justify-end pr-2`}

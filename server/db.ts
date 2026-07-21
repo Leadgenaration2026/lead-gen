@@ -995,6 +995,19 @@ export async function markLeadReplied(campaignLeadId: number, responseStatus: st
   } as any).where(eq(campaignLeads.id, campaignLeadId));
 }
 
+// Distinct from markLeadReplied -- a Cal.com/Calendly booking webhook calls
+// both (booking is also treated as a positive reply for follow-up
+// cancellation), but this flag lets the report show "booked a meeting"
+// separately from "replied to the email".
+export async function markMeetingBooked(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignLeads).set({
+    meetingBooked: true,
+    meetingBookedAt: new Date(),
+  } as any).where(eq(campaignLeads.id, campaignLeadId));
+}
+
 export async function isLeadUnsubscribed(campaignLeadId: number): Promise<boolean> {
   const database = await getDb();
   if (!database) return false;

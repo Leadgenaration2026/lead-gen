@@ -45,6 +45,11 @@ export const campaignLeads = mysqlTable("campaignLeads", {
 	senderEmail: varchar({ length: 255 }),
 	messageId: varchar({ length: 500 }),
 	threadId: varchar({ length: 500 }),
+	// Set only by an actual Cal.com/Calendly booking webhook -- distinct from
+	// `replied` (which a positive email reply also sets) so the report can
+	// show whether a lead replied vs. actually booked a meeting.
+	meetingBooked: tinyint().default(0).notNull(),
+	meetingBookedAt: timestamp({ mode: 'string' }),
 });
 
 export const campaignTemplates = mysqlTable("campaignTemplates", {

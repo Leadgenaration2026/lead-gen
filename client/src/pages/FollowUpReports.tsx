@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe, UserX } from "lucide-react";
+import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe, UserX, CalendarCheck } from "lucide-react";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 
 export default function FollowUpReports() {
@@ -188,6 +188,16 @@ export default function FollowUpReports() {
                   <span className="text-xs font-medium text-muted-foreground">Replied</span>
                 </div>
                 <div className="text-2xl font-bold text-emerald-600">{(report.summary as any).totalReplied || 0}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <CalendarCheck className="w-4 h-4 text-teal-600" />
+                  <span className="text-xs font-medium text-muted-foreground">Meetings Booked</span>
+                </div>
+                <div className="text-2xl font-bold text-teal-600">{(report.summary as any).totalMeetingsBooked || 0}</div>
               </CardContent>
             </Card>
 

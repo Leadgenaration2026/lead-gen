@@ -14,6 +14,7 @@ vi.mock("./db", () => ({
   updateCampaign: vi.fn(),
   createEmailTrackingEvent: vi.fn(),
   markLeadReplied: vi.fn(),
+  markMeetingBooked: vi.fn(),
   markLeadUnsubscribed: vi.fn(),
   cancelPendingFollowUps: vi.fn(),
   findCampaignLeadsByEmail: vi.fn(),
