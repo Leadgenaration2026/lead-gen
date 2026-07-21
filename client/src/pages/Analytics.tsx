@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, BarChart3, Mail, MousePointerClick, Phone, TrendingUp, Users, Send, Eye, Globe, Linkedin, Instagram, Facebook, CheckCircle, Clock, Reply } from "lucide-react";
+import { Loader2, BarChart3, Mail, MousePointerClick, Phone, TrendingUp, Users, Send, Eye, Globe, Linkedin, Instagram, Facebook, CheckCircle, Clock, Reply, UserX } from "lucide-react";
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -159,7 +159,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Secondary KPIs */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6 text-center">
             <p className="text-3xl font-bold text-blue-600">{overview?.totals.campaigns || 0}</p>
@@ -176,6 +176,15 @@ export default function AnalyticsPage() {
           <CardContent className="pt-6 text-center">
             <p className="text-3xl font-bold text-purple-600">{overview?.totals.emailsOpened || 0}</p>
             <p className="text-sm text-muted-foreground mt-1">Emails Opened</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="text-3xl font-bold text-red-600 flex items-center justify-center gap-1.5">
+              <UserX className="w-6 h-6" />
+              {(overview?.totals as any)?.totalUnsubscribed || 0}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">Unsubscribed</p>
           </CardContent>
         </Card>
       </div>

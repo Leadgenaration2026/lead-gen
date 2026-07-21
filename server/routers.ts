@@ -3207,6 +3207,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         const totalEmailsPending = report.reduce((sum, r) => sum + r.summary.emailsPending, 0);
         const totalBounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
         const totalReplied = campaignLeadsList.filter((cl: any) => cl.replied).length;
+        const totalUnsubscribed = campaignLeadsList.filter((cl: any) => cl.unsubscribed).length;
 
         // Social outreach stats for this campaign
         let socialOutreachStats = { totalSent: 0, totalAccepted: 0, totalPending: 0, byPlatform: { linkedin: { sent: 0, accepted: 0, pending: 0 }, instagram: { sent: 0, accepted: 0, pending: 0 }, facebook: { sent: 0, accepted: 0, pending: 0 } } };
@@ -3264,6 +3265,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             totalEmailsPending,
             totalBounced,
             totalReplied,
+            totalUnsubscribed,
             socialOutreach: socialOutreachStats,
           },
           leads: report,
@@ -4031,8 +4033,13 @@ Respond in this exact JSON format:
         // Add a [TEST] prefix to subject
         const testSubject = `[TEST PREVIEW] ${input.subject}`;
         const testBanner = `<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#92400e;"><strong>\u26A0\uFE0F Test Preview</strong> \u2014 This is a preview of how your email will look. The actual email sent to the lead will not include this banner.</div>`;
-        // Convert plain text to HTML if needed, append signature
-        const htmlBody = testBanner + plainTextToHtml(input.body) + getSignatureHtml(signature);
+        // Real sends append a working unsubscribe link built from the actual
+        // lead/tracking token (see campaigns.launch / email.sendIndividual) --
+        // there's no real lead here, so this is a non-functional placeholder
+        // just so the test email actually shows what the recipient will see.
+        const unsubscribePlaceholder = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="#" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+        // Convert plain text to HTML if needed, append signature + unsubscribe placeholder
+        const htmlBody = testBanner + plainTextToHtml(input.body) + getSignatureHtml(signature) + unsubscribePlaceholder;
 
         try {
           const testReplyTo = settings.replyToEmail || "nitin@virtualassistant-group.com";
@@ -4115,7 +4122,8 @@ Respond in this exact JSON format:
               auth: { user: account.username, pass: account.password },
             });
             const accountBanner = `<div style="background:#dbeafe;border:1px solid #3b82f6;border-radius:6px;padding:12px 16px;margin-bottom:20px;font-family:sans-serif;font-size:14px;color:#1e40af;"><strong>\u2709\uFE0F Sent via: ${account.label}</strong> &mdash; ${account.senderEmail}</div>`;
-            const htmlBody = accountBanner + plainTextToHtml(input.body) + getSignatureHtml(signature);
+            const unsubscribePlaceholder = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="#" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
+            const htmlBody = accountBanner + plainTextToHtml(input.body) + getSignatureHtml(signature) + unsubscribePlaceholder;
             await transporter.sendMail({
               from: `"${account.senderName}" <${account.senderEmail}>`,
               to: recipientEmail,
@@ -4346,6 +4354,7 @@ Respond in this exact JSON format:
       let totalClicked = 0;
       let totalCalls = 0;
       let totalReplied = 0;
+      let totalUnsubscribed = 0;
       const campaignMetrics: Array<{
         id: number;
         name: string;
@@ -4357,6 +4366,7 @@ Respond in this exact JSON format:
         calls: number;
         bounced: number;
         replied: number;
+        unsubscribed: number;
         openRate: number;
         clickRate: number;
         bounceRate: number;
@@ -4372,12 +4382,14 @@ Respond in this exact JSON format:
         const calls = campaignLeadsList.filter((cl: any) => cl.callTriggered).length;
         const bounced = campaignLeadsList.filter((cl: any) => cl.emailBounced).length;
         const replied = campaignLeadsList.filter((cl: any) => cl.replied).length;
+        const unsubscribed = campaignLeadsList.filter((cl: any) => cl.unsubscribed).length;
 
         totalSent += sent;
         totalOpened += opened;
         totalClicked += clicked;
         totalCalls += calls;
         totalReplied += replied;
+        totalUnsubscribed += unsubscribed;
 
         campaignMetrics.push({
           id: campaign.id,
@@ -4390,6 +4402,7 @@ Respond in this exact JSON format:
           calls,
           bounced,
           replied,
+          unsubscribed,
           openRate: sent > 0 ? Math.round((opened / sent) * 100) : 0,
           clickRate: sent > 0 ? Math.round((clicked / sent) * 100) : 0,
           bounceRate: sent > 0 ? Math.round((bounced / sent) * 100) : 0,
@@ -4434,6 +4447,9 @@ Respond in this exact JSON format:
           emailsClicked: totalClicked,
           callsMade: totalCalls,
           emailsReplied: totalReplied,
+          // Global opt-outs (leads.unsubscribed), not just per-campaign --
+          // a lead can unsubscribe once and that blocks all future campaigns.
+          totalUnsubscribed: (allLeads as any[]).filter((l: any) => l.unsubscribed).length,
           overallOpenRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
           overallClickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
           overallReplyRate: totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0,

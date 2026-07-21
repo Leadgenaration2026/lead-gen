@@ -160,6 +160,16 @@ export function EmailPreviewDialog({
                     })}
                   </div>
                 )}
+
+                {/* Unsubscribe footer -- every real send appends a real,
+                    working version of this (see routers.ts campaigns.launch/
+                    email.sendIndividual); shown here as a placeholder link so
+                    the preview actually reflects what the recipient sees,
+                    since this dialog doesn't have a real lead/tracking token
+                    to build a working one from. */}
+                <p style={{ fontSize: "11px", color: "#999", textAlign: "center", marginTop: "24px" }}>
+                  <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "#999", textDecoration: "underline" }}>Unsubscribe</a> from future emails
+                </p>
               </div>
             </div>
 

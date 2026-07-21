@@ -654,6 +654,12 @@ export default function CampaignDetail() {
                   <p className="text-xs text-muted-foreground mt-1">Reply Rate</p>
                 </CardContent>
               </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4 text-center">
+                  <p className="text-2xl font-bold text-gray-600">{(report.summary as any).totalUnsubscribed || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Unsubscribed</p>
+                </CardContent>
+              </Card>
             </div>
           )}
 

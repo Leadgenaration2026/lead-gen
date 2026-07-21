@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe } from "lucide-react";
+import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe, UserX } from "lucide-react";
 
 export default function FollowUpReports() {
   const { user } = useAuth();
@@ -197,6 +197,16 @@ export default function FollowUpReports() {
                   <span className="text-xs font-medium text-muted-foreground">Bounced</span>
                 </div>
                 <div className="text-2xl font-bold text-red-600">{(report.summary as any).totalBounced || 0}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 shadow-sm">
+              <CardContent className="pt-4 pb-3 px-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <UserX className="w-4 h-4 text-gray-500" />
+                  <span className="text-xs font-medium text-muted-foreground">Unsubscribed</span>
+                </div>
+                <div className="text-2xl font-bold text-gray-600">{(report.summary as any).totalUnsubscribed || 0}</div>
               </CardContent>
             </Card>
           </div>
