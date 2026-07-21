@@ -44,24 +44,70 @@ const FOLLOW_UP_CALL_SCHEDULE = [
   { dayOffset: 27, hour: 10 },  // Day after email 7
 ];
 
+// Calls represent OUR business hours (Eastern Time), not the lead's own
+// timezone -- confirmed this is the intended behavior (calls only ever run
+// 10 AM - 6 PM Eastern regardless of where the lead is).
+const CALL_WINDOW_START_HOUR = 10;
+const CALL_WINDOW_END_HOUR = 18;
+const CALL_TIMEZONE = "America/New_York";
+
 /**
- * Get the current hour in the lead's local timezone.
- * Used to ensure calls are only made between 10 AM - 5 PM lead time.
+ * Returns the hour-of-day (0-23) for `date` as rendered in `timezone`.
+ * Explicitly forces hourCycle "h23" -- `hour12: false` alone can render
+ * midnight as "24" instead of "0" depending on the ICU locale data, which
+ * would silently break any hour < 10 comparison at midnight.
  */
-function getLeadLocalHour(timezone: string): number {
+export function getHourInTimezone(date: Date, timezone: string): number {
   try {
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       hour: "numeric",
-      hour12: false,
+      hourCycle: "h23",
     });
-    const parts = formatter.formatToParts(new Date());
+    const parts = formatter.formatToParts(date);
     const hourPart = parts.find((p) => p.type === "hour");
     return parseInt(hourPart?.value || "12", 10);
   } catch {
     // Default to noon if timezone is invalid (safe to call)
     return 12;
   }
+}
+
+/**
+ * Builds the UTC instant corresponding to `hour`:00 in `timezone` on the
+ * calendar date of `baseDate` (in that timezone) plus `daysOffset` days.
+ * Tries both plausible UTC hours for that local hour (Eastern is UTC-5
+ * standard / UTC-4 daylight) and picks whichever actually renders as `hour`
+ * in the target timezone for that specific date, so it's correct across DST
+ * transitions rather than assuming a fixed offset.
+ */
+export function easternDateAtHour(baseDate: Date, daysOffset: number, hour: number): Date {
+  const baseDateStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CALL_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(baseDate);
+  const [y, m, d] = baseDateStr.split("-").map(Number);
+  for (const utcHour of [hour + 4, hour + 5]) {
+    const candidate = new Date(Date.UTC(y, m - 1, d + daysOffset, utcHour, 0, 0, 0));
+    if (getHourInTimezone(candidate, CALL_TIMEZONE) === hour) return candidate;
+  }
+  // Fallback (shouldn't happen): assume standard time (UTC-5)
+  return new Date(Date.UTC(y, m - 1, d + daysOffset, hour + 5, 0, 0, 0));
+}
+
+/**
+ * Rolls `from` forward to the next instant within the 10 AM - 6 PM Eastern
+ * call window, if it isn't already inside it. Same Eastern calendar day at
+ * 10 AM if `from` is before the window; the next Eastern calendar day at
+ * 10 AM if at/after 6 PM.
+ */
+export function nextEasternBusinessSlot(from: Date): Date {
+  const hour = getHourInTimezone(from, CALL_TIMEZONE);
+  if (hour >= CALL_WINDOW_START_HOUR && hour < CALL_WINDOW_END_HOUR) return from;
+  const daysOffset = hour < CALL_WINDOW_START_HOUR ? 0 : 1;
+  return easternDateAtHour(from, daysOffset, CALL_WINDOW_START_HOUR);
 }
 
 /**
@@ -196,9 +242,11 @@ export async function scheduleFollowUpCalls(
 
     for (let i = 0; i < FOLLOW_UP_CALL_SCHEDULE.length; i++) {
       const schedule = FOLLOW_UP_CALL_SCHEDULE[i];
-      const scheduledDate = new Date(now);
-      scheduledDate.setDate(scheduledDate.getDate() + schedule.dayOffset);
-      scheduledDate.setHours(schedule.hour, 0, 0, 0);
+      // Deliberately built via easternDateAtHour, not Date.setHours() (which
+      // operates in the SERVER's own local timezone, not Eastern -- on a
+      // server running in UTC, setHours(10, ...) actually landed at 10 AM
+      // UTC, i.e. 5-6 AM Eastern, well before business hours).
+      const scheduledDate = easternDateAtHour(now, schedule.dayOffset, schedule.hour);
 
       await db.createFollowUpCall({
         campaignLeadId,
@@ -681,11 +729,17 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
 
     for (const call of dueCalls) {
       try {
-        // Check if lead's local time is between 10 AM - 5 PM
-        const leadTimezone = call.leadTimezone || "America/New_York";
-        const leadLocalHour = getLeadLocalHour(leadTimezone);
-        if (leadLocalHour < 10 || leadLocalHour >= 17) {
-          console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - lead local time is ${leadLocalHour}:00 (${leadTimezone}), outside 10AM-5PM window`);
+        // Calls only ever run 10 AM - 6 PM Eastern -- this is a final safety
+        // check (the scheduled time should already be inside the window; this
+        // only matters if the cron itself was delayed past 6 PM). Reschedule
+        // to the next valid Eastern slot rather than silently dropping the
+        // call, which the old "just skip" version did -- that could lose the
+        // call entirely if the cron missed its window.
+        const easternHour = getHourInTimezone(now, CALL_TIMEZONE);
+        if (easternHour < CALL_WINDOW_START_HOUR || easternHour >= CALL_WINDOW_END_HOUR) {
+          const rescheduledFor = nextEasternBusinessSlot(now);
+          await db.updateFollowUpCall(call.id, { scheduledFor: rescheduledFor });
+          console.log(`[FollowUpScheduler] Call for campaignLeadId: ${call.campaignLeadId} is due but it's ${easternHour}:00 Eastern (outside 10AM-6PM) -- rescheduled to ${rescheduledFor.toISOString()}`);
           continue;
         }
 
@@ -759,41 +813,34 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
 }
 
 /**
- * Trigger a Retell.AI call when a follow-up email is opened.
- * This is the primary call trigger mechanism.
+ * Schedule a Retell.AI call for 2 minutes after a follow-up email is opened
+ * or clicked, adjusted into the 10 AM - 6 PM Eastern call window if that
+ * lands outside it. This is the primary call trigger mechanism -- it does
+ * NOT call immediately (the lead needs a moment to actually read the email
+ * first) and does NOT call Retell.AI directly; it creates a "scheduled"
+ * followUpCalls row that the existing processScheduledFollowUpCalls cron
+ * (running every few minutes) picks up and actually places, once due --
+ * that cron already re-fetches lead context and settings fresh at call time,
+ * so nothing needs to be passed through here beyond what identifies the call.
  */
 export async function triggerCallOnFollowUpOpen(
   campaignLeadId: number,
   leadPhone: string,
-  retellApiKey: string,
-  retellAgentId: string,
-  senderPhoneNumber: string,
-  triggerType: "email_open" | "email_click",
-  leadTimezone?: string,
-  leadContext?: { customerName?: string; customerEmail?: string; customerCompanyName?: string },
-  callerCompanyName?: string
+  triggerType: "email_open" | "email_click"
 ) {
   try {
     // Skip unsubscribed (this campaign, or globally via any other campaign) or replied leads
     const campaignLead = await db.getCampaignLeadById(campaignLeadId);
     if (campaignLead?.unsubscribed || campaignLead?.replied) {
-      console.log(`[FollowUpScheduler] Skipping instant call for campaignLeadId: ${campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
+      console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
       return { success: false, reason: campaignLead.replied ? "replied" : "unsubscribed" };
     }
     if (campaignLead) {
       const lead = await db.getLeadById(campaignLead.leadId);
       if ((lead as any)?.unsubscribed) {
-        console.log(`[FollowUpScheduler] Skipping instant call for campaignLeadId: ${campaignLeadId} - lead globally unsubscribed`);
+        console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - lead globally unsubscribed`);
         return { success: false, reason: "unsubscribed" };
       }
-    }
-
-    // Check if lead's local time is between 10 AM - 5 PM
-    const timezone = leadTimezone || "America/New_York";
-    const leadLocalHour = getLeadLocalHour(timezone);
-    if (leadLocalHour < 10 || leadLocalHour >= 17) {
-      console.log(`[FollowUpScheduler] Skipping instant call for campaignLeadId: ${campaignLeadId} - lead local time is ${leadLocalHour}:00 (${timezone}), outside 10AM-5PM window`);
-      return { success: false, reason: "outside_business_hours" };
     }
 
     // Check if any previous call for this campaign lead was answered
@@ -803,41 +850,30 @@ export async function triggerCallOnFollowUpOpen(
     );
 
     if (wasAnswered) {
-      console.log(`[FollowUpScheduler] Lead already answered a call. Skipping for campaignLeadId: ${campaignLeadId}`);
+      console.log(`[FollowUpScheduler] Lead already answered a call. Not scheduling another for campaignLeadId: ${campaignLeadId}`);
       return { success: false, reason: "already_answered" };
     }
 
-    // Normalize phone numbers
+    // Wait 2 minutes to give the lead time to actually read the email, then
+    // only within the 10 AM - 6 PM Eastern call window -- if that lands
+    // outside it, push to 10 AM Eastern the next day instead of skipping.
+    const scheduledFor = nextEasternBusinessSlot(new Date(Date.now() + 2 * 60 * 1000));
+
     const normalizedPhone = normalizePhoneNumber(leadPhone);
-    const normalizedFromPhone = normalizePhoneNumber(senderPhoneNumber);
-
-    console.log(`[FollowUpScheduler] Triggering call on follow-up open - to: ${normalizedPhone}, from: ${normalizedFromPhone}`);
-
-    // Create a follow-up call record
     const existingCalls = allCalls.length;
     await db.createFollowUpCall({
       campaignLeadId,
       attemptNumber: existingCalls + 1,
       phoneNumber: normalizedPhone,
-      status: "initiated",
-      initiatedAt: new Date(),
+      status: "scheduled",
+      scheduledFor,
     });
 
-    // Trigger the Retell.AI call with customer context for the AI agent
-    const callResult = await triggerRetellCall(
-      campaignLeadId,
-      normalizedPhone,
-      retellApiKey,
-      retellAgentId,
-      normalizedFromPhone,
-      triggerType,
-      leadContext,
-      callerCompanyName
-    );
+    console.log(`[FollowUpScheduler] Scheduled call for campaignLeadId: ${campaignLeadId} at ${scheduledFor.toISOString()} (2 min after ${triggerType}, adjusted to 10AM-6PM Eastern)`);
 
-    return { success: true, callId: callResult };
+    return { success: true, scheduledFor };
   } catch (error) {
-    console.error("[FollowUpScheduler] Error triggering call on follow-up open:", error);
+    console.error("[FollowUpScheduler] Error scheduling call on follow-up open:", error);
     return { success: false, error: String(error) };
   }
 }

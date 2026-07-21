@@ -3018,15 +3018,22 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
       const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
       const { jobs } = await listHeartbeatJobs(sessionToken);
       const existing = jobs.find((j) => j.name === FOLLOW_UP_HEARTBEAT_NAME);
+      // Every 2 minutes, not 15 -- follow-up calls are meant to fire ~2
+      // minutes after an email open/click, so polling only every 15 minutes
+      // meant the actual delay could be anywhere from 2 to ~17 minutes.
+      const desiredCron = "0 */2 * * * *";
       if (existing) {
-        if (!existing.isEnable) {
-          await updateHeartbeatJob(existing.taskUid, { enable: true }, sessionToken);
+        const patch: { enable?: boolean; cron?: string } = {};
+        if (!existing.isEnable) patch.enable = true;
+        if (existing.cronExpression !== desiredCron) patch.cron = desiredCron;
+        if (Object.keys(patch).length > 0) {
+          await updateHeartbeatJob(existing.taskUid, patch, sessionToken);
         }
         return { success: true };
       }
       await createHeartbeatJob({
         name: FOLLOW_UP_HEARTBEAT_NAME,
-        cron: "0 */15 * * * *", // every 15 minutes
+        cron: desiredCron,
         path: "/api/scheduled/process-emails",
         description: "Processes due follow-up emails, follow-up calls, and one-off scheduled emails",
       }, sessionToken);

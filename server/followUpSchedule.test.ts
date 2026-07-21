@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getFollowUpCallScheduleDescription, getFollowUpEmailScheduleDescription, normalizePhoneNumber } from "./_core/followUpScheduler";
+import { getFollowUpCallScheduleDescription, getFollowUpEmailScheduleDescription, normalizePhoneNumber, getHourInTimezone, easternDateAtHour, nextEasternBusinessSlot } from "./_core/followUpScheduler";
+
+function fmtEastern(d: Date) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }).format(d);
+}
 
 describe("Follow-Up Email Schedule", () => {
   it("should have exactly 7 follow-up emails", () => {
@@ -85,5 +89,63 @@ describe("Phone Number Normalization", () => {
 
   it("should handle empty string", () => {
     expect(normalizePhoneNumber("")).toBe("");
+  });
+});
+
+describe("Eastern Time hour extraction (getHourInTimezone)", () => {
+  it("correctly reads midnight as hour 0, not 24 (regression: hour12: false alone can render midnight as '24' depending on ICU locale data, silently breaking any hour < 10 comparison)", () => {
+    // 2026-07-16T04:00:00Z is exactly midnight Eastern (EDT, UTC-4) in summer
+    expect(getHourInTimezone(new Date("2026-07-16T04:00:00Z"), "America/New_York")).toBe(0);
+  });
+
+  it("reads standard daytime hours correctly", () => {
+    expect(getHourInTimezone(new Date("2026-07-15T18:00:00Z"), "America/New_York")).toBe(14); // 2 PM EDT
+  });
+});
+
+describe("Eastern business-hours scheduling (easternDateAtHour / nextEasternBusinessSlot)", () => {
+  it("builds 10 AM and 6 PM Eastern correctly in winter (EST, UTC-5)", () => {
+    const base = new Date("2026-01-15T12:00:00Z");
+    expect(fmtEastern(easternDateAtHour(base, 0, 10))).toContain("10:00 AM");
+    expect(fmtEastern(easternDateAtHour(base, 0, 18))).toContain("6:00 PM");
+  });
+
+  it("builds 10 AM and 6 PM Eastern correctly in summer (EDT, UTC-4)", () => {
+    const base = new Date("2026-07-15T12:00:00Z");
+    expect(fmtEastern(easternDateAtHour(base, 0, 10))).toContain("10:00 AM");
+    expect(fmtEastern(easternDateAtHour(base, 0, 18))).toContain("6:00 PM");
+  });
+
+  it("is correct across the US spring-forward DST transition", () => {
+    // Mar 8, 2026 is when US clocks spring forward -- by noon UTC that day
+    // Eastern has already switched to EDT.
+    const base = new Date("2026-03-08T12:00:00Z");
+    expect(fmtEastern(easternDateAtHour(base, 0, 10))).toContain("10:00 AM");
+  });
+
+  it("leaves a time already inside the 10 AM - 6 PM Eastern window unchanged", () => {
+    const midday = new Date("2026-07-15T18:02:00Z"); // 2:02 PM EDT
+    expect(nextEasternBusinessSlot(midday)).toEqual(midday);
+  });
+
+  it("rolls a time before 10 AM Eastern forward to 10 AM the SAME day (regression: midnight misread as hour 24 previously rolled this to the wrong day)", () => {
+    const earlyMorning = new Date("2026-07-15T13:00:00Z"); // 9:00 AM EDT
+    expect(fmtEastern(nextEasternBusinessSlot(earlyMorning))).toBe("Jul 15, 2026, 10:00 AM");
+
+    const midnight = new Date("2026-07-16T04:02:00Z"); // 12:02 AM EDT
+    expect(fmtEastern(nextEasternBusinessSlot(midnight))).toBe("Jul 16, 2026, 10:00 AM");
+  });
+
+  it("rolls a time at/after 6 PM Eastern forward to 10 AM the NEXT day", () => {
+    const pastWindow = new Date("2026-07-15T22:05:00Z"); // 6:05 PM EDT
+    expect(fmtEastern(nextEasternBusinessSlot(pastWindow))).toBe("Jul 16, 2026, 10:00 AM");
+
+    const exactlySix = new Date("2026-07-15T22:00:00Z"); // 6:00 PM EDT (boundary, excluded)
+    expect(fmtEastern(nextEasternBusinessSlot(exactlySix))).toBe("Jul 16, 2026, 10:00 AM");
+  });
+
+  it("keeps a time exactly at 10 AM Eastern unchanged (boundary, included)", () => {
+    const exactlyTen = new Date("2026-07-15T14:00:00Z"); // 10:00 AM EDT
+    expect(nextEasternBusinessSlot(exactlyTen)).toEqual(exactlyTen);
   });
 });

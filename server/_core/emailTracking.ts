@@ -81,24 +81,17 @@ export function registerEmailTrackingRoutes(app: Express) {
           console.log(`[EmailTracking] Retell check - lead: ${!!lead}, phone: ${lead?.phoneNumber}, apiKey: ${!!settings?.retellApiKey}, agentId: ${settings?.retellAgentId}, fromPhone: ${settings?.senderPhoneNumber}`);
           
           if (lead && lead.phoneNumber && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
-            // Normalize phone numbers to E.164 format
+            // Normalize phone number to E.164 format
             const normalizedLeadPhone = normalizePhoneNumber(lead.phoneNumber);
-            const normalizedFromPhone = normalizePhoneNumber(settings.senderPhoneNumber);
-            
-            console.log(`[EmailTracking] Triggering Retell.AI call - to: ${normalizedLeadPhone}, from: ${normalizedFromPhone}, agent: ${settings.retellAgentId}`);
-            
+
+            console.log(`[EmailTracking] Scheduling Retell.AI call - to: ${normalizedLeadPhone}, agent: ${settings.retellAgentId}`);
+
             const result = await triggerCallOnFollowUpOpen(
               campaignLead.id,
               normalizedLeadPhone,
-              settings.retellApiKey,
-              settings.retellAgentId,
-              normalizedFromPhone,
-              'email_open',
-              (lead as any).timezone || undefined,
-              { customerName: lead.ownerName, customerEmail: lead.email, customerCompanyName: lead.companyName },
-              (settings as any).companyName || undefined
+              'email_open'
             );
-            
+
             if (result.success) {
               // Mark call as triggered (for tracking purposes)
               if (!campaignLead.callTriggered) {
@@ -187,22 +180,15 @@ export function registerEmailTrackingRoutes(app: Express) {
             
             if (lead && lead.phoneNumber && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
               const normalizedLeadPhone = normalizePhoneNumber(lead.phoneNumber);
-              const normalizedFromPhone = normalizePhoneNumber(settings.senderPhoneNumber);
-              
-              console.log(`[EmailTracking] Triggering Retell.AI call on click - to: ${normalizedLeadPhone}, from: ${normalizedFromPhone}`);
-              
+
+              console.log(`[EmailTracking] Scheduling Retell.AI call on click - to: ${normalizedLeadPhone}`);
+
               const result = await triggerCallOnFollowUpOpen(
                 campaignLead.id,
                 normalizedLeadPhone,
-                settings.retellApiKey,
-                settings.retellAgentId,
-                normalizedFromPhone,
-                'email_click',
-                (lead as any).timezone || undefined,
-                { customerName: lead.ownerName, customerEmail: lead.email, customerCompanyName: lead.companyName },
-                (settings as any).companyName || undefined
+                'email_click'
               );
-              
+
               if (result.success) {
                 if (!campaignLead.callTriggered) {
                     await db.updateCampaignLead(campaignLead.id, {
