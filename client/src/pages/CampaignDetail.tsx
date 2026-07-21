@@ -233,6 +233,19 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
   const timeline = buildTimeline(lead);
   const engagementScore = (lead.initialEmail.opened ? 1 : 0) + (lead.initialEmail.clicked ? 2 : 0) + (lead.initialCall.status === "completed" ? 3 : 0);
 
+  // Most recent actually-sent email for this lead, so "View Email" in the
+  // collapsed header always has something useful to show without requiring
+  // the user to expand the card first -- prefer the initial email, else the
+  // latest sent follow-up.
+  const latestSentFollowUp = (lead.followUpEmails || [])
+    .filter((e: any) => e.emailBody && ["sent", "opened", "clicked"].includes(e.status))
+    .sort((a: any, b: any) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0];
+  const lastSentEmail = lead.initialEmail.sent && lead.initialEmail.emailBody
+    ? { subject: lead.initialEmail.subject, body: lead.initialEmail.emailBody, senderEmail: lead.initialEmail.senderEmail }
+    : latestSentFollowUp
+      ? { subject: latestSentFollowUp.subject, body: latestSentFollowUp.emailBody, senderEmail: undefined }
+      : null;
+
   return (
     <Card className={`transition-all duration-200 ${isExpanded ? "ring-2 ring-primary/20" : "hover:shadow-md"}`}>
       <CardHeader className="cursor-pointer pb-3" onClick={onToggle}>
@@ -318,6 +331,23 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
               }`}>
                 <Phone className="w-3 h-3" /> {lead.initialCall.status === "completed" ? "Called" : lead.initialCall.status}
               </Badge>
+            )}
+            {lastSentEmail && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <EmailPreviewDialog
+                  subject={lastSentEmail.subject || "(No subject)"}
+                  body={lastSentEmail.body}
+                  recipientName={lead.leadName}
+                  recipientEmail={lead.email}
+                  recipientCompany={lead.companyName}
+                  senderEmail={lastSentEmail.senderEmail}
+                  trigger={
+                    <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                      <Eye className="w-3.5 h-3.5" /> View Email
+                    </Button>
+                  }
+                />
+              </div>
             )}
             {/* Engagement score indicator */}
             <div className={`w-2 h-2 rounded-full ${
