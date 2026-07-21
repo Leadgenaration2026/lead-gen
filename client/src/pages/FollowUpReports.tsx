@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe, UserX } from "lucide-react";
+import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 
 export default function FollowUpReports() {
   const { user } = useAuth();
@@ -296,6 +297,7 @@ export default function FollowUpReports() {
                           <TableHead className="font-semibold">Sent Date</TableHead>
                           <TableHead className="font-semibold">Opened</TableHead>
                           <TableHead className="font-semibold">Clicked</TableHead>
+                          <TableHead className="font-semibold text-center">Email</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -310,7 +312,7 @@ export default function FollowUpReports() {
                                   Initial
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">Campaign email</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{lead.initialEmail.subject || "Campaign email"}</TableCell>
                               <TableCell>
                                 {lead.initialEmail.sent
                                   ? getEmailStatusBadge(lead.initialEmail.clicked ? "clicked" : lead.initialEmail.opened ? "opened" : "sent")
@@ -319,6 +321,23 @@ export default function FollowUpReports() {
                               <TableCell className="text-sm">{formatDate(lead.initialEmail.sentAt)}</TableCell>
                               <TableCell className="text-sm">{formatDate(lead.initialEmail.openedAt)}</TableCell>
                               <TableCell className="text-sm">{formatDate(lead.initialEmail.clickedAt)}</TableCell>
+                              <TableCell className="text-center">
+                                {lead.initialEmail.emailBody && (
+                                  <EmailPreviewDialog
+                                    subject={lead.initialEmail.subject || "(No subject)"}
+                                    body={lead.initialEmail.emailBody}
+                                    recipientName={lead.leadName}
+                                    recipientEmail={lead.email}
+                                    recipientCompany={lead.companyName}
+                                    senderEmail={lead.initialEmail.senderEmail || undefined}
+                                    trigger={
+                                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                        <Eye className="w-4 h-4 text-muted-foreground" />
+                                      </Button>
+                                    }
+                                  />
+                                )}
+                              </TableCell>
                             </TableRow>
                             {/* Follow-up Emails */}
                             {lead.followUpEmails.map((email: any) => (
@@ -335,13 +354,29 @@ export default function FollowUpReports() {
                                 <TableCell className="text-sm">{formatDate(email.sentAt)}</TableCell>
                                 <TableCell className="text-sm">{formatDate(email.openedAt)}</TableCell>
                                 <TableCell className="text-sm">{formatDate(email.clickedAt)}</TableCell>
+                                <TableCell className="text-center">
+                                  {email.emailBody && (
+                                    <EmailPreviewDialog
+                                      subject={email.subject || "(No subject)"}
+                                      body={email.emailBody}
+                                      recipientName={lead.leadName}
+                                      recipientEmail={lead.email}
+                                      recipientCompany={lead.companyName}
+                                      trigger={
+                                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                          <Eye className="w-4 h-4 text-muted-foreground" />
+                                        </Button>
+                                      }
+                                    />
+                                  )}
+                                </TableCell>
                               </TableRow>
                             ))}
                           </>
                         ))}
                         {report.leads.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                               No emails sent yet for this campaign
                             </TableCell>
                           </TableRow>

@@ -93,13 +93,14 @@ export function registerEmailTrackingRoutes(app: Express) {
             );
 
             if (result.success) {
-              // Mark call as triggered (for tracking purposes)
-              if (!campaignLead.callTriggered) {
-                await db.updateCampaignLead(event.campaignLeadId, {
-                  callTriggered: 1 as any,
-                });
-              }
-              console.log(`[EmailTracking] Retell.AI call triggered successfully for campaignLead ${event.campaignLeadId}`);
+              // NOTE: this only means the call was successfully SCHEDULED (a
+              // "scheduled" followUpCalls row was created for ~2 min from now,
+              // per the business-hours delay). callTriggered is intentionally
+              // NOT set here -- it's set by triggerRetellCall() in retellAI.ts
+              // only once Retell's API actually confirms the call was placed,
+              // so the campaign report can't show "call made" for a call that
+              // was merely queued and never actually reached Retell.
+              console.log(`[EmailTracking] Retell.AI call scheduled for campaignLead ${event.campaignLeadId}`);
             } else {
               console.log(`[EmailTracking] Retell.AI call not triggered: ${result.reason || result.error}`);
             }
@@ -190,12 +191,10 @@ export function registerEmailTrackingRoutes(app: Express) {
               );
 
               if (result.success) {
-                if (!campaignLead.callTriggered) {
-                    await db.updateCampaignLead(campaignLead.id, {
-                      callTriggered: 1 as any,
-                    });
-                }
-                console.log(`[EmailTracking] Retell.AI call triggered on click for campaignLead ${event.campaignLeadId}`);
+                // See the matching comment in the pixel-open handler above --
+                // this only means the call was scheduled, not that Retell has
+                // confirmed it. callTriggered is set later by triggerRetellCall().
+                console.log(`[EmailTracking] Retell.AI call scheduled on click for campaignLead ${event.campaignLeadId}`);
               }
             }
           } catch (error) {
