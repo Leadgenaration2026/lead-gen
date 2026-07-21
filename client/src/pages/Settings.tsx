@@ -584,7 +584,7 @@ export default function SettingsPage() {
                         <XCircle className="w-3 h-3" /> Not running
                       </Badge>
                     )}
-                    <span className="text-xs text-muted-foreground">Checks every 15 minutes</span>
+                    <span className="text-xs text-muted-foreground">Checks every 2 minutes</span>
                   </div>
                   {heartbeatStatusQuery.data?.nextExecutionAt && (
                     <p className="text-xs text-muted-foreground">
