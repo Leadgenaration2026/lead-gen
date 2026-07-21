@@ -2772,23 +2772,31 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         }
 
         const campaignLeads = await db.getCampaignLeads(campaignId);
-        const activities = [];
 
-        for (const cl of campaignLeads) {
+        // Fetch each lead's data concurrently instead of one-by-one -- with
+        // 5 sequential DB round trips per lead, a campaign with a few hundred
+        // leads made this take minutes (looking like a permanently-stuck
+        // spinner on the frontend) since every lead waited on the previous
+        // one to fully finish first.
+        const activityResults = await Promise.all(campaignLeads.map(async (cl) => {
           const lead = await db.getLeadById(cl.leadId);
-          if (!lead) continue;
+          if (!lead) return null;
+
+          const [trackingEvents, callLogs, followUpEmails, followUpCalls] = await Promise.all([
+            db.getEmailTrackingEventsByCampaignLead(cl.id),
+            db.getCallLogsByCampaignLead(cl.id),
+            db.getFollowUpEmailsByCampaignLead(cl.id),
+            db.getFollowUpCallsByCampaignLead(cl.id),
+          ]);
 
           // Get tracking events for this campaign lead (to find clicked URLs)
-          const trackingEvents = await db.getEmailTrackingEventsByCampaignLead(cl.id);
           const clickEvents = trackingEvents.filter(e => e.eventType === 'click' && e.clickUrl);
           const clickedUrls = clickEvents.map(e => e.clickUrl).filter(Boolean);
 
           // Get call logs for this campaign lead
-          const callLogs = await db.getCallLogsByCampaignLead(cl.id);
           const latestCall = callLogs.length > 0 ? callLogs[callLogs.length - 1] : null;
 
           // Get follow-up emails schedule (next 7)
-          const followUpEmails = await db.getFollowUpEmailsByCampaignLead(cl.id);
           const pendingFollowUpEmails = followUpEmails
             .filter((e: any) => e.status === 'scheduled' || e.status === 'pending')
             .sort((a: any, b: any) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
@@ -2802,7 +2810,6 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             }));
 
           // Get follow-up calls schedule (next 7)
-          const followUpCalls = await db.getFollowUpCallsByCampaignLead(cl.id);
           const pendingFollowUpCalls = followUpCalls
             .filter((c: any) => c.status === 'scheduled' || c.status === 'pending')
             .sort((a: any, b: any) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
@@ -2814,7 +2821,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               status: c.status,
             }));
 
-          activities.push({
+          return {
             campaignLeadId: cl.id,
             leadName: lead.ownerName,
             companyName: lead.companyName,
@@ -2840,10 +2847,10 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             unsubscribedAt: (cl as any).unsubscribedAt || null,
             nextFollowUpEmails: pendingFollowUpEmails,
             nextFollowUpCalls: pendingFollowUpCalls,
-          });
-        }
+          };
+        }));
 
-        return activities;
+        return activityResults.filter((a): a is NonNullable<typeof a> => a !== null);
       }),
   }),
 

@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, MousePointerClick, Phone, CheckCircle2, ExternalLink, PhoneCall, PhoneOff, PhoneMissed, Calendar, Clock, MessageSquare } from "lucide-react";
+import { Loader2, Mail, MousePointerClick, Phone, CheckCircle2, ExternalLink, PhoneCall, PhoneOff, PhoneMissed, Calendar, Clock, MessageSquare, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface ActivityFeedProps {
@@ -155,7 +155,18 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
         </button>
       </CardHeader>
       <CardContent>
-        {activityQuery.isLoading ? (
+        {activityQuery.isError ? (
+          <div className="text-center py-12">
+            <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+            <p className="text-foreground font-medium">Couldn't load activity</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {activityQuery.error?.message || "Something went wrong fetching this campaign's activity."}
+            </p>
+            <Button size="sm" variant="outline" className="mt-3" onClick={() => activityQuery.refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : activityQuery.isLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
