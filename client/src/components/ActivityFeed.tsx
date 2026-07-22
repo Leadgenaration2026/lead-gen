@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   Loader2, Mail, MousePointerClick, Phone, PhoneCall, PhoneOff, PhoneMissed,
   Calendar, Clock, MessageSquare, AlertTriangle, Eye, ChevronDown, ChevronRight,
-  ExternalLink, CalendarCheck, Ban, Reply, RotateCcw, Volume2,
+  ExternalLink, CalendarCheck, Ban, Reply, RotateCcw, Volume2, ChevronsUpDown, Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
@@ -19,9 +20,9 @@ interface ActivityFeedProps {
 }
 
 export function ActivityFeed({ campaignId }: ActivityFeedProps) {
-  const [activities, setActivities] = useState<any[]>([]);
   const [isPolling, setIsPolling] = useState(true);
   const [expandedLead, setExpandedLead] = useState<number | null>(null);
+  const [campaignPickerOpen, setCampaignPickerOpen] = useState(false);
   // Defaults to whichever campaign this feed was opened for, but the
   // dropdown lets it switch to any campaign without leaving this panel.
   const [activeCampaignId, setActiveCampaignId] = useState(campaignId);
@@ -37,6 +38,13 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
   const activityQuery = trpc.campaigns.activity.useQuery(activeCampaignId, {
     enabled: true,
   });
+
+  // expandedLead is a row index into the current campaign's activity list --
+  // meaningless (or worse, pointing at an unrelated row) once the list
+  // underneath it changes to a different campaign.
+  useEffect(() => {
+    setExpandedLead(null);
+  }, [activeCampaignId]);
 
   const markReplied = trpc.responses.markReplied.useMutation({
     onSuccess: () => {
@@ -79,13 +87,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isPolling, activityQuery]);
+  }, [isPolling, activityQuery.refetch]);
 
-  useEffect(() => {
-    if (activityQuery.data) {
-      setActivities(activityQuery.data);
-    }
-  }, [activityQuery.data]);
+  // Rendered directly from the query result (no local mirror) -- this used
+  // to be copied into its own useState via a useEffect, which meant
+  // switching campaigns could briefly (or, if that effect lagged, not so
+  // briefly) keep showing the previous campaign's data since there was no
+  // guarantee the copy re-ran before the next render.
+  const activities = activityQuery.data || [];
 
   const getCallStatusBadge = (activity: any) => {
     if (!activity.callTriggered) {
@@ -130,26 +139,52 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
     });
   };
 
+  const activeCampaignName = campaignsListQuery.data?.find((c: any) => c.id === activeCampaignId)?.name;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
         <div>
-          <CardTitle>Activity Feed</CardTitle>
+          <CardTitle>Activity Feed{activeCampaignName ? ` — ${activeCampaignName}` : ""}</CardTitle>
           <CardDescription>Opens, clicks, calls, and replies for every lead in this campaign</CardDescription>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={String(activeCampaignId)} onValueChange={(v) => setActiveCampaignId(Number(v))}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Choose a campaign..." />
-            </SelectTrigger>
-            <SelectContent>
-              {campaignsListQuery.data?.map((c: any) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.name} ({c.status})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={campaignPickerOpen} onOpenChange={setCampaignPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={campaignPickerOpen}
+                className="w-64 justify-between font-normal"
+              >
+                <span className="truncate">{activeCampaignName || "Choose a campaign..."}</span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0">
+              <Command>
+                <CommandInput placeholder="Search campaigns..." />
+                <CommandList>
+                  <CommandEmpty>No campaign found.</CommandEmpty>
+                  <CommandGroup>
+                    {campaignsListQuery.data?.map((c: any) => (
+                      <CommandItem
+                        key={c.id}
+                        value={c.name}
+                        onSelect={() => {
+                          setActiveCampaignId(c.id);
+                          setCampaignPickerOpen(false);
+                        }}
+                      >
+                        <Check className={`mr-2 h-4 w-4 ${c.id === activeCampaignId ? "opacity-100" : "opacity-0"}`} />
+                        <span className="truncate">{c.name} ({c.status})</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <button
             onClick={() => setIsPolling(!isPolling)}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
