@@ -2828,6 +2828,21 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             email: lead.email,
             phoneNumber: lead.phoneNumber,
             industry: lead.industry || null,
+            // Reconstructed email content for preview -- same placeholder
+            // substitution as reports.campaignReport, so "what was actually
+            // sent to this customer" is visible right here too, not just on
+            // the Campaign Details page.
+            emailSubject: (campaign.subject || "")
+              .replace(/{{companyName}}/g, lead.companyName || '')
+              .replace(/{{ownerName}}/g, lead.ownerName || '')
+              .replace(/{{email}}/g, lead.email || '')
+              .replace(/{{industry}}/g, lead.industry || 'your industry'),
+            emailBody: (campaign.emailTemplate || "")
+              .replace(/{{companyName}}/g, lead.companyName || '')
+              .replace(/{{ownerName}}/g, lead.ownerName || '')
+              .replace(/{{email}}/g, lead.email || '')
+              .replace(/{{industry}}/g, lead.industry || 'your industry')
+              .replace(/{{phoneNumber}}/g, lead.phoneNumber || ''),
             emailSent: cl.emailSent,
             emailSentAt: cl.emailSentAt,
             emailOpened: cl.emailOpened,

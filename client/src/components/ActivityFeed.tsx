@@ -3,8 +3,9 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, MousePointerClick, Phone, CheckCircle2, ExternalLink, PhoneCall, PhoneOff, PhoneMissed, Calendar, Clock, MessageSquare, AlertTriangle } from "lucide-react";
+import { Loader2, Mail, MousePointerClick, Phone, CheckCircle2, ExternalLink, PhoneCall, PhoneOff, PhoneMissed, Calendar, Clock, MessageSquare, AlertTriangle, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 
 interface ActivityFeedProps {
   campaignId: number;
@@ -195,6 +196,22 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                           <Badge variant="outline" className="text-xs">{activity.industry}</Badge>
                         </>
                       )}
+                      {activity.emailSent && activity.emailBody && (
+                        <div onClick={(e) => e.stopPropagation()} className="ml-auto">
+                          <EmailPreviewDialog
+                            subject={activity.emailSubject || "(No subject)"}
+                            body={activity.emailBody}
+                            recipientName={activity.leadName}
+                            recipientEmail={activity.email}
+                            recipientCompany={activity.companyName}
+                            trigger={
+                              <Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
+                                <Eye className="w-3.5 h-3.5" /> View Email
+                              </Button>
+                            }
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Contact Details */}
@@ -271,14 +288,20 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                           )}
                         </div>
                       )}
-                      {activity.callTriggered && activity.recordingUrl && (
-                        <audio
-                          controls
-                          preload="none"
-                          className="w-full h-9 mt-1"
-                          src={activity.recordingUrl}
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                      {activity.callTriggered && (
+                        activity.recordingUrl ? (
+                          <audio
+                            controls
+                            preload="none"
+                            className="w-full h-9 mt-1"
+                            src={activity.recordingUrl}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">
+                            {activity.callStatus === "completed" ? "Recording not yet available" : "No recording (call did not connect)"}
+                          </p>
+                        )
                       )}
                       {/* No call received indicator */}
                       {!activity.callTriggered && activity.emailSent && (
