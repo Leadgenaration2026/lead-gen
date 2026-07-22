@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Loader2, Mail, MousePointerClick, Phone, PhoneCall, PhoneOff, PhoneMissed,
   Calendar, Clock, MessageSquare, AlertTriangle, Eye, ChevronDown, ChevronRight,
-  ExternalLink, CalendarCheck, Ban, Reply,
+  ExternalLink, CalendarCheck, Ban, Reply, RotateCcw, Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
@@ -32,6 +32,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
       activityQuery.refetch();
     },
     onError: () => toast.error("Failed to mark as replied"),
+  });
+
+  const resumeFollowUpsMutation = trpc.responses.resumeFollowUps.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Follow-ups resumed — ${result.emailsResumed} email(s), ${result.callsResumed} call(s) rescheduled`);
+      activityQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message || "Failed to resume follow-ups"),
   });
 
   // Poll for updates every 5 seconds
@@ -186,8 +194,9 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className={`font-semibold ${activity.totalCalls > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
+                        <span className={`font-semibold inline-flex items-center gap-1 ${activity.totalCalls > 0 ? "text-orange-600" : "text-muted-foreground"}`}>
                           {activity.totalCalls || 0}
+                          {activity.recordingUrl && <Volume2 className="w-3.5 h-3.5" />}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -277,6 +286,25 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                                     </div>
                                   ))}
                                 </div>
+                                {activity.hasCancelledFollowUps && (
+                                  <div className="mt-2 p-3 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 flex items-center justify-between flex-wrap gap-2">
+                                    <p className="text-xs text-amber-800">
+                                      Some follow-up emails/calls were auto-cancelled for this lead. If the recording says otherwise, you can resume them.
+                                    </p>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        resumeFollowUpsMutation.mutate({ campaignLeadId: activity.campaignLeadId });
+                                      }}
+                                      disabled={resumeFollowUpsMutation.isPending}
+                                    >
+                                      <RotateCcw className="w-3 h-3" /> Resume Follow-Ups
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
                             )}
 

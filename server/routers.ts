@@ -2887,6 +2887,14 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             unsubscribedAt: (cl as any).unsubscribedAt || null,
             meetingBooked: (cl as any).meetingBooked || false,
             meetingBookedAt: (cl as any).meetingBookedAt || null,
+            // Whether this lead has follow-ups that were auto-cancelled
+            // (e.g. a call ending in agent_hangup/user_hangup) and could be
+            // manually resumed via responses.resumeFollowUps -- never true
+            // for unsubscribed leads, since that cancellation is permanent.
+            hasCancelledFollowUps: !(cl as any).unsubscribed && (
+              followUpEmails.some((e: any) => e.status === "failed") ||
+              followUpCalls.some((c: any) => c.status === "failed")
+            ),
             nextFollowUpEmails: pendingFollowUpEmails,
             nextFollowUpCalls: pendingFollowUpCalls,
           };
