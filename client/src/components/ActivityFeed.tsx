@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Loader2, Mail, MousePointerClick, Phone, PhoneCall, PhoneOff, PhoneMissed,
   Calendar, Clock, MessageSquare, AlertTriangle, Eye, ChevronDown, ChevronRight,
@@ -21,8 +22,19 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
   const [activities, setActivities] = useState<any[]>([]);
   const [isPolling, setIsPolling] = useState(true);
   const [expandedLead, setExpandedLead] = useState<number | null>(null);
+  // Defaults to whichever campaign this feed was opened for, but the
+  // dropdown lets it switch to any campaign without leaving this panel.
+  const [activeCampaignId, setActiveCampaignId] = useState(campaignId);
 
-  const activityQuery = trpc.campaigns.activity.useQuery(campaignId, {
+  // If the parent switches which campaign's "View Tracking" is expanded,
+  // follow it rather than sticking on whatever was last picked here.
+  useEffect(() => {
+    setActiveCampaignId(campaignId);
+  }, [campaignId]);
+
+  const campaignsListQuery = trpc.campaigns.list.useQuery();
+
+  const activityQuery = trpc.campaigns.activity.useQuery(activeCampaignId, {
     enabled: true,
   });
 
@@ -48,6 +60,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
       activityQuery.refetch();
     },
     onError: () => toast.error("Failed to unsubscribe lead"),
+  });
+
+  const markMeetingBooked = trpc.responses.markMeetingBooked.useMutation({
+    onSuccess: () => {
+      toast.success("Meeting booked — follow-ups cancelled");
+      activityQuery.refetch();
+    },
+    onError: () => toast.error("Failed to mark meeting booked"),
   });
 
   // Poll for updates every 5 seconds
@@ -112,17 +132,31 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
         <div>
           <CardTitle>Activity Feed</CardTitle>
           <CardDescription>Opens, clicks, calls, and replies for every lead in this campaign</CardDescription>
         </div>
-        <button
-          onClick={() => setIsPolling(!isPolling)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {isPolling ? "⏸ Pause" : "▶ Resume"}
-        </button>
+        <div className="flex items-center gap-3">
+          <Select value={String(activeCampaignId)} onValueChange={(v) => setActiveCampaignId(Number(v))}>
+            <SelectTrigger className="w-64">
+              <SelectValue placeholder="Choose a campaign..." />
+            </SelectTrigger>
+            <SelectContent>
+              {campaignsListQuery.data?.map((c: any) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name} ({c.status})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <button
+            onClick={() => setIsPolling(!isPolling)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
+          >
+            {isPolling ? "⏸ Pause" : "▶ Resume"}
+          </button>
+        </div>
       </CardHeader>
       <CardContent>
         {activityQuery.isError ? (
@@ -381,7 +415,7 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                             )}
 
                             {/* Manual overrides */}
-                            {(!activity.replied || !activity.unsubscribed) && activity.emailSent && (
+                            {(!activity.replied || !activity.unsubscribed || !activity.meetingBooked) && activity.emailSent && (
                               <div>
                                 <p className="text-[10px] text-muted-foreground italic mb-1">Manual override (auto-detected via Calendly booking, email reply, or unsubscribe link):</p>
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -412,6 +446,20 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                                         <MessageSquare className="w-3 h-3" /> Mark Negative
                                       </Button>
                                     </>
+                                  )}
+                                  {!activity.meetingBooked && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1 border-teal-200 text-teal-700 hover:bg-teal-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markMeetingBooked.mutate({ campaignLeadId: activity.campaignLeadId });
+                                      }}
+                                      disabled={markMeetingBooked.isPending}
+                                    >
+                                      <CalendarCheck className="w-3 h-3" /> Mark Meeting Booked
+                                    </Button>
                                   )}
                                   {!activity.unsubscribed && (
                                     <Button

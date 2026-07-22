@@ -4902,6 +4902,22 @@ Respond in this exact JSON format:
         return { success: true };
       }),
 
+    // Manual override for when a meeting was booked outside the automatic
+    // Cal.com/Calendly webhook (e.g. booked by phone, or the webhook never
+    // fired) -- mirrors exactly what that webhook does: treat it as a
+    // positive reply, flag it as a booked meeting distinctly, and cancel
+    // remaining follow-ups.
+    markMeetingBooked: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.markLeadReplied(input.campaignLeadId, "positive");
+        await db.markMeetingBooked(input.campaignLeadId);
+        await db.cancelPendingFollowUps(input.campaignLeadId);
+        return { success: true };
+      }),
+
     // Manual override: a call ending in "agent_hangup" or "user_hangup" is
     // auto-treated as positive engagement and cancels all remaining
     // follow-ups -- after listening to the recording, this lets a human
