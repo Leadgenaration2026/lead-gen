@@ -179,13 +179,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
             {/* Summary strip -- campaign totals at a glance, so this table
                 alone is a full report without needing Analytics or Campaign
                 Details for the headline numbers. */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4">
+            <div className="grid grid-cols-3 sm:grid-cols-7 gap-3 mb-4">
               {[
                 { label: "Sent", value: activities.filter((a) => a.emailSent).length, color: "text-foreground" },
                 { label: "Opens", value: activities.reduce((sum, a) => sum + (a.openCount || 0), 0), color: "text-green-600" },
                 { label: "Clicks", value: activities.reduce((sum, a) => sum + (a.clickCount || 0), 0), color: "text-purple-600" },
                 { label: "Calls", value: activities.reduce((sum, a) => sum + (a.totalCalls || 0), 0), color: "text-orange-600" },
                 { label: "Replied", value: activities.filter((a) => a.replied).length, color: "text-emerald-600" },
+                { label: "Meetings Booked", value: activities.filter((a) => a.meetingBooked).length, color: "text-teal-600" },
                 { label: "Unsubscribed", value: activities.filter((a) => a.unsubscribed).length, color: "text-red-600" },
               ].map((stat) => (
                 <div key={stat.label} className="p-2.5 rounded-lg border border-border text-center">
@@ -198,14 +199,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50">
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead className="font-semibold">Lead</TableHead>
-                  <TableHead className="font-semibold">Sent</TableHead>
-                  <TableHead className="font-semibold text-center">Opens</TableHead>
-                  <TableHead className="font-semibold text-center">Clicks</TableHead>
-                  <TableHead className="font-semibold text-center">Calls</TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold text-center">Email</TableHead>
+                  <TableHead className="w-8 sticky top-0 z-10 bg-gray-50"></TableHead>
+                  <TableHead className="font-semibold sticky top-0 z-10 bg-gray-50">Lead</TableHead>
+                  <TableHead className="font-semibold sticky top-0 z-10 bg-gray-50">Sent</TableHead>
+                  <TableHead className="font-semibold text-center sticky top-0 z-10 bg-gray-50">Opens</TableHead>
+                  <TableHead className="font-semibold text-center sticky top-0 z-10 bg-gray-50">Clicks</TableHead>
+                  <TableHead className="font-semibold text-center sticky top-0 z-10 bg-gray-50">Calls</TableHead>
+                  <TableHead className="font-semibold sticky top-0 z-10 bg-gray-50">Status</TableHead>
+                  <TableHead className="font-semibold text-center sticky top-0 z-10 bg-gray-50">Email</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -279,6 +280,20 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                           )}
                           {!activity.unsubscribed && !activity.meetingBooked && !activity.replied && (
                             <span className="text-xs text-muted-foreground">&mdash;</span>
+                          )}
+                          {activity.hasCancelledFollowUps && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge className="bg-amber-50 text-amber-800 border-amber-200 text-xs gap-1">
+                                    <RotateCcw className="w-3 h-3" /> Follow-ups paused
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Follow-ups were auto-cancelled for this lead. Expand this row (Calls section) to resume them.
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </div>
                       </TableCell>
