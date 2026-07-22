@@ -266,6 +266,73 @@ export async function scheduleFollowUpCalls(
 }
 
 /**
+ * Manual override: un-cancel a lead's remaining follow-up emails/calls after
+ * they were auto-cancelled by a call ending in "agent_hangup" or
+ * "user_hangup" (both currently treated as positive engagement -- see
+ * handleRetellWebhook in retellAI.ts). After listening to the recording, a
+ * human may decide that classification was wrong and the lead should still
+ * get their remaining follow-ups.
+ *
+ * Cancelled items (status "failed") are rescheduled starting tomorrow,
+ * preserving their original relative spacing from FOLLOW_UP_EMAIL_SCHEDULE /
+ * FOLLOW_UP_CALL_SCHEDULE -- their original scheduledFor dates are almost
+ * certainly in the past by now, so they'd otherwise look immediately "due"
+ * and all fire at once the next time the cron runs.
+ *
+ * Never overrides an unsubscribe -- that stays permanent regardless of this
+ * override, since it's the lead's own opt-out, not an internal
+ * classification we might have gotten wrong.
+ */
+export async function resumeFollowUps(campaignLeadId: number) {
+  const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+  if (!campaignLead) {
+    return { success: false, reason: "not_found" as const, emailsResumed: 0, callsResumed: 0 };
+  }
+  if ((campaignLead as any).unsubscribed) {
+    return { success: false, reason: "unsubscribed" as const, emailsResumed: 0, callsResumed: 0 };
+  }
+
+  const now = new Date();
+
+  const allEmails = await db.getFollowUpEmailsByCampaignLead(campaignLeadId);
+  const cancelledEmails = allEmails.filter((e: any) => e.status === "failed");
+  let emailsResumed = 0;
+  if (cancelledEmails.length > 0) {
+    const dayOffsetBySeq = new Map(FOLLOW_UP_EMAIL_SCHEDULE.map((s) => [s.sequenceNumber, s.dayOffset]));
+    const minDayOffset = Math.min(...cancelledEmails.map((e: any) => dayOffsetBySeq.get(e.sequenceNumber) ?? 0));
+    for (const email of cancelledEmails) {
+      const dayOffset = dayOffsetBySeq.get((email as any).sequenceNumber) ?? minDayOffset;
+      const relativeOffset = dayOffset - minDayOffset;
+      const scheduledFor = new Date(now.getTime() + (1 + relativeOffset) * 24 * 60 * 60 * 1000);
+      await db.updateFollowUpEmail((email as any).id, { status: "scheduled", scheduledFor });
+      emailsResumed++;
+    }
+  }
+
+  const allCalls = await db.getFollowUpCallsByCampaignLead(campaignLeadId);
+  const cancelledCalls = allCalls.filter((c: any) => c.status === "failed");
+  let callsResumed = 0;
+  if (cancelledCalls.length > 0) {
+    const scheduleByAttempt = new Map(FOLLOW_UP_CALL_SCHEDULE.map((s, i) => [i + 2, s]));
+    const minDayOffset = Math.min(
+      ...cancelledCalls.map((c: any) => scheduleByAttempt.get(c.attemptNumber)?.dayOffset ?? 0)
+    );
+    for (const call of cancelledCalls) {
+      const schedule = scheduleByAttempt.get((call as any).attemptNumber);
+      const dayOffset = schedule?.dayOffset ?? minDayOffset;
+      const hour = schedule?.hour ?? CALL_WINDOW_START_HOUR;
+      const relativeOffset = dayOffset - minDayOffset;
+      const scheduledFor = easternDateAtHour(now, 1 + relativeOffset, hour);
+      await db.updateFollowUpCall((call as any).id, { status: "scheduled", scheduledFor });
+      callsResumed++;
+    }
+  }
+
+  console.log(`[FollowUpScheduler] Resumed follow-ups for campaignLead ${campaignLeadId}: ${emailsResumed} emails, ${callsResumed} calls`);
+  return { success: true as const, emailsResumed, callsResumed };
+}
+
+/**
  * Get the follow-up email schedule description for display
  */
 export function getFollowUpEmailScheduleDescription() {

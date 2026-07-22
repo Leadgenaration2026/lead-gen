@@ -33,7 +33,8 @@ import {
 import { useState, useEffect } from "react";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Eye, FileText } from "lucide-react";
+import { Eye, FileText, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 
 type TimelineEvent = {
   type: "email_sent" | "email_opened" | "email_clicked" | "call_triggered" | "call_completed" | "call_failed" | "call_no_answer" | "replied" | "meeting_booked" | "unsubscribed" | "follow_up_email" | "follow_up_call";
@@ -242,9 +243,17 @@ function formatTimestamp(ts: Date | string | null) {
   });
 }
 
-function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpanded: boolean; onToggle: () => void }) {
+function LeadEngagementCard({ lead, isExpanded, onToggle, onFollowUpsResumed }: { lead: any; isExpanded: boolean; onToggle: () => void; onFollowUpsResumed: () => void }) {
   const timeline = buildTimeline(lead);
   const engagementScore = (lead.initialEmail.opened ? 1 : 0) + (lead.initialEmail.clicked ? 2 : 0) + (lead.initialCall.status === "completed" ? 3 : 0);
+
+  const resumeFollowUpsMutation = trpc.responses.resumeFollowUps.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Follow-ups resumed — ${result.emailsResumed} email(s), ${result.callsResumed} call(s) rescheduled`);
+      onFollowUpsResumed();
+    },
+    onError: (err) => toast.error(err.message || "Failed to resume follow-ups"),
+  });
 
   // Most recent actually-sent email for this lead, so "View Email" in the
   // collapsed header always has something useful to show without requiring
@@ -529,6 +538,13 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
                             {Math.floor(call.duration / 60)}m {call.duration % 60}s
                           </span>
                         )}
+                        {call.endReason && (
+                          <Badge variant="outline" className="text-xs border-muted-foreground/30 text-muted-foreground">
+                            {call.endReason === "user_hangup" ? "Customer hung up" :
+                             call.endReason === "agent_hangup" ? "Agent ended call" :
+                             call.endReason.replace(/_/g, " ")}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     {call.recordingUrl ? (
@@ -541,6 +557,22 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
                   </div>
                 ))}
               </div>
+              {lead.hasCancelledFollowUps && (
+                <div className="mt-3 p-3 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-xs text-amber-800">
+                    Some follow-up emails/calls were auto-cancelled for this lead (e.g. after this call ended). If the recording says otherwise, you can resume them.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
+                    onClick={() => resumeFollowUpsMutation.mutate({ campaignLeadId: lead.campaignLeadId })}
+                    disabled={resumeFollowUpsMutation.isPending}
+                  >
+                    <RotateCcw className="w-3 h-3" /> Resume Follow-Ups
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -836,6 +868,7 @@ export default function CampaignDetail() {
                       lead={lead}
                       isExpanded={expandedLeadId === lead.leadId}
                       onToggle={() => setExpandedLeadId(expandedLeadId === lead.leadId ? null : lead.leadId)}
+                      onFollowUpsResumed={() => reportQuery.refetch()}
                     />
                   ))}
                 </div>

@@ -3119,6 +3119,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           }
 
           report.push({
+            campaignLeadId: cl.id,
             leadId: lead.id,
             leadName: lead.ownerName,
             companyName: lead.companyName,
@@ -3174,9 +3175,19 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               status: c.status,
               duration: c.duration,
               recordingUrl: c.recordingUrl || null,
+              endReason: c.endReason || null,
               triggerType: c.triggerType,
               createdAt: c.createdAt,
             })),
+            // Whether this lead has follow-up emails/calls that were
+            // auto-cancelled (e.g. by a call ending in agent_hangup/
+            // user_hangup) and could be manually resumed via
+            // responses.resumeFollowUps -- not shown for unsubscribed leads
+            // since that cancellation is permanent by design.
+            hasCancelledFollowUps: !(cl as any).unsubscribed && (
+              followUpEmailsList.some((e: any) => e.status === "failed") ||
+              followUpCallsList.some((c: any) => c.status === "failed")
+            ),
             // Follow-up emails breakdown
             followUpEmails: followUpEmailsList.map((e: any) => ({
               id: e.id,
@@ -4818,6 +4829,36 @@ Respond in this exact JSON format:
         // Cancel all pending follow-ups when lead unsubscribes
         await db.cancelPendingFollowUps(input.campaignLeadId);
         return { success: true };
+      }),
+
+    // Manual override: a call ending in "agent_hangup" or "user_hangup" is
+    // auto-treated as positive engagement and cancels all remaining
+    // follow-ups -- after listening to the recording, this lets a human
+    // undo that and resume the lead's remaining follow-up emails/calls.
+    // Refuses if the lead has unsubscribed (that's a permanent opt-out,
+    // not an internal classification this can override).
+    resumeFollowUps: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        const { resumeFollowUps } = await import("./_core/followUpScheduler");
+        const result = await resumeFollowUps(input.campaignLeadId);
+        if (!result.success) {
+          const message = result.reason === "unsubscribed"
+            ? "This lead has unsubscribed and can't be re-added to follow-ups."
+            : "Couldn't resume follow-ups for this lead.";
+          throw new TRPCError({ code: "BAD_REQUEST", message });
+        }
+        return result;
       }),
   }),
 

@@ -169,6 +169,10 @@ export async function handleRetellWebhook(payload: any) {
       updateData.updatedAt = new Date();
     }
 
+    if (end_reason) {
+      updateData.endReason = end_reason;
+    }
+
     // Recording/transcript are usually only present once the call has fully
     // ended (and the recording finishes processing on Retell's side, which
     // can arrive on a later webhook delivery for the same call_id) -- so

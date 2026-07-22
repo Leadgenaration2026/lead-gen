@@ -14,6 +14,12 @@ export const callLogs = mysqlTable("callLogs", {
 	triggerType: mysqlEnum(['email_open','email_click','manual']).notNull(),
 	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	// Retell's disconnection_reason (e.g. "user_hangup", "agent_hangup") --
+	// both are currently treated as positive engagement that cancels all
+	// future follow-ups, but they aren't the same thing (a quick user hangup
+	// is more likely disinterest), so this is surfaced next to the recording
+	// to let a human decide whether to override that and resume follow-ups.
+	endReason: varchar({ length: 100 }),
 },
 (table) => [
 	index("callLogs_retellCallId_unique").on(table.retellCallId),
