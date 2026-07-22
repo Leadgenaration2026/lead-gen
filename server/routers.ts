@@ -2517,7 +2517,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             // server/claude.ts -- so this is the only place one gets added) and the
             // tracking pixel.
             const signature = await db.getEmailSignature(ctx.user.id);
-            emailBody = plainTextToHtml(emailBody) + getSignatureHtml(signature) + trackingPixel;
+            const wrapSignatureLink = (url: string) => `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}`;
+            emailBody = plainTextToHtml(emailBody) + getSignatureHtml(signature, wrapSignatureLink) + trackingPixel;
 
             // Add unsubscribe link (replaces the plain text unsubscribe placeholder with a proper tracked link)
             const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -4026,7 +4027,8 @@ Respond in this exact JSON format:
         const signature = await db.getEmailSignature(ctx.user.id);
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
         const unsubscribeHtml = `<br/><p style="font-size:11px;color:#999;text-align:center;margin-top:24px;"><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a> from future emails</p>`;
-        const htmlBody = plainTextToHtml(trackedBody) + getSignatureHtml(signature) + unsubscribeHtml + trackingPixel;
+        const wrapSignatureLink = (url: string) => `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}`;
+        const htmlBody = plainTextToHtml(trackedBody) + getSignatureHtml(signature, wrapSignatureLink) + unsubscribeHtml + trackingPixel;
 
         let sendResult: any;
         try {

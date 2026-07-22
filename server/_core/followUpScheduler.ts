@@ -596,7 +596,8 @@ export async function processScheduledFollowUpEmails() {
           }
         );
 
-        htmlBody = plainTextToHtml(htmlBody) + getSignatureHtml(signature) + trackingPixel;
+        const wrapSignatureLink = (url: string) => `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}`;
+        htmlBody = plainTextToHtml(htmlBody) + getSignatureHtml(signature, wrapSignatureLink) + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -728,7 +729,8 @@ export async function processScheduledEmails() {
             return `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(rawUrl)}`;
           }
         );
-        htmlBody = plainTextToHtml(htmlBody) + getSignatureHtml(signature) + trackingPixel;
+        const wrapSignatureLink = (url: string) => `${baseUrl}/api/track/click/${clickTrackingToken}?url=${encodeURIComponent(url)}`;
+        htmlBody = plainTextToHtml(htmlBody) + getSignatureHtml(signature, wrapSignatureLink) + trackingPixel;
 
         // Add unsubscribe link
         const unsubscribeUrl = `${baseUrl}/api/track/unsubscribe/${trackingToken}`;
@@ -948,9 +950,17 @@ export async function triggerCallOnFollowUpOpen(
 /**
  * Get the user's signature as HTML.
  * Prioritizes signaturePlainText (user's actual signature) over signatureHtml (template).
+ *
+ * `wrapLink`, when provided, routes every link this generates (website,
+ * LinkedIn, etc.) through the same /api/track/click/ redirect used for the
+ * rest of the email body, so signature clicks count in click tracking too
+ * -- pass it whenever this is a real send with a real tracking token;
+ * omit it for test/preview sends where there's no real lead to attribute a
+ * click to.
  */
-function getSignatureHtml(signature: any): string {
+function getSignatureHtml(signature: any, wrapLink?: (url: string) => string): string {
   if (!signature) return '';
+  const wrap = wrapLink || ((url: string) => url);
 
   // Use the plain text signature (user's actual signature) and convert to HTML
   if (signature.signaturePlainText && signature.signaturePlainText.trim()) {
@@ -960,11 +970,23 @@ function getSignatureHtml(signature: any): string {
       if (!trimmed) return '<br/>';
       let processed = trimmed;
       // Detect full URLs (https:// or http://) and make them clickable
-      processed = processed.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      processed = processed.replace(/(https?:\/\/[^\s]+)/g, (m) => `<a href="${wrap(m)}" style="color:#2563eb;text-decoration:none;">${m}</a>`);
       // Detect www. URLs without protocol and make them clickable
-      processed = processed.replace(/(?<!href="https?:\/\/)(?<!\/)\b(www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s]*)/g, '<a href="https://$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      processed = processed.replace(/(?<!href="https?:\/\/)(?<!\/)\b(www\.[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s]*)/g, (_m, p1) => `<a href="${wrap('https://' + p1)}" style="color:#2563eb;text-decoration:none;">${p1}</a>`);
       // Detect email addresses (but not ones already in href)
       processed = processed.replace(/(?<!mailto:)(?<!\/)\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color:#2563eb;text-decoration:none;">$1</a>');
+      // Detect bare domains typed with no http/www prefix -- e.g a website
+      // or LinkedIn URL written as "virtualassistant-group.com" or
+      // "linkedin.com/in/nitin" -- so these become real clickable links
+      // instead of sitting there as plain text. Skipped if the line already
+      // got turned into a link above, to avoid re-wrapping text that's
+      // already inside an <a> tag.
+      if (!/<a /.test(processed)) {
+        processed = processed.replace(
+          /\b([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.(?:com|net|org|io|co|ai|dev|app|biz|info|me|us|group|agency|tech)\b(?:\/[^\s<]*)?)/gi,
+          (m) => `<a href="${wrap('https://' + m)}" style="color:#2563eb;text-decoration:none;">${m}</a>`
+        );
+      }
       return `<p style="margin:0;padding:0;line-height:1.6;font-family:Arial,Helvetica,sans-serif;font-size:14px;">${processed}</p>`;
     });
     return `<br/><br/><div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;padding-top:12px;margin-top:16px;border-top:1px solid #e5e7eb;">${htmlLines.join('')}</div>`;
