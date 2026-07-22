@@ -2773,6 +2773,19 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         const campaignLeads = await db.getCampaignLeads(campaignId);
 
+        // Fetched once for the whole campaign (not per lead) and grouped
+        // below -- this is the same reply data shown on the Campaign
+        // Details "Replies" tab, surfaced here too so the actual reply
+        // text is visible without switching pages.
+        const allReplies = await db.getRepliesByCampaignId(campaignId, ctx.user.id);
+        const repliesByCampaignLead = new Map<number, typeof allReplies>();
+        for (const reply of allReplies) {
+          if (!reply.campaignLeadId) continue;
+          const existing = repliesByCampaignLead.get(reply.campaignLeadId) || [];
+          existing.push(reply);
+          repliesByCampaignLead.set(reply.campaignLeadId, existing);
+        }
+
         // Fetch each lead's data concurrently instead of one-by-one -- with
         // 5 sequential DB round trips per lead, a campaign with a few hundred
         // leads made this take minutes (looking like a permanently-stuck
@@ -2883,6 +2896,16 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             replied: (cl as any).replied || false,
             repliedAt: (cl as any).repliedAt || null,
             responseStatus: (cl as any).responseStatus || null,
+            // Actual reply message(s) detected via IMAP sync for this lead
+            // (see server/_core/inboxSync.ts) -- the same data as the
+            // Campaign Details "Replies" tab, scoped to this one lead.
+            replies: (repliesByCampaignLead.get(cl.id) || []).map((r: any) => ({
+              id: r.id,
+              subject: r.subject || null,
+              bodySnippet: r.bodySnippet || null,
+              classification: r.classification,
+              receivedAt: r.receivedAt,
+            })),
             unsubscribed: (cl as any).unsubscribed || false,
             unsubscribedAt: (cl as any).unsubscribedAt || null,
             meetingBooked: (cl as any).meetingBooked || false,

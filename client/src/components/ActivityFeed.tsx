@@ -42,6 +42,14 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
     onError: (err) => toast.error(err.message || "Failed to resume follow-ups"),
   });
 
+  const markUnsubscribed = trpc.responses.markUnsubscribed.useMutation({
+    onSuccess: () => {
+      toast.success("Lead unsubscribed — removed from all future emails and calls");
+      activityQuery.refetch();
+    },
+    onError: () => toast.error("Failed to unsubscribe lead"),
+  });
+
   // Poll for updates every 5 seconds
   useEffect(() => {
     if (!isPolling) return;
@@ -133,6 +141,25 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : activities && activities.length > 0 ? (
+          <>
+            {/* Summary strip -- campaign totals at a glance, so this table
+                alone is a full report without needing Analytics or Campaign
+                Details for the headline numbers. */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4">
+              {[
+                { label: "Sent", value: activities.filter((a) => a.emailSent).length, color: "text-foreground" },
+                { label: "Opens", value: activities.reduce((sum, a) => sum + (a.openCount || 0), 0), color: "text-green-600" },
+                { label: "Clicks", value: activities.reduce((sum, a) => sum + (a.clickCount || 0), 0), color: "text-purple-600" },
+                { label: "Calls", value: activities.reduce((sum, a) => sum + (a.totalCalls || 0), 0), color: "text-orange-600" },
+                { label: "Replied", value: activities.filter((a) => a.replied).length, color: "text-emerald-600" },
+                { label: "Unsubscribed", value: activities.filter((a) => a.unsubscribed).length, color: "text-red-600" },
+              ].map((stat) => (
+                <div key={stat.label} className="p-2.5 rounded-lg border border-border text-center">
+                  <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
+                  <p className="text-[11px] text-muted-foreground">{stat.label}</p>
+                </div>
+              ))}
+            </div>
           <div className="overflow-x-auto max-h-[800px] overflow-y-auto">
             <Table>
               <TableHeader>
@@ -328,35 +355,78 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                               </div>
                             )}
 
-                            {/* Manual override for response status */}
-                            {!activity.replied && !activity.unsubscribed && activity.emailSent && (
+                            {/* Reply messages (from IMAP-detected replies) */}
+                            {activity.replies && activity.replies.length > 0 && (
                               <div>
-                                <p className="text-[10px] text-muted-foreground italic mb-1">Manual override (auto-detected via Calendly booking or email reply):</p>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "positive" });
-                                    }}
-                                    disabled={markReplied.isPending}
-                                  >
-                                    <MessageSquare className="w-3 h-3" /> Mark Positive (Override)
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "negative" });
-                                    }}
-                                    disabled={markReplied.isPending}
-                                  >
-                                    <MessageSquare className="w-3 h-3" /> Mark Negative
-                                  </Button>
+                                <h4 className="text-sm font-semibold flex items-center gap-2 mb-2">
+                                  <Reply className="w-4 h-4 text-emerald-600" /> Replies
+                                </h4>
+                                <div className="space-y-2">
+                                  {activity.replies.map((reply: any) => (
+                                    <div key={reply.id} className="p-2.5 rounded-lg border border-border bg-background">
+                                      <div className="flex items-center gap-2 flex-wrap text-xs mb-1">
+                                        <Badge variant="outline" className={`text-xs capitalize ${
+                                          reply.classification === "genuine" ? "border-emerald-200 text-emerald-700" : "border-gray-200 text-muted-foreground"
+                                        }`}>
+                                          {reply.classification?.replace(/_/g, " ")}
+                                        </Badge>
+                                        <span className="text-muted-foreground">{formatTime(reply.receivedAt)}</span>
+                                      </div>
+                                      {reply.subject && <p className="text-xs font-medium">{reply.subject}</p>}
+                                      {reply.bodySnippet && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-3">{reply.bodySnippet}</p>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Manual overrides */}
+                            {(!activity.replied || !activity.unsubscribed) && activity.emailSent && (
+                              <div>
+                                <p className="text-[10px] text-muted-foreground italic mb-1">Manual override (auto-detected via Calendly booking, email reply, or unsubscribe link):</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {!activity.replied && (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "positive" });
+                                        }}
+                                        disabled={markReplied.isPending}
+                                      >
+                                        <MessageSquare className="w-3 h-3" /> Mark Positive (Override)
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs gap-1 border-red-200 text-red-700 hover:bg-red-50"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          markReplied.mutate({ campaignLeadId: activity.campaignLeadId, responseStatus: "negative" });
+                                        }}
+                                        disabled={markReplied.isPending}
+                                      >
+                                        <MessageSquare className="w-3 h-3" /> Mark Negative
+                                      </Button>
+                                    </>
+                                  )}
+                                  {!activity.unsubscribed && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1 border-gray-300 text-gray-700 hover:bg-gray-100"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markUnsubscribed.mutate({ campaignLeadId: activity.campaignLeadId });
+                                      }}
+                                      disabled={markUnsubscribed.isPending}
+                                    >
+                                      <Ban className="w-3 h-3" /> Unsubscribe
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -419,6 +489,7 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
               </TableBody>
             </Table>
           </div>
+          </>
         ) : (
           <div className="text-center py-12">
             <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
