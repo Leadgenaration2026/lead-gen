@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -195,8 +195,8 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                 </div>
               ))}
             </div>
-          <div className="overflow-x-auto max-h-[800px] overflow-y-auto">
-            <Table>
+          <div className="max-h-[800px] overflow-y-auto overflow-x-auto relative">
+            <table className="w-full caption-bottom text-sm">
               <TableHeader>
                 <TableRow className="bg-gray-50">
                   <TableHead className="w-8 sticky top-0 z-10 bg-gray-50"></TableHead>
@@ -321,11 +321,24 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                       <TableRow key={`${idx}-expanded`} className="bg-muted/20 hover:bg-muted/20">
                         <TableCell colSpan={8} className="p-4">
                           <div className="space-y-4">
-                            {/* Contact info */}
-                            <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {activity.email}</span>
-                              <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {activity.phoneNumber}</span>
-                              {activity.industry && <Badge variant="outline" className="text-xs">{activity.industry}</Badge>}
+                            {/* Contact info + close */}
+                            <div className="flex items-center justify-between gap-4 flex-wrap">
+                              <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {activity.email}</span>
+                                <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {activity.phoneNumber}</span>
+                                {activity.industry && <Badge variant="outline" className="text-xs">{activity.industry}</Badge>}
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs gap-1 text-muted-foreground"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedLead(null);
+                                }}
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" /> Close
+                              </Button>
                             </div>
 
                             {/* Calls + recordings */}
@@ -550,7 +563,7 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                   </>
                 ))}
               </TableBody>
-            </Table>
+            </table>
           </div>
           </>
         ) : (

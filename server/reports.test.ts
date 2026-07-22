@@ -86,8 +86,13 @@ vi.mock("./db", () => ({
   getEmailTrackingEventsByCampaignLead: vi.fn().mockResolvedValue([
     { eventType: "open", createdAt: new Date("2026-01-03") },
   ]),
+  // Two real call attempts: the initial call, and one follow-up call that
+  // was actually placed and completed (matching followUpCalls attempt #1
+  // above) -- callsMade is derived from this list (the one place a call's
+  // real terminal status lives), not from followUpCalls.status.
   getCallLogsByCampaignLead: vi.fn().mockResolvedValue([
     { id: 1, campaignLeadId: 1, status: "completed", duration: 45, retellCallId: "call_123" },
+    { id: 2, campaignLeadId: 1, status: "completed", duration: 120, retellCallId: "call_124" },
   ]),
 }));
 

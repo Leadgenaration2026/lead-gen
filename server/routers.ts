@@ -3178,9 +3178,19 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           const emailsFailed = followUpEmailsList.filter((e: any) => e.status === "failed" && !followUpsWereCancelled);
           const emailsCancelled = followUpsWereCancelled ? followUpEmailsList.filter((e: any) => e.status === "failed") : [];
 
-          // Calculate call stats
-          const callsDone = followUpCallsList.filter((c: any) => ["completed", "in_progress", "no_answer", "voicemail", "failed"].includes(c.status));
-          const callsPending = followUpCallsList.filter((c: any) => ["scheduled", "initiated", "ringing"].includes(c.status));
+          // Calculate call stats. followUpCalls.status is NOT a reliable
+          // signal for "was this call actually made" -- it gets set to
+          // "initiated" right before triggerRetellCall() fires and is never
+          // updated again afterward (only callLogs gets the real terminal
+          // status from Retell's webhook). So "calls made" is counted from
+          // callLogs (initialCallLogs, despite the name, holds every real
+          // call attempt for this lead) instead, minus the initial call
+          // which is already counted separately in totalCallsMade below.
+          // "Pending" only counts calls truly not yet attempted ("scheduled")
+          // -- not "initiated", which just means "attempted, outcome unknown
+          // from this table".
+          const callsMadeCount = Math.max(0, initialCallLogs.length - (cl.callTriggered ? 1 : 0));
+          const callsPending = followUpCallsList.filter((c: any) => c.status === "scheduled");
 
           // Get lead set name if assigned
           let leadSetName: string | null = null;
@@ -3291,7 +3301,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               emailsFailed: emailsFailed.length,
               emailsCancelled: emailsCancelled.length,
               totalFollowUpCalls: followUpCallsList.length,
-              callsMade: callsDone.length,
+              callsMade: callsMadeCount,
               callsPending: callsPending.length,
             },
             // Tracking events -- clickUrl is the actual destination link that
