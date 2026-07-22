@@ -169,8 +169,26 @@ export async function handleRetellWebhook(payload: any) {
       updateData.updatedAt = new Date();
     }
 
+    // Recording/transcript are usually only present once the call has fully
+    // ended (and the recording finishes processing on Retell's side, which
+    // can arrive on a later webhook delivery for the same call_id) -- so
+    // capture them whenever present rather than only on a specific event,
+    // and never overwrite a previously-saved value with an absent one.
+    if (call.recording_url) {
+      updateData.recordingUrl = call.recording_url;
+    }
+    if (typeof call.duration_ms === "number") {
+      updateData.duration = Math.round(call.duration_ms / 1000);
+    }
+    if (call.transcript) {
+      updateData.transcript = call.transcript;
+    }
+    if (call.call_analysis) {
+      updateData.callAnalysis = call.call_analysis;
+    }
+
     await db.updateCallLog(callLog.id, updateData);
-    console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${mappedStatus}`);
+    console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${mappedStatus}${call.recording_url ? " (recording captured)" : ""}`);
 
     // If call was answered/completed, cancel remaining follow-ups
     // Retell uses "ended" with disconnection_reason to indicate call completion

@@ -271,6 +271,15 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                           )}
                         </div>
                       )}
+                      {activity.callTriggered && activity.recordingUrl && (
+                        <audio
+                          controls
+                          preload="none"
+                          className="w-full h-9 mt-1"
+                          src={activity.recordingUrl}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      )}
                       {/* No call received indicator */}
                       {!activity.callTriggered && activity.emailSent && (
                         <div className="flex items-center gap-2">

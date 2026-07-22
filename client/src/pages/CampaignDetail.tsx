@@ -504,6 +504,46 @@ function LeadEngagementCard({ lead, isExpanded, onToggle }: { lead: any; isExpan
             </div>
           </div>
 
+          {/* Call Recordings */}
+          {lead.callLogs && lead.callLogs.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                <PhoneCall className="w-4 h-4 text-primary" /> Calls
+              </h4>
+              <div className="space-y-2">
+                {lead.callLogs.map((call: any) => (
+                  <div key={call.id} className="p-3 rounded-lg border border-border">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={`gap-1 text-xs ${
+                          call.status === "completed" ? "border-green-200 text-green-700 bg-green-50" :
+                          call.status === "failed" || call.status === "no_answer" ? "border-red-200 text-red-700 bg-red-50" :
+                          "border-orange-200 text-orange-700 bg-orange-50"
+                        }`}>
+                          <Phone className="w-3 h-3" /> {call.status}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground capitalize">{call.triggerType?.replace("_", " ")}</span>
+                        <span className="text-xs text-muted-foreground">{formatTimestamp(call.createdAt)}</span>
+                        {call.duration != null && (
+                          <span className="text-xs text-muted-foreground">
+                            {Math.floor(call.duration / 60)}m {call.duration % 60}s
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {call.recordingUrl ? (
+                      <audio controls preload="none" className="w-full h-9 mt-2" src={call.recordingUrl} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-2 italic">
+                        {call.status === "completed" ? "Recording not yet available" : "No recording (call did not connect)"}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Lead contact info */}
           <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-4 text-xs text-muted-foreground">
             {lead.phone && (

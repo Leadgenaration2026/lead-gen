@@ -2840,6 +2840,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             callStatus: latestCall?.status || null,
             callId: latestCall?.retellCallId || null,
             totalCalls: callLogs.length,
+            recordingUrl: (latestCall as any)?.recordingUrl || null,
+            callDuration: (latestCall as any)?.duration || null,
             replied: (cl as any).replied || false,
             repliedAt: (cl as any).repliedAt || null,
             responseStatus: (cl as any).responseStatus || null,
@@ -3160,7 +3162,21 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               triggeredAt: cl.callTriggeredAt,
               status: initialCallLogs.length > 0 ? (initialCallLogs[0] as any).status : (cl.callTriggered ? "initiated" : "not_triggered"),
               duration: initialCallLogs.length > 0 ? (initialCallLogs[0] as any).duration : null,
+              recordingUrl: initialCallLogs.length > 0 ? (initialCallLogs[0] as any).recordingUrl || null : null,
             },
+            // Every actual Retell.AI call placed for this lead (initial +
+            // any follow-up/retry attempts) -- callLogs is the one place a
+            // retellCallId, and therefore a recordingUrl, actually gets
+            // linked back from the webhook, so this is the source of truth
+            // for "what calls really happened" and their recordings.
+            callLogs: initialCallLogs.map((c: any) => ({
+              id: c.id,
+              status: c.status,
+              duration: c.duration,
+              recordingUrl: c.recordingUrl || null,
+              triggerType: c.triggerType,
+              createdAt: c.createdAt,
+            })),
             // Follow-up emails breakdown
             followUpEmails: followUpEmailsList.map((e: any) => ({
               id: e.id,
