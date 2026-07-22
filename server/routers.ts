@@ -2790,8 +2790,16 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           ]);
 
           // Get tracking events for this campaign lead (to find clicked URLs)
+          const openCount = trackingEvents.filter(e => e.eventType === 'open').length;
           const clickEvents = trackingEvents.filter(e => e.eventType === 'click' && e.clickUrl);
           const clickedUrls = clickEvents.map(e => e.clickUrl).filter(Boolean);
+          // Group clicks by URL with a count -- "which link was clicked how
+          // many times" instead of just a flat list of every click event.
+          const clickCountByUrl = new Map<string, number>();
+          for (const url of clickedUrls) {
+            clickCountByUrl.set(url as string, (clickCountByUrl.get(url as string) || 0) + 1);
+          }
+          const clickBreakdown = Array.from(clickCountByUrl.entries()).map(([url, count]) => ({ url, count }));
 
           // Get call logs for this campaign lead
           const latestCall = callLogs.length > 0 ? callLogs[callLogs.length - 1] : null;
@@ -2847,9 +2855,12 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             emailSentAt: cl.emailSentAt,
             emailOpened: cl.emailOpened,
             emailOpenedAt: cl.emailOpenedAt,
+            openCount,
             emailClicked: cl.emailClicked,
             emailClickedAt: cl.emailClickedAt,
+            clickCount: clickEvents.length,
             clickedUrls,
+            clickBreakdown,
             callTriggered: cl.callTriggered,
             callTriggeredAt: cl.callTriggeredAt,
             callStatus: latestCall?.status || null,
@@ -2857,11 +2868,25 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             totalCalls: callLogs.length,
             recordingUrl: (latestCall as any)?.recordingUrl || null,
             callDuration: (latestCall as any)?.duration || null,
+            // Every call made for this lead, each with its own recording --
+            // not just the latest, so a lead with multiple call attempts
+            // still has every recording reachable from the activity table.
+            callLogs: callLogs.map((c: any) => ({
+              id: c.id,
+              status: c.status,
+              duration: c.duration,
+              recordingUrl: c.recordingUrl || null,
+              endReason: c.endReason || null,
+              triggerType: c.triggerType,
+              createdAt: c.createdAt,
+            })),
             replied: (cl as any).replied || false,
             repliedAt: (cl as any).repliedAt || null,
             responseStatus: (cl as any).responseStatus || null,
             unsubscribed: (cl as any).unsubscribed || false,
             unsubscribedAt: (cl as any).unsubscribedAt || null,
+            meetingBooked: (cl as any).meetingBooked || false,
+            meetingBookedAt: (cl as any).meetingBookedAt || null,
             nextFollowUpEmails: pendingFollowUpEmails,
             nextFollowUpCalls: pendingFollowUpCalls,
           };
