@@ -217,8 +217,17 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
             <div className="grid grid-cols-3 sm:grid-cols-7 gap-3 mb-4">
               {[
                 { label: "Sent", value: activities.filter((a) => a.emailSent).length, color: "text-foreground" },
-                { label: "Opens", value: activities.reduce((sum, a) => sum + (a.openCount || 0), 0), color: "text-green-600" },
-                { label: "Clicks", value: activities.reduce((sum, a) => sum + (a.clickCount || 0), 0), color: "text-purple-600" },
+                // Leads whose INITIAL email was opened/clicked at least
+                // once -- the same emailOpened/emailClicked flags the
+                // Campaigns list and Analytics use, so this number matches
+                // those exactly, rather than a merely-similar approximation.
+                // Per-row numbers below still show the real total event
+                // count (every open/click, including repeats and follow-up
+                // emails) for that lead specifically -- that finer detail is
+                // genuinely useful per-lead, it just isn't what belongs in
+                // a headline total next to Sent/Replied/Unsubscribed.
+                { label: "Opens", value: activities.filter((a) => a.emailOpened).length, color: "text-green-600" },
+                { label: "Clicks", value: activities.filter((a) => a.emailClicked).length, color: "text-purple-600" },
                 { label: "Calls", value: activities.reduce((sum, a) => sum + (a.totalCalls || 0), 0), color: "text-orange-600" },
                 { label: "Replied", value: activities.filter((a) => a.replied).length, color: "text-emerald-600" },
                 { label: "Meetings Booked", value: activities.filter((a) => a.meetingBooked).length, color: "text-teal-600" },
