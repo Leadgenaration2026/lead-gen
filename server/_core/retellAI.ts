@@ -202,11 +202,21 @@ export async function handleRetellWebhook(payload: any) {
       console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
     }
 
-    // FALLBACK: If call failed to connect, retry with secondary phone number
-    // (values per Retell's disconnection_reason enum)
-    const failedReasons = ["dial_no_answer", "voicemail_reached", "dial_busy", "dial_failed", "invalid_destination"];
-    if (status === "ended" && failedReasons.includes(end_reason)) {
-      await retryWithSecondaryPhone(callLog, end_reason);
+    if (status === "ended" && end_reason === "voicemail_reached") {
+      // A voicemail message was already left on this attempt -- calling
+      // again (even from the secondary number) would just leave a second
+      // voicemail, which isn't more effective. Stop all remaining scheduled
+      // calls for this lead; follow-up emails are unaffected and continue
+      // as normal.
+      await db.cancelPendingFollowUpCalls(callLog.campaignLeadId);
+      console.log(`[RetellAI] Voicemail reached - cancelled remaining scheduled calls for campaignLead ${callLog.campaignLeadId}`);
+    } else {
+      // FALLBACK: If the call never actually connected (no answer, busy,
+      // dial failure), retry once with the secondary phone number.
+      const failedReasons = ["dial_no_answer", "dial_busy", "dial_failed", "invalid_destination"];
+      if (status === "ended" && failedReasons.includes(end_reason)) {
+        await retryWithSecondaryPhone(callLog, end_reason);
+      }
     }
   } catch (error) {
     console.error("[RetellAI] Failed to handle webhook:", error);

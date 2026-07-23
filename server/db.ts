@@ -1019,6 +1019,22 @@ export async function isLeadUnsubscribed(campaignLeadId: number): Promise<boolea
   return result[0]?.unsubscribed === 1;
 }
 
+// Cancel only pending follow-up calls (not emails) -- used when a call
+// reaches voicemail: a message was already left, so further call attempts
+// aren't more effective, but there's no reason to also stop emailing.
+export async function cancelPendingFollowUpCalls(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(followUpCalls).set({
+    status: "failed" as any,
+  }).where(
+    and(
+      eq(followUpCalls.campaignLeadId, campaignLeadId),
+      eq(followUpCalls.status, "scheduled")
+    )
+  );
+}
+
 // Cancel all pending follow-up emails and calls for a campaign lead (on reply/unsubscribe)
 export async function cancelPendingFollowUps(campaignLeadId: number) {
   const database = await getDb();
