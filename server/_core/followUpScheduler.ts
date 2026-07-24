@@ -853,10 +853,19 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
           }
         }
 
-        // Trigger the Retell.AI call
-        await db.updateFollowUpCall(call.id, { status: "initiated", initiatedAt: new Date() });
-
-        await triggerRetellCall(
+        // Trigger the Retell.AI call. triggerRetellCall returns null if the
+        // API call itself failed (auth error, rate limit, transient Retell
+        // outage, etc.) -- previously that return value was never checked,
+        // so a failed attempt still got marked "initiated" here and then
+        // just sat there forever: no callLogs row (those are only created
+        // on a confirmed success), no retry, nothing. When several leads
+        // open around the same time and their calls land in the same cron
+        // batch, whichever ones Retell's API rejected (e.g. a concurrent-
+        // call limit) would silently vanish while the rest went through --
+        // exactly "opened by many, called for only a few". Now a failed
+        // attempt gets rescheduled a couple of minutes out (still inside
+        // business hours) instead of being marked as if it succeeded.
+        const callId = await triggerRetellCall(
           call.campaignLeadId,
           normalizedPhone,
           retellApiKey,
@@ -866,6 +875,14 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
           leadContext,
           callerCompanyName
         );
+
+        if (callId) {
+          await db.updateFollowUpCall(call.id, { status: "initiated", initiatedAt: new Date() });
+        } else {
+          const retryAt = nextEasternBusinessSlot(new Date(Date.now() + 2 * 60 * 1000));
+          await db.updateFollowUpCall(call.id, { status: "scheduled", scheduledFor: retryAt });
+          console.log(`[FollowUpScheduler] Retell API call failed for campaignLeadId: ${call.campaignLeadId} -- rescheduled retry for ${retryAt.toISOString()}`);
+        }
 
         console.log(`[FollowUpScheduler] Triggered follow-up call #${call.attemptNumber} for campaignLeadId: ${call.campaignLeadId}`);
       } catch (callError) {
