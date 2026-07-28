@@ -78,6 +78,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const deleteListMutation = trpc.leadSets.delete.useMutation();
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
+  const assignFirstNFromListMutation = trpc.leadSets.assignFirstNFromList.useMutation();
   // DISABLED: Browser automation mutations - using REST API instead
   // const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
   // const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
@@ -3824,7 +3825,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               <Input
                 type="number"
                 min="1"
-                placeholder="Leave blank to assign all"
+                placeholder="e.g. 20, 25, 50, 1000... leave blank for all"
                 value={assignAllCountInput}
                 onChange={(e) => setAssignAllCountInput(e.target.value)}
                 className="mt-1"
@@ -3834,20 +3835,22 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAssignAllDialogOpen(false); setAssignAllCountInput(""); }}>Cancel</Button>
-            <Button onClick={async () => {
-              if (!assignAllTagId) return;
+            <Button
+              disabled={assignFirstNFromListMutation.isPending}
+              onClick={async () => {
+              if (!assignAllTagId || assignAllListId == null) return;
               try {
-                const listId = assignAllListId;
-                let leads = (leadsQuery.data || []).filter((l: any) => l.sourceListId === listId && !l.leadSetId);
+                // Queried and limited directly in the database (not sliced
+                // from whatever page of leads.list happens to be loaded on
+                // the client, which is capped at 100 rows) -- so a count
+                // like 1000 actually works regardless of pagination.
                 const n = parseInt(assignAllCountInput, 10);
-                if (n > 0) {
-                  leads = leads.slice(0, n);
-                }
-                await assignLeadsToSetMutation.mutateAsync({
-                  leadIds: leads.map((l: any) => l.id),
-                  leadSetId: parseInt(assignAllTagId)
+                const result = await assignFirstNFromListMutation.mutateAsync({
+                  sourceListId: assignAllListId,
+                  leadSetId: parseInt(assignAllTagId),
+                  count: n > 0 ? n : undefined,
                 });
-                toast.success(`Assigned ${leads.length} leads to tag`);
+                toast.success(`Assigned ${result.count} lead(s) to tag`);
                 leadsQuery.refetch();
                 setAssignAllDialogOpen(false);
                 setAssignAllTagId("");

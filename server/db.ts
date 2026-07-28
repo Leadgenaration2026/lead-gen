@@ -1,4 +1,4 @@
-import { eq, and, desc, inArray, lte, count, sql, gte, notInArray } from "drizzle-orm";
+import { eq, and, desc, asc, inArray, lte, count, sql, gte, notInArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import * as schema from "../drizzle/schema";
 import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage, searchCache, leadImports, InsertSearchCache, SearchCache, InsertLeadImport, LeadImport } from "../drizzle/schema";
@@ -907,6 +907,26 @@ export async function assignLeadsToSet(leadIds: number[], leadSetId: number | nu
   const database = await getDb();
   if (!database) return;
   await database.update(leads).set({ leadSetId }).where(inArray(leads.id, leadIds));
+}
+
+// Get the (optionally capped) oldest-first untagged leads from an imported
+// list, queried and limited directly in SQL -- the "Assign All to Tag"
+// dialog used to filter/slice the leads.list page already loaded on the
+// client, which is capped at 100 rows, so asking for e.g. 1000 leads
+// silently only ever saw whatever fit on the current page. This queries
+// the actual full list.
+export async function getUntaggedLeadIdsBySourceList(userId: number, sourceListId: number, limit?: number) {
+  const database = await getDb();
+  if (!database) return [];
+  const query = database.select({ id: leads.id }).from(leads).where(
+    and(
+      eq(leads.userId, userId),
+      eq(leads.sourceListId, sourceListId),
+      isNull(leads.leadSetId)
+    )
+  ).orderBy(asc(leads.createdAt));
+  const rows = limit ? await query.limit(limit) : await query;
+  return rows.map((r) => r.id);
 }
 
 export async function getLeadsBySetId(leadSetId: number, userId: number) {

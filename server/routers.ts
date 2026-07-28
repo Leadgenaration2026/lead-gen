@@ -4773,6 +4773,31 @@ Respond in this exact JSON format:
         await db.assignLeadsToSet(input.leadIds, input.leadSetId);
         return { success: true, count: input.leadIds.length };
       }),
+
+    // Assign the first N (oldest first), or every, untagged lead from an
+    // imported list to a tag -- queries and limits directly in the database
+    // rather than slicing whatever page of leads.list the client happens to
+    // have loaded, so a count like 1000 actually works regardless of how
+    // many leads are currently paginated into view on the Leads page.
+    assignFirstNFromList: protectedProcedure
+      .input(z.object({
+        sourceListId: z.number(),
+        leadSetId: z.number().nullable(),
+        count: z.number().min(1).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.leadSetId !== null) {
+          const set = await db.getLeadSetById(input.leadSetId);
+          if (!set || set.userId !== ctx.user.id) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lead set not found" });
+          }
+        }
+        const leadIds = await db.getUntaggedLeadIdsBySourceList(ctx.user.id, input.sourceListId, input.count);
+        if (leadIds.length > 0) {
+          await db.assignLeadsToSet(leadIds, input.leadSetId);
+        }
+        return { success: true, count: leadIds.length };
+      }),
   }),
 
   // ============ Rotational Emails Router ============
