@@ -62,14 +62,10 @@ export function registerEmailTrackingRoutes(app: Express) {
             });
           console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as opened`);
 
-          // Update campaign open count
-          const campaign = await db.getCampaignById(campaignLead.campaignId);
-          if (campaign) {
-            await db.updateCampaign(campaignLead.campaignId, {
-              openCount: (campaign.openCount || 0) + 1,
-            });
-            console.log(`[EmailTracking] Updated campaign ${campaign.id} openCount to ${(campaign.openCount || 0) + 1}`);
-          }
+          // Update campaign open count atomically -- see incrementCampaignOpenCount
+          // for why (concurrent opens right after a mass send were losing counts).
+          await db.incrementCampaignOpenCount(campaignLead.campaignId);
+          console.log(`[EmailTracking] Incremented campaign ${campaignLead.campaignId} openCount`);
         }
 
         // Trigger Retell.AI call on every email open (calls after each follow-up email open)
@@ -164,13 +160,10 @@ export function registerEmailTrackingRoutes(app: Express) {
             });
             console.log(`[EmailTracking] Marked campaignLead ${event.campaignLeadId} as clicked`);
 
-            // Update campaign click count
-            const campaign = await db.getCampaignById(campaignLead.campaignId);
-            if (campaign) {
-              await db.updateCampaign(campaignLead.campaignId, {
-                clickCount: (campaign.clickCount || 0) + 1,
-              });
-            }
+            // Update campaign click count atomically -- see
+            // incrementCampaignOpenCount for why (concurrent clicks were
+            // losing counts under the old read-then-write approach).
+            await db.incrementCampaignClickCount(campaignLead.campaignId);
           }
 
           // Trigger Retell.AI call on every email click

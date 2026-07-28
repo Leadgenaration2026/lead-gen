@@ -110,13 +110,10 @@ export async function triggerRetellCall(
         callTriggeredAt: new Date().toISOString(),
       });
 
-      // Update campaign call count
-      const campaign = await db.getCampaignById(campaignLead.campaignId);
-      if (campaign) {
-        await db.updateCampaign(campaignLead.campaignId, {
-          callCount: (campaign.callCount || 0) + 1,
-        });
-      }
+      // Update campaign call count atomically -- see incrementCampaignOpenCount
+      // in db.ts for why (concurrent calls were losing counts under the old
+      // read-then-write approach).
+      await db.incrementCampaignCallCount(campaignLead.campaignId);
     }
 
     return callId;

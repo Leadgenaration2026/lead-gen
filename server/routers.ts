@@ -2911,6 +2911,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             unsubscribedAt: (cl as any).unsubscribedAt || null,
             meetingBooked: (cl as any).meetingBooked || false,
             meetingBookedAt: (cl as any).meetingBookedAt || null,
+            callsDisabled: (cl as any).callsDisabled || false,
             // Whether this lead has follow-ups that were auto-cancelled
             // (e.g. a call ending in agent_hangup/user_hangup) and could be
             // manually resumed via responses.resumeFollowUps -- never true
@@ -3213,6 +3214,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
             // plain email reply (see markMeetingBooked in db.ts).
             meetingBooked: (cl as any).meetingBooked || false,
             meetingBookedAt: (cl as any).meetingBookedAt || null,
+            callsDisabled: (cl as any).callsDisabled || false,
             // Initial email status
             initialEmail: {
               sent: cl.emailSent,
@@ -4927,6 +4929,36 @@ Respond in this exact JSON format:
         await db.markLeadReplied(input.campaignLeadId, "positive");
         await db.markMeetingBooked(input.campaignLeadId);
         await db.cancelPendingFollowUps(input.campaignLeadId);
+        return { success: true };
+      }),
+
+    // Per-lead opt-out of the CALL side of follow-ups only (e.g. the phone
+    // number turns out to be unreachable/wrong) -- follow-up emails keep
+    // going as normal. Distinct from unsubscribe, which is permanent and
+    // stops everything.
+    disableCallFollowUps: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) throw new TRPCError({ code: "NOT_FOUND" });
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.disableCallFollowUps(input.campaignLeadId);
+        return { success: true };
+      }),
+
+    enableCallFollowUps: protectedProcedure
+      .input(z.object({
+        campaignLeadId: z.number(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) throw new TRPCError({ code: "NOT_FOUND" });
+        const campaign = await db.getCampaignById(campaignLead.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.enableCallFollowUps(input.campaignLeadId);
         return { success: true };
       }),
 

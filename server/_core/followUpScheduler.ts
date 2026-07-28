@@ -836,6 +836,11 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
           console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
           continue;
         }
+        if ((campaignLead as any)?.callsDisabled) {
+          await db.updateFollowUpCall(call.id, { status: "failed" });
+          console.log(`[FollowUpScheduler] Skipping call for campaignLeadId: ${call.campaignLeadId} - calls manually disabled for this lead`);
+          continue;
+        }
         let leadContext: { customerName?: string; customerEmail?: string; customerCompanyName?: string } | undefined;
         if (campaignLead) {
           const lead = await db.getLeadById(campaignLead.leadId);
@@ -920,6 +925,10 @@ export async function triggerCallOnFollowUpOpen(
     if (campaignLead?.unsubscribed || campaignLead?.replied) {
       console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
       return { success: false, reason: campaignLead.replied ? "replied" : "unsubscribed" };
+    }
+    if ((campaignLead as any)?.callsDisabled) {
+      console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - calls manually disabled for this lead`);
+      return { success: false, reason: "calls_disabled" };
     }
     if (campaignLead) {
       const lead = await db.getLeadById(campaignLead.leadId);

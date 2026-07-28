@@ -78,6 +78,22 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
     onError: () => toast.error("Failed to mark meeting booked"),
   });
 
+  const disableCallFollowUps = trpc.responses.disableCallFollowUps.useMutation({
+    onSuccess: () => {
+      toast.success("Calls stopped for this lead — follow-up emails will continue");
+      activityQuery.refetch();
+    },
+    onError: () => toast.error("Failed to disable calls for this lead"),
+  });
+
+  const enableCallFollowUps = trpc.responses.enableCallFollowUps.useMutation({
+    onSuccess: () => {
+      toast.success("Calls re-enabled for this lead");
+      activityQuery.refetch();
+    },
+    onError: () => toast.error("Failed to re-enable calls for this lead"),
+  });
+
   // Poll for updates every 5 seconds
   useEffect(() => {
     if (!isPolling) return;
@@ -339,6 +355,20 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                               </Tooltip>
                             </TooltipProvider>
                           )}
+                          {activity.callsDisabled && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge className="bg-gray-100 text-gray-700 border-gray-300 text-xs gap-1">
+                                    <PhoneOff className="w-3 h-3" /> Calls off
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Calls manually disabled for this lead -- follow-up emails still continue. Expand this row to re-enable.
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
@@ -548,6 +578,45 @@ export function ActivityFeed({ campaignId }: ActivityFeedProps) {
                                     </Button>
                                   )}
                                 </div>
+                              </div>
+                            )}
+
+                            {/* Call follow-up toggle -- independent of reply/unsubscribe
+                                status, for when a phone number turns out to be
+                                unreachable/wrong but the lead should still get
+                                follow-up emails. */}
+                            {!activity.unsubscribed && (
+                              <div className="flex items-center gap-2">
+                                {activity.callsDisabled ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      enableCallFollowUps.mutate({ campaignLeadId: activity.campaignLeadId });
+                                    }}
+                                    disabled={enableCallFollowUps.isPending}
+                                  >
+                                    <Phone className="w-3 h-3" /> Resume Calls
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1 border-gray-300 text-gray-700 hover:bg-gray-100"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      disableCallFollowUps.mutate({ campaignLeadId: activity.campaignLeadId });
+                                    }}
+                                    disabled={disableCallFollowUps.isPending}
+                                  >
+                                    <PhoneOff className="w-3 h-3" /> Emails Only (Stop Calls)
+                                  </Button>
+                                )}
+                                <span className="text-[10px] text-muted-foreground">
+                                  {activity.callsDisabled ? "Calls are off for this lead -- emails still continue" : "Stop calling this lead if their number is unreachable -- emails keep going"}
+                                </span>
                               </div>
                             )}
 

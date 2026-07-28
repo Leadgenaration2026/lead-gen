@@ -50,6 +50,8 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS meetingBookedAt TIMESTAMP NULL`);
   await database.execute(sql`ALTER TABLE emailTrackingEvents ADD COLUMN IF NOT EXISTS clickUrl VARCHAR(2048) NULL`);
   await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS endReason VARCHAR(100) NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS callsDisabled TINYINT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS callsDisabledAt TIMESTAMP NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 
@@ -290,6 +292,31 @@ export async function updateCampaign(id: number, data: Partial<InsertCampaign>) 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.update(campaigns).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(campaigns.id, id));
+}
+
+// Atomic increments for campaign-level counters -- reading the current
+// value in JS and writing back current+1 (the previous approach) loses
+// updates under concurrency: if several leads open/click/get called around
+// the same time (the common case right after a mass send), two requests can
+// both read the same starting value and both write back the same
+// incremented result, silently undercounting. `col + 1` as a SQL expression
+// happens atomically in the database instead.
+export async function incrementCampaignOpenCount(campaignId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaigns).set({ openCount: sql`${campaigns.openCount} + 1`, updatedAt: new Date() } as any).where(eq(campaigns.id, campaignId));
+}
+
+export async function incrementCampaignClickCount(campaignId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaigns).set({ clickCount: sql`${campaigns.clickCount} + 1`, updatedAt: new Date() } as any).where(eq(campaigns.id, campaignId));
+}
+
+export async function incrementCampaignCallCount(campaignId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaigns).set({ callCount: sql`${campaigns.callCount} + 1`, updatedAt: new Date() } as any).where(eq(campaigns.id, campaignId));
 }
 
 export async function deleteCampaign(id: number) {
@@ -1033,6 +1060,32 @@ export async function cancelPendingFollowUpCalls(campaignLeadId: number) {
       eq(followUpCalls.status, "scheduled")
     )
   );
+}
+
+// Manual per-lead opt-out of the CALL side of follow-ups only (e.g. the
+// phone number turned out to be unreachable/wrong) -- cancels any
+// currently-scheduled follow-up calls and prevents new ones from being
+// scheduled going forward. Follow-up emails are untouched and keep going.
+export async function disableCallFollowUps(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignLeads).set({
+    callsDisabled: true,
+    callsDisabledAt: new Date(),
+  } as any).where(eq(campaignLeads.id, campaignLeadId));
+  await cancelPendingFollowUpCalls(campaignLeadId);
+}
+
+// Re-enable calling for a lead that had it manually disabled -- does not
+// resurrect calls that were already cancelled (use responses.resumeFollowUps
+// for that); this just lets NEW calls be scheduled again going forward.
+export async function enableCallFollowUps(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignLeads).set({
+    callsDisabled: false,
+    callsDisabledAt: null,
+  } as any).where(eq(campaignLeads.id, campaignLeadId));
 }
 
 // Cancel all pending follow-up emails and calls for a campaign lead (on reply/unsubscribe)

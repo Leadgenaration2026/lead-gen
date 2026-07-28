@@ -56,6 +56,13 @@ export const campaignLeads = mysqlTable("campaignLeads", {
 	// show whether a lead replied vs. actually booked a meeting.
 	meetingBooked: tinyint().default(0).notNull(),
 	meetingBookedAt: timestamp({ mode: 'string' }),
+	// Manual per-lead opt-out of the CALL side of follow-ups only (e.g. the
+	// phone number turned out to be unreachable/wrong) -- follow-up emails
+	// keep going as normal. Distinct from `unsubscribed`, which stops both
+	// and is permanent/lead-initiated; this is a call-only, user-controlled
+	// toggle that can be turned back on.
+	callsDisabled: tinyint().default(0).notNull(),
+	callsDisabledAt: timestamp({ mode: 'string' }),
 });
 
 export const campaignTemplates = mysqlTable("campaignTemplates", {
