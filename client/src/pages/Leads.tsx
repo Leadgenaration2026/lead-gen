@@ -78,7 +78,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const dedupCheckMutation = trpc.dedup.check.useMutation();
   const deleteListMutation = trpc.leadSets.delete.useMutation();
   const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
-  const assignFirstNFromListMutation = trpc.leadSets.assignFirstNFromList.useMutation();
+  const getFirstNLeadIdsMutation = trpc.leadSets.getFirstNLeadIdsFromList.useMutation();
   // DISABLED: Browser automation mutations - using REST API instead
   // const autoEnrichMutation = trpc.seamlessAIAutomation.startAutoEnrichment.useMutation();
   // const autoEnrichSelectedMutation = trpc.seamlessAIAutomation.startAutoEnrichmentSelected.useMutation();
@@ -128,10 +128,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [deleteTagDialogOpen, setDeleteTagDialogOpen] = useState(false);
   const [deleteTagId, setDeleteTagId] = useState<number | null>(null);
   const [deleteListId, setDeleteListId] = useState<number | null>(null);
-  const [assignAllDialogOpen, setAssignAllDialogOpen] = useState(false);
-  const [assignAllListId, setAssignAllListId] = useState<number | null>(null);
-  const [assignAllTagId, setAssignAllTagId] = useState<string>("");
-  const [assignAllCountInput, setAssignAllCountInput] = useState<string>("");
+  // "Select First N" -- fetches lead IDs from the currently-filtered
+  // imported list directly from the database (not capped by the leads.list
+  // page loaded on the client) and checks them, so the existing "Assign
+  // Leads to a Tag" selection-action-bar button can tag any count.
+  const [selectFirstNCount, setSelectFirstNCount] = useState<string>("");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const [csvFileName, setCsvFileName] = useState("");
@@ -3104,35 +3105,57 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <X className="w-3.5 h-3.5" />
                 Deselect All
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Pre-fill from the current "Filter by list" selection if
-                  // one is set, but the dialog itself now has its own list
-                  // picker too -- this button no longer requires picking a
-                  // specific imported list first just to find it.
-                  setAssignAllListId(filterSourceListId !== "all" ? parseInt(filterSourceListId) : null);
-                  setAssignAllDialogOpen(true);
-                }}
-                className="gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Assign Leads to Tag
-              </Button>
               {filterSourceListId !== "all" && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    setDeleteListId(parseInt(filterSourceListId));
-                    setDeleteListDialogOpen(true);
-                  }}
-                  className="gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Delete List
-                </Button>
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 20, 50, 1000"
+                      value={selectFirstNCount}
+                      onChange={(e) => setSelectFirstNCount(e.target.value)}
+                      className="h-8 w-40"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={getFirstNLeadIdsMutation.isPending}
+                      onClick={async () => {
+                        const n = parseInt(selectFirstNCount, 10);
+                        if (!(n > 0)) {
+                          toast.error("Enter a number of leads to select");
+                          return;
+                        }
+                        try {
+                          const result = await getFirstNLeadIdsMutation.mutateAsync({
+                            sourceListId: parseInt(filterSourceListId),
+                            count: n,
+                          });
+                          setSelectedLeadIds(new Set(result.leadIds));
+                          toast.success(`Selected ${result.leadIds.length} lead(s) -- use "Assign Leads to a Tag" below to tag them`);
+                        } catch (err: any) {
+                          toast.error(err.message || "Failed to select leads");
+                        }
+                      }}
+                      className="gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Select First N
+                    </Button>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setDeleteListId(parseInt(filterSourceListId));
+                      setDeleteListDialogOpen(true);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete List
+                  </Button>
+                </>
               )}
               {filterLeadSet !== "all" && filterLeadSet !== "unassigned" && (
                 <Button
@@ -3801,89 +3824,6 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setDrawerLeadId(null); }}
       />
-      
-      {/* Assign All to Tag Dialog */}
-      <Dialog open={assignAllDialogOpen} onOpenChange={setAssignAllDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign Leads to Tag</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Imported list</label>
-              <Select
-                value={assignAllListId != null ? String(assignAllListId) : ""}
-                onValueChange={(v) => setAssignAllListId(parseInt(v))}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select an imported list" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(importedListsQuery.data || []).filter((list: any) => list.type === "list").map((list: any) => (
-                    <SelectItem key={list.id} value={String(list.id)}>
-                      {list.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Tag</label>
-              <Select value={assignAllTagId} onValueChange={setAssignAllTagId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select a tag" />
-                </SelectTrigger>
-                <SelectContent>
-                  {leadSets.map((set: any) => (
-                    <SelectItem key={set.id} value={String(set.id)}>
-                      {set.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Number of leads (optional)</label>
-              <Input
-                type="number"
-                min="1"
-                placeholder="e.g. 20, 25, 50, 1000... leave blank for all"
-                value={assignAllCountInput}
-                onChange={(e) => setAssignAllCountInput(e.target.value)}
-                className="mt-1"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Assigns the first N untagged leads from this list, oldest first. Leave blank to assign every untagged lead.</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setAssignAllDialogOpen(false); setAssignAllCountInput(""); }}>Cancel</Button>
-            <Button
-              disabled={assignFirstNFromListMutation.isPending}
-              onClick={async () => {
-              if (!assignAllTagId || assignAllListId == null) return;
-              try {
-                // Queried and limited directly in the database (not sliced
-                // from whatever page of leads.list happens to be loaded on
-                // the client, which is capped at 100 rows) -- so a count
-                // like 1000 actually works regardless of pagination.
-                const n = parseInt(assignAllCountInput, 10);
-                const result = await assignFirstNFromListMutation.mutateAsync({
-                  sourceListId: assignAllListId,
-                  leadSetId: parseInt(assignAllTagId),
-                  count: n > 0 ? n : undefined,
-                });
-                toast.success(`Assigned ${result.count} lead(s) to tag`);
-                leadsQuery.refetch();
-                setAssignAllDialogOpen(false);
-                setAssignAllTagId("");
-                setAssignAllCountInput("");
-              } catch (err: any) {
-                toast.error(err.message || "Failed to assign leads");
-              }
-            }}>{assignAllCountInput && parseInt(assignAllCountInput, 10) > 0 ? `Assign First ${assignAllCountInput}` : "Assign All"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       
       {/* Delete List Dialog */}
       <Dialog open={deleteListDialogOpen} onOpenChange={setDeleteListDialogOpen}>
