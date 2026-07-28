@@ -191,25 +191,40 @@ export async function handleRetellWebhook(payload: any) {
     await db.updateCallLog(callLog.id, updateData);
     console.log(`[RetellAI] Updated call log ${callLog.id} status to: ${mappedStatus}${call.recording_url ? " (recording captured)" : ""}`);
 
-    // If call was answered/completed, cancel remaining follow-ups
-    // Retell uses "ended" with disconnection_reason to indicate call completion
-    if (status === "ended" && (end_reason === "agent_hangup" || end_reason === "user_hangup")) {
+    // "agent_hangup" alone does NOT mean a human answered -- when the agent
+    // is configured to detect voicemail conversationally (leave a message,
+    // then hang up itself) rather than relying on carrier-level detection,
+    // Retell reports that exact same disconnection_reason as a real answered
+    // call ending normally. The two are indistinguishable from end_reason
+    // alone. call_analysis.in_voicemail is Retell's own independent
+    // confirmation of voicemail and can be true even when end_reason says
+    // "agent_hangup" -- checked whenever present, on whichever webhook
+    // delivery included it (analysis sometimes lands on a later delivery
+    // than the initial call-ended one).
+    const isVoicemail = end_reason === "voicemail_reached" || call.call_analysis?.in_voicemail === true;
+
+    // If call was genuinely answered by a person, cancel remaining follow-ups
+    // (both emails and calls). Retell uses "ended" with disconnection_reason
+    // to indicate call completion.
+    if (status === "ended" && (end_reason === "agent_hangup" || end_reason === "user_hangup") && !isVoicemail) {
       // Call was answered - this is a positive engagement
       await db.cancelPendingFollowUps(callLog.campaignLeadId);
       console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
     }
 
-    if (status === "ended" && end_reason === "voicemail_reached") {
+    if (status === "ended" && isVoicemail) {
       // A voicemail message was already left on this attempt -- calling
       // again (even from the secondary number) would just leave a second
       // voicemail, which isn't more effective. Stop all remaining scheduled
       // calls for this lead; follow-up emails are unaffected and continue
-      // as normal.
+      // as normal -- a voicemail means the number IS reachable, unlike a
+      // wrong/disconnected number.
       await db.cancelPendingFollowUpCalls(callLog.campaignLeadId);
-      console.log(`[RetellAI] Voicemail reached - cancelled remaining scheduled calls for campaignLead ${callLog.campaignLeadId}`);
+      console.log(`[RetellAI] Voicemail reached (end_reason: ${end_reason}, in_voicemail: ${call.call_analysis?.in_voicemail}) - cancelled remaining scheduled calls for campaignLead ${callLog.campaignLeadId}`);
     } else {
       // FALLBACK: If the call never actually connected (no answer, busy,
-      // dial failure), retry once with the secondary phone number.
+      // dial failure -- a genuinely unreachable/wrong number), retry once
+      // with the secondary phone number.
       const failedReasons = ["dial_no_answer", "dial_busy", "dial_failed", "invalid_destination"];
       if (status === "ended" && failedReasons.includes(end_reason)) {
         await retryWithSecondaryPhone(callLog, end_reason);
