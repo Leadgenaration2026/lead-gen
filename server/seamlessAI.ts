@@ -1191,9 +1191,20 @@ export async function enrichContacts(
       return {};
     }
 
-    // Step 2: Poll - wait for research results
+    // Step 2: Poll - wait for research results. Deliberately using
+    // pollContactResults' own defaults (120 attempts x 2000ms = 4 minutes)
+    // instead of a shorter override -- this used to poll for only 60
+    // attempts x 1000ms (60 seconds total), which is nowhere near enough
+    // for a batch of 100+ contacts (every other caller of this function,
+    // e.g. phoneVerification.ts, already relies on the 4-minute default and
+    // works correctly). Research on a large selection genuinely takes
+    // longer than a minute to complete on Seamless's side, so the old
+    // timeout meant essentially nothing had finished yet when we gave up --
+    // producing an enrichmentMap with no phone numbers at all, which is
+    // exactly "none of the N selected contacts had a complete phone number"
+    // regardless of how good the actual matches were.
     console.log(`[Seamless.AI] Polling ${researchResult.requestIds.length} research requests...`);
-    const pollResults = await pollContactResults(apiKey, researchResult.requestIds, 60, 1000);
+    const pollResults = await pollContactResults(apiKey, researchResult.requestIds);
 
     // Step 3: Map results back to searchResultId using the requestId association
     // captured at submission time (poll results don't reliably echo searchResultId).
