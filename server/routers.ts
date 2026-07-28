@@ -1125,6 +1125,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         companyNameOverride: z.string().optional(), // "Find a business's owner" lookup
         zipCode: z.string().optional(), // Same lookup -- Seamless.AI's real postal-code filter
         companyDomainOverride: z.string().optional(), // Same lookup, by website instead of/alongside name
+        // Resumes from where a previous search with these exact same filters
+        // left off (Seamless's own pagination cursor) -- pass back the
+        // `nextToken` this same procedure returned last time to get the NEXT
+        // batch of candidates instead of the same top-ranked ones again.
+        nextToken: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
@@ -1136,7 +1141,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         }
 
         const { searchAndFilterSeamlessCandidates } = await import("./seamlessAI");
-        const { candidates, totalAvailable, estimatedSearchCredits } = await searchAndFilterSeamlessCandidates(
+        const { candidates, totalAvailable, estimatedSearchCredits, nextToken } = await searchAndFilterSeamlessCandidates(
           settings.seamlessApiKey,
           input.instruction,
           input.count,
@@ -1147,11 +1152,12 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           input.titlesOverride,
           input.companyNameOverride,
           input.zipCode,
-          input.companyDomainOverride
+          input.companyDomainOverride,
+          input.nextToken
         );
 
         if (candidates.length === 0) {
-          return { candidates: [], skippedAlreadyOwned: 0, skippedExcluded: 0, totalAvailable, estimatedSearchCredits };
+          return { candidates: [], skippedAlreadyOwned: 0, skippedExcluded: 0, totalAvailable, estimatedSearchCredits, nextToken };
         }
 
         // Skip candidates already saved as leads — no point showing them again
@@ -1169,7 +1175,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         filtered = filtered.filter((c) => !excludedIds.has(c.searchResultId));
         const skippedExcluded = beforeExcludedFilter - filtered.length;
 
-        return { candidates: filtered, skippedAlreadyOwned, skippedExcluded, totalAvailable, estimatedSearchCredits };
+        return { candidates: filtered, skippedAlreadyOwned, skippedExcluded, totalAvailable, estimatedSearchCredits, nextToken };
       }),
 
     // How many Seamless.AI contacts this user has permanently excluded by

@@ -238,6 +238,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [isSearchingSeamless, setIsSearchingSeamless] = useState(false);
   const [seamlessTotalAvailable, setSeamlessTotalAvailable] = useState<number | undefined>(undefined);
   const [seamlessSearchCredits, setSeamlessSearchCredits] = useState<number | undefined>(undefined);
+  // Seamless's own pagination cursor from the last search -- passing it back
+  // fetches the NEXT batch of candidates instead of the same top-ranked ones
+  // every "search again" used to return.
+  const [seamlessNextToken, setSeamlessNextToken] = useState<string | undefined>(undefined);
+  const [isLoadingMoreSeamless, setIsLoadingMoreSeamless] = useState(false);
   const [seamlessEngagementScores, setSeamlessEngagementScores] = useState<Record<string, { score: number; metrics: any }>>({});
   const [scoringEngagementIds, setScoringEngagementIds] = useState<Set<string>>(new Set());
   const [seamlessDetailIndex, setSeamlessDetailIndex] = useState<number | null>(null);
@@ -455,6 +460,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSelectedSeamlessIds(new Set(result.candidates.map((c) => c.searchResultId))); // default: all selected
       setSeamlessTotalAvailable(result.totalAvailable);
       setSeamlessSearchCredits(result.estimatedSearchCredits);
+      setSeamlessNextToken((result as any).nextToken);
       setSeamlessEngagementScores({});
       setSeamlessPreviewDialogOpen(true);
       const skipMessages = [
@@ -475,6 +481,46 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       toast.error(msg, { duration: 8000 });
     } finally {
       setIsSearchingSeamless(false);
+    }
+  };
+
+  // Fetches the NEXT batch of candidates using the cursor from the last
+  // search, appending to what's already extracted -- without this, "search
+  // again" always restarted from Seamless's first page, returning the same
+  // top-ranked candidates (already saved as leads by then), which is why it
+  // used to look like almost nothing new ever came back.
+  const handleSearchNextBatch = async () => {
+    if (!instruction.trim() || !seamlessNextToken) return;
+    setIsLoadingMoreSeamless(true);
+    try {
+      const result = await searchSeamlessPreviewMutation.mutateAsync({
+        instruction,
+        count,
+        country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
+        state: generateState && generateState !== "any" ? generateState : undefined,
+        companySize: generateCompanySize && generateCompanySize !== "any" ? generateCompanySize : undefined,
+        industryOverride: industryOverride.trim() || undefined,
+        titlesOverride: titlesOverride.length > 0 ? titlesOverride : undefined,
+        nextToken: seamlessNextToken,
+      });
+
+      const existingIds = new Set(seamlessCandidates.map((c) => c.searchResultId));
+      const newOnes = result.candidates.filter((c) => !existingIds.has(c.searchResultId));
+
+      if (newOnes.length === 0) {
+        toast.info("No new contacts in this batch -- try again for the next one, or this may be the end of the list.");
+      } else {
+        setSeamlessCandidates([...seamlessCandidates, ...newOnes]);
+        setSelectedSeamlessIds(new Set([...selectedSeamlessIds, ...newOnes.map((c) => c.searchResultId)]));
+        toast.success(`Added ${newOnes.length} new contact(s) -- ${seamlessCandidates.length + newOnes.length} extracted so far`);
+        scoreEngagementForCandidates(newOnes.slice(0, 10));
+      }
+      setSeamlessNextToken((result as any).nextToken);
+    } catch (error: any) {
+      const msg = error?.message || error?.data?.message || "Failed to load the next batch";
+      toast.error(msg, { duration: 8000 });
+    } finally {
+      setIsLoadingMoreSeamless(false);
     }
   };
 
@@ -1853,7 +1899,20 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </>
               )}
               {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
-                <span className="text-xs text-blue-700 dark:text-blue-400">Increase "Number of Leads" and search again to pull more.</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 border-blue-300 bg-white dark:bg-transparent"
+                  disabled={!seamlessNextToken || isLoadingMoreSeamless}
+                  onClick={handleSearchNextBatch}
+                  title={!seamlessNextToken ? "Seamless has no more results for this search" : undefined}
+                >
+                  {isLoadingMoreSeamless ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading next batch...</>
+                  ) : (
+                    <>Search Next Batch ({(seamlessTotalAvailable - seamlessCandidates.length).toLocaleString()} remaining)</>
+                  )}
+                </Button>
               )}
             </div>
             <div className="flex items-center justify-between text-sm flex-wrap gap-y-2">

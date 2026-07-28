@@ -538,7 +538,12 @@ export async function searchContacts(
     companyEmployeeCountMax?: number;
     limit?: number;
   },
-  maxResults?: number
+  maxResults?: number,
+  // Resumes pagination from a previous search's cursor instead of starting
+  // over from Seamless's first page -- without this, searching the same
+  // filters again always returns the same top-ranked results, so "search
+  // again to get more" only ever re-fetches leads you already have.
+  startNextToken?: string
 ): Promise<SeamlessSearchResponse> {
   const targetCount = maxResults || filters.limit || 50;
   // Only ask the API for as many results as we actually need, instead of always
@@ -584,7 +589,7 @@ export async function searchContacts(
   body.limit = pageSize;
 
   const allResults: SeamlessSearchResult[] = [];
-  let nextToken: string | undefined = undefined;
+  let nextToken: string | undefined = startNextToken;
   let totalResults: number | undefined = undefined;
   let pageCount = 0;
   const maxPages = 20; // Safety limit to prevent infinite loops (20 * 50 = 1000 max)
@@ -1009,8 +1014,14 @@ export async function searchAndFilterSeamlessCandidates(
   // Same lookup, by website instead of/alongside company name -- Seamless.
   // AI's real companyDomain filter (confirmed via the same docs), which
   // accepts either on its own or both together for a tighter match.
-  companyDomainOverride?: string
-): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number }> {
+  companyDomainOverride?: string,
+  // Resumes from a previous search's cursor instead of restarting from
+  // Seamless's first page -- without this, repeating the same search (e.g.
+  // to "get more" after already saving some results as leads) always
+  // returns the same top-ranked candidates, which end up filtered out as
+  // already-owned, leaving almost nothing new.
+  startNextToken?: string
+): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number; nextToken?: string }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (industryOverride) {
     const canonical = mapToValidSeamlessIndustry(industryOverride);
@@ -1047,9 +1058,10 @@ export async function searchAndFilterSeamlessCandidates(
     filters.companySize = [companySize];
   }
 
-  const result = await getSeamlessLeads(apiKey, filters, count);
+  const result = await getSeamlessLeads(apiKey, filters, count, startNextToken);
   let candidates: any[] = result.contacts;
   const totalAvailable = result.totalResults;
+  const nextToken = result.nextToken;
   // Confirmed live via credit-balance tracking: search costs 1 credit per 10 raw
   // results returned (5 credits per 50-result page), separate from and in addition
   // to enrichment's 1 credit per contact. This is real Seamless.AI billing behavior,
@@ -1150,7 +1162,7 @@ export async function searchAndFilterSeamlessCandidates(
       linkedinUrl: c.liUrl || c.linkedinUrl || undefined,
     }));
 
-  return { candidates: preview, totalAvailable, estimatedSearchCredits };
+  return { candidates: preview, totalAvailable, estimatedSearchCredits, nextToken };
 }
 
 export interface SeamlessEnrichmentResult {
@@ -1307,13 +1319,14 @@ export async function enrichSeamlessCandidatesToLeadData(
 export async function getSeamlessLeads(
   apiKey: string,
   filters: any,
-  count?: number
+  count?: number,
+  startNextToken?: string
 ) {
   // Search for leads using Seamless.AI API with filters
   // This is called from routers.ts for lead generation
   // Uses searchContacts() which has proper pagination and field handling
   try {
-    let response = await searchContacts(apiKey, filters, count || 50);
+    let response = await searchContacts(apiKey, filters, count || 50, startNextToken);
     let usedContactKeywordFallback = false;
 
     // jobTitle only matches against a contact's literal title field. That's fine
