@@ -243,6 +243,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // every "search again" used to return.
   const [seamlessNextToken, setSeamlessNextToken] = useState<string | undefined>(undefined);
   const [isLoadingMoreSeamless, setIsLoadingMoreSeamless] = useState(false);
+  // Cumulative count across the whole session for this search (initial
+  // batch + every "Search Next Batch" round) -- unlike seamlessCandidates,
+  // which empties out again once a batch gets enriched, this is what "N
+  // remaining" (totalAvailable - extractedSoFar) needs to stay accurate
+  // after some/all of the current batch has already been saved.
+  const [seamlessExtractedSoFar, setSeamlessExtractedSoFar] = useState(0);
   const [seamlessEngagementScores, setSeamlessEngagementScores] = useState<Record<string, { score: number; metrics: any }>>({});
   const [scoringEngagementIds, setScoringEngagementIds] = useState<Set<string>>(new Set());
   const [seamlessDetailIndex, setSeamlessDetailIndex] = useState<number | null>(null);
@@ -461,6 +467,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSeamlessTotalAvailable(result.totalAvailable);
       setSeamlessSearchCredits(result.estimatedSearchCredits);
       setSeamlessNextToken((result as any).nextToken);
+      setSeamlessExtractedSoFar(result.candidates.length);
       setSeamlessEngagementScores({});
       setSeamlessPreviewDialogOpen(true);
       const skipMessages = [
@@ -512,6 +519,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       } else {
         setSeamlessCandidates([...seamlessCandidates, ...newOnes]);
         setSelectedSeamlessIds(new Set([...selectedSeamlessIds, ...newOnes.map((c) => c.searchResultId)]));
+        setSeamlessExtractedSoFar((prev) => prev + newOnes.length);
         toast.success(`Added ${newOnes.length} new contact(s) -- ${seamlessCandidates.length + newOnes.length} extracted so far`);
         scoreEngagementForCandidates(newOnes.slice(0, 10));
       }
@@ -818,14 +826,21 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
 
       if (remaining.length === 0) {
         setSeamlessPreviewDialogOpen(false);
-        setInstruction("");
-        setGenerateLeadSetName("");
-        setIndustryOverride("");
-        setIndustryDetected(false);
-        setIndustryManuallySet(false);
-        setTitlesOverride([]);
-        setTitlesDetected(false);
-        setTitlesManuallySet(false);
+        // Only clear the search itself (instruction, filters) once there's
+        // truly nothing left on Seamless's side (no nextToken) -- otherwise
+        // this wipes the exact context "Search Next Batch" needs, forcing a
+        // full re-search from page 1 (re-spending credits on the same first
+        // batch) just to reach what would've been the next one.
+        if (!seamlessNextToken) {
+          setInstruction("");
+          setGenerateLeadSetName("");
+          setIndustryOverride("");
+          setIndustryDetected(false);
+          setIndustryManuallySet(false);
+          setTitlesOverride([]);
+          setTitlesDetected(false);
+          setTitlesManuallySet(false);
+        }
       }
 
       leadsQuery.refetch(); listOrTagFilterQuery.refetch();
@@ -1898,7 +1913,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   </div>
                 </>
               )}
-              {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessCandidates.length && (
+              {typeof seamlessTotalAvailable === "number" && seamlessTotalAvailable > seamlessExtractedSoFar && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1910,7 +1925,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   {isLoadingMoreSeamless ? (
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading next batch...</>
                   ) : (
-                    <>Search Next Batch ({(seamlessTotalAvailable - seamlessCandidates.length).toLocaleString()} remaining)</>
+                    <>Search Next Batch ({(seamlessTotalAvailable - seamlessExtractedSoFar).toLocaleString()} remaining)</>
                   )}
                 </Button>
               )}
@@ -2826,6 +2841,31 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   onClick={() => setSeamlessPreviewDialogOpen(true)}
                 >
                   Resume Seamless.AI Results ({seamlessCandidates.length} pending)
+                </Button>
+              </div>
+            )}
+            {!seamlessPreviewDialogOpen && seamlessCandidates.length === 0 && seamlessNextToken && instruction.trim() && (
+              // Everything from the last batch was enriched/saved, but
+              // Seamless still has more for this exact search -- lets that
+              // continue directly from here instead of needing to re-run the
+              // whole search from scratch (which would re-spend credits
+              // re-fetching the same batch you already have).
+              <div className="mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-1.5"
+                  disabled={isLoadingMoreSeamless}
+                  onClick={async () => {
+                    await handleSearchNextBatch();
+                    setSeamlessPreviewDialogOpen(true);
+                  }}
+                >
+                  {isLoadingMoreSeamless ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading next batch...</>
+                  ) : (
+                    <>Search Next Batch{typeof seamlessTotalAvailable === "number" ? ` (${(seamlessTotalAvailable - seamlessExtractedSoFar).toLocaleString()} remaining)` : ""}</>
+                  )}
                 </Button>
               </div>
             )}

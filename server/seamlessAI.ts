@@ -1058,84 +1058,112 @@ export async function searchAndFilterSeamlessCandidates(
     filters.companySize = [companySize];
   }
 
-  const result = await getSeamlessLeads(apiKey, filters, count, startNextToken);
-  let candidates: any[] = result.contacts;
-  const totalAvailable = result.totalResults;
-  const nextToken = result.nextToken;
+  // Fetching once and filtering afterward means the requested `count` was
+  // being applied to RAW results only -- if our own country/title/industry
+  // filters (below) rejected, say, a third of a 200-raw-result batch, the
+  // caller got 133 candidates back despite explicitly asking for 200 and
+  // there being thousands more available, because nothing ever went back
+  // for more to make up the shortfall. This loops, requesting additional
+  // batches via nextToken and re-filtering, until either `count` filtered
+  // candidates have been accumulated or there's nothing left on Seamless's
+  // side -- capped at a handful of extra rounds so a very narrow filter
+  // combination can't spend unbounded credits chasing a count it'll never
+  // reach.
+  let candidates: any[] = [];
+  let totalAvailable: number | undefined;
+  let nextToken: string | undefined = startNextToken;
+  let rawFetchedTotal = 0;
+  const MAX_BACKFILL_ROUNDS = 5;
+
+  for (let round = 0; round < MAX_BACKFILL_ROUNDS; round++) {
+    const remaining = count - candidates.length;
+    if (remaining <= 0) break;
+
+    const result = await getSeamlessLeads(apiKey, filters, remaining, nextToken);
+    rawFetchedTotal += result.contacts.length;
+    if (result.totalResults !== undefined) totalAvailable = result.totalResults;
+
+    let batch: any[] = result.contacts;
+
+    if (country) {
+      const countryLower = country.toLowerCase();
+      const countryAliases: Record<string, string[]> = {
+        "united states": ["united states", "usa", "us", "united states of america"],
+        "united kingdom": ["united kingdom", "uk", "great britain", "england"],
+        "india": ["india"],
+      };
+      const matchTerms = countryAliases[countryLower] || [countryLower];
+      const before = batch.length;
+      batch = batch.filter((c: any) => {
+        if (c.country) {
+          return matchTerms.some((term) => c.country.toLowerCase().includes(term));
+        }
+        return true;
+      });
+      console.log(`[Seamless.AI] Preview round ${round + 1}: after country filter: ${batch.length} of ${before}`);
+    }
+
+    // Skipped when this batch already fell back to a contactKeyword search
+    // (see getSeamlessLeads) -- those candidates were matched on profile/bio
+    // content, not their literal title field, so re-applying a title regex
+    // here would just reject all of them and defeat the whole point of the
+    // fallback (e.g. a "motivational speaker" whose actual title is "Founder").
+    if (filters.jobTitle?.length && !result.usedContactKeywordFallback) {
+      const titleRegexes = filters.jobTitle.map(
+        (t: string) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
+      );
+      const before = batch.length;
+      batch = batch.filter((c: any) => {
+        const title = c.title || c.jobTitle || "";
+        if (!title) return false;
+        return titleRegexes.some((re: RegExp) => re.test(title));
+      });
+      console.log(`[Seamless.AI] Preview round ${round + 1}: after strict title filter: ${batch.length} of ${before}`);
+    }
+
+    // Industry filter: Seamless.AI's own search doesn't reliably restrict
+    // results to the requested industry either (same unreliability documented
+    // above for job titles) -- re-check each candidate's actual industry
+    // client-side, canonicalizing both sides through mapToValidSeamlessIndustry
+    // so wording differences (e.g. "Travel" vs "Leisure, Travel & Tourism") don't
+    // cause false rejections. Without this, a search for "Travel Agency" could
+    // come back full of unrelated industries Seamless returned anyway.
+    //
+    // Unlike the title filter above, a MISSING industry is given the benefit of
+    // the doubt (kept, not excluded) -- confirmed against Seamless's own docs
+    // that industry data is commonly sparse/absent and isn't used to exclude
+    // contacts on their end either. Individual professionals (e.g. "motivational
+    // speaker" searches) very often have no company-industry on file at all
+    // despite being a perfect job-title match; excluding them here is what
+    // silently zeroed out searches like that (Seamless's own tool found ~29k
+    // matches for the same query -- it isn't filtering out the industry-less
+    // ones the way our old strict check did).
+    if (filters.industry?.length) {
+      const targetIndustries = new Set(filters.industry as string[]);
+      const before = batch.length;
+      batch = batch.filter((c: any) => {
+        const rawIndustry = Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined);
+        if (!rawIndustry) return true; // No data to check -- benefit of the doubt, same policy as country
+        const canonical = mapToValidSeamlessIndustry(rawIndustry);
+        return canonical ? targetIndustries.has(canonical) : true; // Unrecognized industry text -- can't disprove a match either
+      });
+      console.log(`[Seamless.AI] Preview round ${round + 1}: after industry filter: ${batch.length} of ${before}`);
+    }
+
+    candidates.push(...batch);
+    nextToken = result.nextToken;
+    if (!nextToken) break; // Seamless has nothing more to offer for this search
+  }
+
   // Confirmed live via credit-balance tracking: search costs 1 credit per 10 raw
   // results returned (5 credits per 50-result page), separate from and in addition
   // to enrichment's 1 credit per contact. This is real Seamless.AI billing behavior,
   // not documented anywhere we could find, and not a bug in our own request logic
   // (verified the pagination loop makes exactly the minimum number of calls needed).
-  // Estimated from the raw count fetched, before our own country/title filtering,
-  // since credits are charged on what Seamless.AI actually returned, not on what we
-  // keep afterward.
-  const estimatedSearchCredits = Math.ceil(candidates.length / 10);
-
-  if (country) {
-    const countryLower = country.toLowerCase();
-    const countryAliases: Record<string, string[]> = {
-      "united states": ["united states", "usa", "us", "united states of america"],
-      "united kingdom": ["united kingdom", "uk", "great britain", "england"],
-      "india": ["india"],
-    };
-    const matchTerms = countryAliases[countryLower] || [countryLower];
-    const before = candidates.length;
-    candidates = candidates.filter((c: any) => {
-      if (c.country) {
-        return matchTerms.some((term) => c.country.toLowerCase().includes(term));
-      }
-      return true;
-    });
-    console.log(`[Seamless.AI] Preview: after country filter: ${candidates.length} of ${before}`);
-  }
-
-  // Skipped when getSeamlessLeads already fell back to a contactKeyword search
-  // (see there) -- those candidates were matched on profile/bio content, not
-  // their literal title field, so re-applying a title regex here would just
-  // reject all of them and defeat the whole point of the fallback (e.g. a
-  // "motivational speaker" whose actual title is "Founder").
-  if (filters.jobTitle?.length && !result.usedContactKeywordFallback) {
-    const titleRegexes = filters.jobTitle.map(
-      (t: string) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i")
-    );
-    const before = candidates.length;
-    candidates = candidates.filter((c: any) => {
-      const title = c.title || c.jobTitle || "";
-      if (!title) return false;
-      return titleRegexes.some((re: RegExp) => re.test(title));
-    });
-    console.log(`[Seamless.AI] Preview: after strict title filter: ${candidates.length} of ${before}`);
-  }
-
-  // Industry filter: Seamless.AI's own search doesn't reliably restrict
-  // results to the requested industry either (same unreliability documented
-  // above for job titles) -- re-check each candidate's actual industry
-  // client-side, canonicalizing both sides through mapToValidSeamlessIndustry
-  // so wording differences (e.g. "Travel" vs "Leisure, Travel & Tourism") don't
-  // cause false rejections. Without this, a search for "Travel Agency" could
-  // come back full of unrelated industries Seamless returned anyway.
-  //
-  // Unlike the title filter above, a MISSING industry is given the benefit of
-  // the doubt (kept, not excluded) -- confirmed against Seamless's own docs
-  // that industry data is commonly sparse/absent and isn't used to exclude
-  // contacts on their end either. Individual professionals (e.g. "motivational
-  // speaker" searches) very often have no company-industry on file at all
-  // despite being a perfect job-title match; excluding them here is what
-  // silently zeroed out searches like that (Seamless's own tool found ~29k
-  // matches for the same query -- it isn't filtering out the industry-less
-  // ones the way our old strict check did).
-  if (filters.industry?.length) {
-    const targetIndustries = new Set(filters.industry as string[]);
-    const before = candidates.length;
-    candidates = candidates.filter((c: any) => {
-      const rawIndustry = Array.isArray(c.industries) ? c.industries[0] : (c.industries || c.industry || undefined);
-      if (!rawIndustry) return true; // No data to check -- benefit of the doubt, same policy as country
-      const canonical = mapToValidSeamlessIndustry(rawIndustry);
-      return canonical ? targetIndustries.has(canonical) : true; // Unrecognized industry text -- can't disprove a match either
-    });
-    console.log(`[Seamless.AI] Preview: after industry filter: ${candidates.length} of ${before}`);
-  }
+  // Estimated from the raw count fetched across every backfill round, before our
+  // own country/title/industry filtering, since credits are charged on what
+  // Seamless.AI actually returned, not on what we keep afterward.
+  const estimatedSearchCredits = Math.ceil(rawFetchedTotal / 10);
 
   candidates = candidates.slice(0, count);
 
