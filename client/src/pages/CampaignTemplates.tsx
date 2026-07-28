@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, Plus, Copy, Trash2, FileText, Sparkles, Eye, BookTemplate, Send, Rocket, RefreshCw, ShieldCheck, ChevronUp, ChevronDown, AlertTriangle, XCircle, Wand2, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, Copy, Trash2, FileText, Sparkles, Eye, BookTemplate, Send, Rocket, RefreshCw, ShieldCheck, ChevronUp, ChevronDown, AlertTriangle, XCircle, Wand2, CheckCircle2, Pencil } from "lucide-react";
 import { AIWriteButton } from "@/components/AIWriteButton";
 
 type EmailType = "discovery" | "value_prop" | "social_proof" | "urgency" | "custom";
@@ -49,7 +49,11 @@ export default function CampaignTemplates() {
 
   const templatesQuery = trpc.campaignTemplates.list.useQuery();
   const createMutation = trpc.campaignTemplates.create.useMutation();
+  const updateMutation = trpc.campaignTemplates.update.useMutation();
   const deleteMutation = trpc.campaignTemplates.delete.useMutation();
+  // Reuses the Create Template dialog/form for editing -- set when an
+  // existing template is being edited instead of a new one being created.
+  const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null);
 
   // Save from existing campaign
   const [saveFromCampaignOpen, setSaveFromCampaignOpen] = useState(false);
@@ -75,17 +79,36 @@ export default function CampaignTemplates() {
       return;
     }
     try {
-      await createMutation.mutateAsync(newTemplate);
-      toast.success("Template created successfully!");
+      if (editingTemplateId) {
+        await updateMutation.mutateAsync({ id: editingTemplateId, ...newTemplate });
+        toast.success("Template updated successfully!");
+      } else {
+        await createMutation.mutateAsync(newTemplate);
+        toast.success("Template created successfully!");
+      }
       setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "" });
+      setEditingTemplateId(null);
       setLastTemplateAIPrompt(null);
       setTemplateDeliverabilityResult(null);
       setShowTemplateDeliverabilityDetails(false);
       setCreateOpen(false);
       templatesQuery.refetch();
     } catch (error: any) {
-      toast.error(error.message || "Failed to create template");
+      toast.error(error.message || `Failed to ${editingTemplateId ? "update" : "create"} template`);
     }
+  };
+
+  const handleEdit = (template: any) => {
+    setNewTemplate({
+      name: template.name,
+      description: template.description || "",
+      subject: template.subject,
+      emailTemplate: template.emailTemplate,
+      emailType: (template.emailType || "custom") as EmailType,
+      tags: template.tags || "",
+    });
+    setEditingTemplateId(template.id);
+    setCreateOpen(true);
   };
 
   const handleSaveFromCampaign = async () => {
@@ -238,18 +261,25 @@ export default function CampaignTemplates() {
             </DialogContent>
           </Dialog>
 
-          {/* Create New Template */}
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          {/* Create/Edit Template -- the same dialog and form handle both;
+              editingTemplateId being set is what switches it into edit mode. */}
+          <Dialog open={createOpen} onOpenChange={(open) => {
+            setCreateOpen(open);
+            if (!open) {
+              setEditingTemplateId(null);
+              setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "" });
+            }
+          }}>
             <DialogTrigger asChild>
-              <Button className="gap-2 bg-blue-600 hover:bg-blue-700">
+              <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setEditingTemplateId(null)}>
                 <Plus className="w-4 h-4" />
                 Create Template
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Template</DialogTitle>
-                <DialogDescription>Build a reusable email template from scratch</DialogDescription>
+                <DialogTitle>{editingTemplateId ? "Edit Template" : "Create New Template"}</DialogTitle>
+                <DialogDescription>{editingTemplateId ? "Update this reusable email template" : "Build a reusable email template from scratch"}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -480,8 +510,10 @@ export default function CampaignTemplates() {
                   <Label>Tags (comma-separated)</Label>
                   <Input value={newTemplate.tags} onChange={(e) => setNewTemplate({ ...newTemplate, tags: e.target.value })} placeholder="e.g., saas, cold-email, b2b" />
                 </div>
-                <Button onClick={handleCreate} disabled={createMutation.isPending} className="w-full">
-                  {createMutation.isPending ? (<><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating...</>) : "Create Template"}
+                <Button onClick={handleCreate} disabled={createMutation.isPending || updateMutation.isPending} className="w-full">
+                  {(createMutation.isPending || updateMutation.isPending)
+                    ? (<><Loader2 className="w-4 h-4 animate-spin mr-2" />{editingTemplateId ? "Saving..." : "Creating..."}</>)
+                    : (editingTemplateId ? "Save Changes" : "Create Template")}
                 </Button>
               </div>
             </DialogContent>
@@ -538,6 +570,9 @@ export default function CampaignTemplates() {
                     </Button>
                     <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setPreviewTemplate(template)}>
                       <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit Template" onClick={() => handleEdit(template)}>
+                      <Pencil className="w-3.5 h-3.5" />
                     </Button>
                     <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleCopyToClipboard(template)}>
                       <Copy className="w-3.5 h-3.5" />

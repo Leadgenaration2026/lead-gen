@@ -826,6 +826,12 @@ export async function getCampaignTemplateById(id: number) {
   return result.length > 0 ? result[0] : null;
 }
 
+export async function updateCampaignTemplate(id: number, data: Partial<InsertCampaignTemplate>) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignTemplates).set({ ...data, updatedAt: new Date() } as any).where(eq(campaignTemplates.id, id));
+}
+
 export async function deleteCampaignTemplate(id: number) {
   const database = await getDb();
   if (!database) return;

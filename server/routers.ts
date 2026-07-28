@@ -4415,6 +4415,32 @@ Respond in this exact JSON format:
         return { success: true, id };
       }),
 
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        subject: z.string().min(1),
+        emailTemplate: z.string().min(1),
+        emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]).optional(),
+        tags: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await db.getCampaignTemplateById(input.id);
+        if (!existing || existing.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await db.updateCampaignTemplate(input.id, {
+          name: input.name,
+          description: input.description,
+          subject: input.subject,
+          emailTemplate: input.emailTemplate,
+          emailType: input.emailType || "custom",
+          tags: input.tags,
+        });
+        return { success: true };
+      }),
+
     saveFromCampaign: protectedProcedure
       .input(z.object({
         campaignId: z.number(),

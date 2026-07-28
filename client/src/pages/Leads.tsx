@@ -3104,33 +3104,35 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 <X className="w-3.5 h-3.5" />
                 Deselect All
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Pre-fill from the current "Filter by list" selection if
+                  // one is set, but the dialog itself now has its own list
+                  // picker too -- this button no longer requires picking a
+                  // specific imported list first just to find it.
+                  setAssignAllListId(filterSourceListId !== "all" ? parseInt(filterSourceListId) : null);
+                  setAssignAllDialogOpen(true);
+                }}
+                className="gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Assign Leads to Tag
+              </Button>
               {filterSourceListId !== "all" && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setAssignAllListId(parseInt(filterSourceListId));
-                      setAssignAllDialogOpen(true);
-                    }}
-                    className="gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Assign All to Tag
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      setDeleteListId(parseInt(filterSourceListId));
-                      setDeleteListDialogOpen(true);
-                    }}
-                    className="gap-1.5"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete List
-                  </Button>
-                </>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    setDeleteListId(parseInt(filterSourceListId));
+                    setDeleteListDialogOpen(true);
+                  }}
+                  className="gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete List
+                </Button>
               )}
               {filterLeadSet !== "all" && filterLeadSet !== "unassigned" && (
                 <Button
@@ -3807,19 +3809,39 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <DialogTitle>Assign Leads to Tag</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Select a tag to assign untagged leads from this list:</p>
-            <Select value={assignAllTagId} onValueChange={setAssignAllTagId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a tag" />
-              </SelectTrigger>
-              <SelectContent>
-                {leadSets.map((set: any) => (
-                  <SelectItem key={set.id} value={String(set.id)}>
-                    {set.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div>
+              <label className="text-sm font-medium">Imported list</label>
+              <Select
+                value={assignAllListId != null ? String(assignAllListId) : ""}
+                onValueChange={(v) => setAssignAllListId(parseInt(v))}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select an imported list" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(importedListsQuery.data || []).filter((list: any) => list.type === "list").map((list: any) => (
+                    <SelectItem key={list.id} value={String(list.id)}>
+                      {list.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Tag</label>
+              <Select value={assignAllTagId} onValueChange={setAssignAllTagId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select a tag" />
+                </SelectTrigger>
+                <SelectContent>
+                  {leadSets.map((set: any) => (
+                    <SelectItem key={set.id} value={String(set.id)}>
+                      {set.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="text-sm font-medium">Number of leads (optional)</label>
               <Input
