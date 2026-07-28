@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, inArray, lte, count, sql, gte, notInArray, isNull } from "drizzle-orm";
+import { eq, and, or, desc, asc, inArray, lte, count, sql, gte, notInArray, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import * as schema from "../drizzle/schema";
 import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage, searchCache, leadImports, InsertSearchCache, SearchCache, InsertLeadImport, LeadImport } from "../drizzle/schema";
@@ -213,6 +213,40 @@ export async function getLeadsByUserId(userId: number, page?: number, pageSize?:
   const total = countResult[0]?.count as number || 0;
   
   return { results, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+}
+
+// Get every lead matching a specific imported list or tag, unbounded -- the
+// Leads page's main leads.list query is capped to the newest 50-100 leads
+// (recency-paginated), and filtering "by list"/"by tag" used to be done
+// entirely client-side over that same small, capped page. Once a user had
+// 50+ leads created after an older imported list, that list's own leads
+// would fall off the fetched page and silently vanish from the "Filter by
+// list" view even though they were never actually deleted. This queries
+// the real, full membership directly instead of slicing whatever happens
+// to be paginated into view.
+export async function getLeadsBySourceListOrTag(userId: number, filter: { sourceListId?: number; leadSetId?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (filter.sourceListId != null) {
+    // Matches the client-side filter's legacy fallback: older records (from
+    // before sourceListId existed) used leadSetId to double as the list
+    // identifier, so also match on that when sourceListId itself is unset.
+    return db.select().from(leads).where(
+      and(
+        eq(leads.userId, userId),
+        or(
+          and(eq(leads.sourceListId, filter.sourceListId), isNull(leads.leadSetId)),
+          and(isNull(leads.sourceListId), eq(leads.leadSetId, filter.sourceListId))
+        )
+      )
+    ).orderBy(desc(leads.createdAt));
+  }
+  if (filter.leadSetId != null) {
+    return db.select().from(leads).where(
+      and(eq(leads.userId, userId), eq(leads.leadSetId, filter.leadSetId))
+    ).orderBy(desc(leads.createdAt));
+  }
+  return [];
 }
 
 // Get leads not assigned to any campaign (for dashboard leads view)

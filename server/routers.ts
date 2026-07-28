@@ -141,6 +141,22 @@ export const appRouter = router({
         return Array.isArray(result) ? result : result.results;
       }),
 
+    // Every lead belonging to a specific imported list or tag, unbounded --
+    // `list` above is capped to the newest 50-100 leads, and "Filter by
+    // list"/"by tag" on the Leads page used to filter that same capped page
+    // client-side. Once a user had 50+ leads created after an older list,
+    // that list's own members would fall off the fetched page and silently
+    // vanish from the filtered view even though nothing was deleted. This
+    // queries real, full list/tag membership directly.
+    listBySourceListOrTag: protectedProcedure
+      .input(z.object({
+        sourceListId: z.number().optional(),
+        leadSetId: z.number().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        return db.getLeadsBySourceListOrTag(ctx.user.id, input);
+      }),
+
     // Leads not yet assigned to any campaign (for dashboard leads view)
     listUnassigned: protectedProcedure.query(async ({ ctx }) => {
       return db.getUnassignedLeadsByUserId(ctx.user.id);

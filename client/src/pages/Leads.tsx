@@ -87,6 +87,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const importedListsQuery = trpc.leadSets.list.useQuery(); // Get all lists including imported ones
   const searchString = useSearch();
   const [filterLeadSet, setFilterLeadSet] = useState<string>("all");
+  // "Filter by list"/"by tag" used to filter leadsQuery.data client-side --
+  // that's capped to the newest 50-100 leads, so an older list/tag's own
+  // members could silently fall off the fetched page as newer leads piled
+  // up. Fetches the real, unbounded membership from the server instead,
+  // whenever a specific list or tag (not "all"/"unassigned") is selected.
+  const listOrTagFilterQuery = trpc.leads.listBySourceListOrTag.useQuery(
+    {
+      sourceListId: filterSourceListId !== "all" ? parseInt(filterSourceListId) : undefined,
+      leadSetId: (filterSourceListId === "all" && filterLeadSet !== "all" && filterLeadSet !== "unassigned") ? parseInt(filterLeadSet) : undefined,
+    },
+    { enabled: filterSourceListId !== "all" || (filterLeadSet !== "all" && filterLeadSet !== "unassigned") }
+  );
   const [tagComboboxOpen, setTagComboboxOpen] = useState(false);
   const [filterIndustry, setFilterIndustry] = useState<string>("all");
   const [filterHasPhone, setFilterHasPhone] = useState<string>("all"); // "all", "has-phone", "no-phone"
@@ -279,7 +291,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     onSuccess: () => {
       toast.success("Lead updated successfully");
       setEditingLead(null);
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
     },
     onError: () => toast.error("Failed to update lead"),
   });
@@ -381,7 +393,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.success(`Lead generation complete!`);
         resetGenerateForm();
       }
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
       importedListsQuery.refetch();
     } catch (error: any) {
@@ -770,7 +782,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setTitlesManuallySet(false);
       }
 
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
       importedListsQuery.refetch();
     } catch (error: any) {
@@ -815,7 +827,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         next.delete(leadId);
         return next;
       });
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
     } catch (error: any) {
       console.error("Delete lead error:", error);
       toast.error(error?.message || error?.data?.message || "Failed to delete lead", { duration: 8000 });
@@ -867,7 +879,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setManualLeadTagId("");
       setManualLeadNewTag(false);
       setManualLeadNewTagName("");
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
       console.error("Add lead error:", error);
@@ -904,7 +916,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvLeadSetName("");
       setCsvEngagementScores({});
       setCsvScoringIndices(new Set());
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
       importedListsQuery.refetch();
     } catch (error: any) {
@@ -930,7 +942,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         });
         toast.success("Lead updated (existing record overwritten)");
         setManualLead({ companyName: "", ownerName: "", jobTitle: "", email: "", phoneNumber: "", industry: "", companySize: "", website: "", linkedinUrl: "", instagramUrl: "", facebookUrl: "" });
-        leadsQuery.refetch();
+        leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       } catch (error: any) {
         console.error("Overwrite lead error:", error);
         toast.error(error?.message || error?.data?.message || "Failed to overwrite lead", { duration: 8000 });
@@ -948,7 +960,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         setCsvLeadSetName("");
         setCsvEngagementScores({});
         setCsvScoringIndices(new Set());
-        leadsQuery.refetch();
+        leadsQuery.refetch(); listOrTagFilterQuery.refetch();
         leadSetsQuery.refetch();
         importedListsQuery.refetch();
       } catch (error: any) {
@@ -964,7 +976,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     try {
       await updateTagMutation.mutateAsync({ leadId, tag: tag as any });
       toast.success(`Tag updated to "${TAG_COLORS[tag]?.label || tag}"`);
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
     } catch (error: any) {
       console.error("Update tag error:", error);
       toast.error(error?.message || error?.data?.message || "Failed to update tag", { duration: 8000 });
@@ -1303,7 +1315,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setCsvLeadSetName("");
       setCsvEngagementScores({});
       setCsvScoringIndices(new Set());
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
       importedListsQuery.refetch();
 
@@ -1370,7 +1382,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSelectedLeadIds(new Set());
       setAssignDialogOpen(false);
       setAssignToSetId("");
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
       console.error("Assign leads error:", error);
@@ -1396,7 +1408,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setAssignToSetId("");
       setNewTagName("");
       setShowCreateTag(false);
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
       console.error("Create tag error:", error);
@@ -1415,7 +1427,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSelectedLeadIds(new Set());
       setAssignDialogOpen(false);
       setAssignToSetId("");
-      leadsQuery.refetch();
+      leadsQuery.refetch(); listOrTagFilterQuery.refetch();
       leadSetsQuery.refetch();
     } catch (error: any) {
       console.error("Remove from tag error:", error);
@@ -1436,7 +1448,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   }, [leadsQuery.data]);
 
   const filteredLeads = useMemo(() => {
-    const filtered = (leadsQuery.data || []).filter((lead: any) => {
+    // Once a specific list or tag is selected, use its real unbounded
+    // membership (queried fresh from the server) instead of whatever's in
+    // the recency-paginated leadsQuery.data -- see listOrTagFilterQuery above.
+    const isListOrTagFilterActive = filterSourceListId !== "all" || (filterLeadSet !== "all" && filterLeadSet !== "unassigned");
+    const sourceLeads = isListOrTagFilterActive ? (listOrTagFilterQuery.data || []) : (leadsQuery.data || []);
+    const filtered = sourceLeads.filter((lead: any) => {
       const matchesSearch =
         !searchQuery ||
         lead.companyName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1502,7 +1519,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       return [...filtered].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
     return filtered;
-  }, [leadsQuery.data, filterSourceListId, searchQuery, filterLeadSet, filterIndustry, filterHasPhone, sortBy]);
+  }, [leadsQuery.data, listOrTagFilterQuery.data, filterSourceListId, searchQuery, filterLeadSet, filterIndustry, filterHasPhone, sortBy]);
 
   const leadSets = leadSetsQuery.data || [];
 
@@ -1702,7 +1719,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                   toast.success(`Deleted ${ids.length} lead(s)`);
                   setSelectedLeadIds(new Set());
                   setBulkDeleteDialogOpen(false);
-                  leadsQuery.refetch();
+                  leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                 } catch (error: any) {
                   toast.error(error?.message || "Failed to delete leads");
                 }
@@ -1792,7 +1809,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 try {
                   const result = await bulkDeleteMutation.mutateAsync({ leadIds: Array.from(riskyLeadsToDelete) });
                   toast.success(`Deleted ${result.deleted} leads (kept ${(leadsQuery.data || []).filter((l: any) => (l.emailVerificationStatus === "risky" || l.emailVerificationStatus === "unknown") && !riskyLeadsToDelete.has(l.id)).length} leads you unchecked)`);
-                  leadsQuery.refetch();
+                  leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                   setDeleteRiskyDialogOpen(false);
                 } catch (err: any) {
                   toast.error(err.message || "Failed to delete leads");
@@ -2100,7 +2117,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 try {
                   const result = await deleteAllMutation.mutateAsync();
                   toast.success(`Deleted all ${result.deleted} leads`);
-                  leadsQuery.refetch();
+                  leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                   setDeleteAllDialogOpen(false);
                 } catch (err: any) {
                   toast.error(err.message || "Failed to delete leads");
@@ -2926,7 +2943,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     const result = await bulkDeleteMutation.mutateAsync({ leadIds: Array.from(riskyLeadsToDelete) });
                     toast.success(`Deleted ${result.deleted} risky/unknown leads`);
                     setRiskyLeadsToDelete(new Set());
-                    leadsQuery.refetch();
+                    leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                   } catch (err: any) {
                     toast.error(err.message || "Failed to delete leads");
                   }
@@ -3202,7 +3219,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                       leadIds: pendingLeads.map((l: any) => String(l.id)),
                     });
                     toast.success(`Verified ${result.results?.length || 0} emails: ${result.deliverable || 0} deliverable, ${result.undeliverable || 0} undeliverable, ${result.risky || 0} risky`);
-                    leadsQuery.refetch();
+                    leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                   } catch (err: any) {
                     toast.error(err.message || "Failed to verify emails");
                   }
@@ -3255,7 +3272,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     setEnrichmentProgress(null);
                     
                     // Refetch leads
-                    await leadsQuery.refetch();
+                    await leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                   } catch (error) {
                     const errorMsg = error instanceof Error ? error.message : "Unknown error";
                     console.error("Enrichment error:", error);
@@ -3848,7 +3865,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 toast.success("List deleted successfully");
                 // Refetch after dialog closes to avoid re-renders
                 setTimeout(() => {
-                  leadsQuery.refetch();
+                  leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                   importedListsQuery.refetch();
                   leadSetsQuery.refetch();
                 }, 100);
@@ -3874,7 +3891,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               try {
                 await deleteListMutation.mutateAsync({ id: deleteTagId });
                 toast.success("Tag deleted successfully");
-                leadsQuery.refetch();
+                leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                 leadSetsQuery.refetch();
                 setDeleteTagDialogOpen(false);
                 setDeleteTagId(null);
