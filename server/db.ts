@@ -802,6 +802,262 @@ export async function getExcludedSeamlessContactIds(userId: number, seamlessIds:
   }
 }
 
+// Persists each Seamless.AI search (instruction + filters + pagination
+// cursor) as its own row so a user can come back later -- even a different
+// day/session -- and continue exactly where they left off, instead of the
+// cursor only living in React state and being lost on refresh. Same lazy
+// CREATE TABLE pattern as excludedSeamlessContacts above (no migration
+// pipeline in this deployment).
+let seamlessSearchesTableReady = false;
+async function ensureSeamlessSearchesTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (seamlessSearchesTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS seamlessSearches (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      instruction TEXT NOT NULL,
+      country VARCHAR(255) NULL,
+      state VARCHAR(255) NULL,
+      companySize VARCHAR(255) NULL,
+      industryOverride VARCHAR(255) NULL,
+      titlesOverride TEXT NULL,
+      requestedCount INT NOT NULL,
+      leadSetName VARCHAR(255) NULL,
+      nextToken TEXT NULL,
+      totalAvailable INT NULL,
+      extractedSoFar INT NOT NULL DEFAULT 0,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+      INDEX seamlessSearches_userId (userId)
+    )
+  `);
+  seamlessSearchesTableReady = true;
+}
+
+export async function createSeamlessSearch(userId: number, params: {
+  instruction: string; country?: string; state?: string; companySize?: string;
+  industryOverride?: string; titlesOverride?: string[]; requestedCount: number;
+  leadSetName?: string; nextToken?: string; totalAvailable?: number; extractedSoFar: number;
+}): Promise<number | null> {
+  const database = await getDb();
+  if (!database) return null;
+  try {
+    await ensureSeamlessSearchesTable(database);
+    const status = params.nextToken ? "active" : "exhausted";
+    const result: any = await database.execute(sql`
+      INSERT INTO seamlessSearches
+        (userId, instruction, country, state, companySize, industryOverride, titlesOverride, requestedCount, leadSetName, nextToken, totalAvailable, extractedSoFar, status)
+      VALUES
+        (${userId}, ${params.instruction}, ${params.country ?? null}, ${params.state ?? null}, ${params.companySize ?? null}, ${params.industryOverride ?? null},
+         ${params.titlesOverride ? JSON.stringify(params.titlesOverride) : null}, ${params.requestedCount}, ${params.leadSetName ?? null},
+         ${params.nextToken ?? null}, ${params.totalAvailable ?? null}, ${params.extractedSoFar}, ${status})
+    `);
+    return Number(result?.[0]?.insertId ?? result?.insertId) || null;
+  } catch (error) {
+    console.error("[createSeamlessSearch] Failed:", error);
+    return null;
+  }
+}
+
+export async function updateSeamlessSearchProgress(id: number, userId: number, params: {
+  nextToken?: string; totalAvailable?: number; extractedSoFar?: number; leadSetName?: string;
+}) {
+  const database = await getDb();
+  if (!database) return;
+  try {
+    await ensureSeamlessSearchesTable(database);
+    const status = params.nextToken ? "active" : "exhausted";
+    await database.execute(sql`
+      UPDATE seamlessSearches SET
+        nextToken = ${params.nextToken ?? null},
+        totalAvailable = COALESCE(${params.totalAvailable ?? null}, totalAvailable),
+        extractedSoFar = COALESCE(${params.extractedSoFar ?? null}, extractedSoFar),
+        leadSetName = COALESCE(${params.leadSetName ?? null}, leadSetName),
+        status = ${status},
+        updatedAt = CURRENT_TIMESTAMP
+      WHERE id = ${id} AND userId = ${userId}
+    `);
+  } catch (error) {
+    console.error("[updateSeamlessSearchProgress] Failed:", error);
+  }
+}
+
+export async function listSeamlessSearches(userId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  try {
+    await ensureSeamlessSearchesTable(database);
+    const result: any = await database.execute(
+      sql`SELECT * FROM seamlessSearches WHERE userId = ${userId} ORDER BY updatedAt DESC LIMIT 200`
+    );
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    return rows.map((r) => ({ ...r, titlesOverride: r.titlesOverride ? JSON.parse(r.titlesOverride) : [] }));
+  } catch (error) {
+    console.error("[listSeamlessSearches] Failed:", error);
+    return [];
+  }
+}
+
+export async function getSeamlessSearchById(id: number, userId: number): Promise<any | null> {
+  const database = await getDb();
+  if (!database) return null;
+  try {
+    await ensureSeamlessSearchesTable(database);
+    const result: any = await database.execute(
+      sql`SELECT * FROM seamlessSearches WHERE id = ${id} AND userId = ${userId} LIMIT 1`
+    );
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return { ...r, titlesOverride: r.titlesOverride ? JSON.parse(r.titlesOverride) : [] };
+  } catch (error) {
+    console.error("[getSeamlessSearchById] Failed:", error);
+    return null;
+  }
+}
+
+export async function deleteSeamlessSearch(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  try {
+    await ensureSeamlessSearchesTable(database);
+    await database.execute(sql`DELETE FROM seamlessSearches WHERE id = ${id} AND userId = ${userId}`);
+  } catch (error) {
+    console.error("[deleteSeamlessSearch] Failed:", error);
+  }
+}
+
+// Archive of hard-deleted leads, so "Delete List"/"Delete Tag" (below) can
+// actually remove leads (needed so Seamless dedup stops blocking them, see
+// archiveAndDeleteLeadsByTag/BySourceList) without the deletion being a true
+// dead end -- the user can browse everything that's been deleted and
+// selectively restore individual leads back into their active data.
+let deletedLeadsArchiveTableReady = false;
+async function ensureDeletedLeadsArchiveTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (deletedLeadsArchiveTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS deletedLeadsArchive (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      originalLeadId INT NOT NULL,
+      sourceListName VARCHAR(255) NULL,
+      leadSetName VARCHAR(255) NULL,
+      deletedVia VARCHAR(20) NOT NULL,
+      seamlessId VARCHAR(255) NULL,
+      leadName VARCHAR(255) NULL,
+      leadEmail VARCHAR(255) NULL,
+      leadCompany VARCHAR(255) NULL,
+      leadData JSON NOT NULL,
+      deletedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      restoredAt TIMESTAMP NULL,
+      INDEX deletedLeadsArchive_userId (userId)
+    )
+  `);
+  deletedLeadsArchiveTableReady = true;
+}
+
+async function archiveLeads(database: NonNullable<Awaited<ReturnType<typeof getDb>>>, userId: number, rows: any[], opts: { deletedVia: "list" | "tag"; sourceListName?: string; leadSetName?: string }) {
+  await ensureDeletedLeadsArchiveTable(database);
+  for (const row of rows) {
+    await database.execute(sql`
+      INSERT INTO deletedLeadsArchive
+        (userId, originalLeadId, sourceListName, leadSetName, deletedVia, seamlessId, leadName, leadEmail, leadCompany, leadData)
+      VALUES
+        (${userId}, ${row.id}, ${opts.sourceListName ?? null}, ${opts.leadSetName ?? null}, ${opts.deletedVia}, ${row.seamlessId ?? null},
+         ${row.ownerName ?? null}, ${row.email ?? null}, ${row.companyName ?? null}, ${JSON.stringify(row)})
+    `);
+  }
+}
+
+// Deleting an imported/generated list means "this is a dead lead, never
+// offer it to me again" -- archive for recovery, hard-delete so it stops
+// counting as an owned lead, then permanently exclude it from future
+// Seamless searches via excludeSeamlessContacts (same table normal lead
+// deletion already uses).
+export async function archiveAndDeleteLeadsBySourceList(userId: number, sourceListId: number, listName?: string) {
+  const database = await getDb();
+  if (!database) return { archivedCount: 0 };
+  const rows = await database.select().from(leads).where(and(eq(leads.sourceListId, sourceListId), eq(leads.userId, userId)));
+  if (rows.length > 0) {
+    await archiveLeads(database, userId, rows, { deletedVia: "list", sourceListName: listName });
+    const seamlessIds = rows.map((r: any) => r.seamlessId).filter(Boolean);
+    for (const row of rows) {
+      await deleteLead(row.id);
+    }
+    if (seamlessIds.length > 0) {
+      await excludeSeamlessContacts(userId, seamlessIds);
+    }
+  }
+  await database.delete(leadSets).where(eq(leadSets.id, sourceListId));
+  return { archivedCount: rows.length };
+}
+
+// Deleting a tag means "I don't want this grouping anymore" -- archive for
+// recovery, hard-delete so the leads stop counting as owned, but do NOT
+// exclude them from Seamless: this is what actually frees them up so the
+// exact same search can offer these contacts again in the future.
+export async function archiveAndDeleteLeadsByTag(userId: number, leadSetId: number, tagName?: string) {
+  const database = await getDb();
+  if (!database) return { archivedCount: 0 };
+  const rows = await database.select().from(leads).where(and(eq(leads.leadSetId, leadSetId), eq(leads.userId, userId)));
+  if (rows.length > 0) {
+    await archiveLeads(database, userId, rows, { deletedVia: "tag", leadSetName: tagName });
+    for (const row of rows) {
+      await deleteLead(row.id);
+    }
+  }
+  await database.delete(leadSets).where(eq(leadSets.id, leadSetId));
+  return { archivedCount: rows.length };
+}
+
+export async function getDeletedLeadsArchive(userId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  try {
+    await ensureDeletedLeadsArchiveTable(database);
+    const result: any = await database.execute(
+      sql`SELECT id, originalLeadId, sourceListName, leadSetName, deletedVia, seamlessId, leadName, leadEmail, leadCompany, deletedAt
+          FROM deletedLeadsArchive WHERE userId = ${userId} AND restoredAt IS NULL ORDER BY deletedAt DESC LIMIT 1000`
+    );
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    return rows;
+  } catch (error) {
+    console.error("[getDeletedLeadsArchive] Failed:", error);
+    return [];
+  }
+}
+
+export async function restoreArchivedLead(userId: number, archiveId: number): Promise<number | null> {
+  const database = await getDb();
+  if (!database) return null;
+  try {
+    await ensureDeletedLeadsArchiveTable(database);
+    const result: any = await database.execute(
+      sql`SELECT * FROM deletedLeadsArchive WHERE id = ${archiveId} AND userId = ${userId} AND restoredAt IS NULL LIMIT 1`
+    );
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    if (rows.length === 0) return null;
+    const archived = rows[0];
+    const leadData = typeof archived.leadData === "string" ? JSON.parse(archived.leadData) : archived.leadData;
+    delete leadData.id;
+    leadData.sourceListId = null;
+    leadData.leadSetId = null;
+    leadData.createdAt = new Date().toISOString();
+    leadData.updatedAt = new Date().toISOString();
+    const inserted = await database.insert(leads).values(convertToDbFormat(leadData));
+    const newLeadId = Number((inserted as any)?.[0]?.insertId) || null;
+    if (archived.deletedVia === "list" && archived.seamlessId) {
+      await database.execute(sql`DELETE FROM excludedSeamlessContacts WHERE userId = ${userId} AND seamlessId = ${archived.seamlessId}`);
+    }
+    await database.execute(sql`UPDATE deletedLeadsArchive SET restoredAt = CURRENT_TIMESTAMP WHERE id = ${archiveId}`);
+    return newLeadId;
+  } catch (error) {
+    console.error("[restoreArchivedLead] Failed:", error);
+    return null;
+  }
+}
+
 // ============ Scheduled Emails ============
 export async function createScheduledEmail(data: Omit<InsertScheduledEmail, "id" | "createdAt" | "updatedAt">) {
   const database = await getDb();

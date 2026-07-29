@@ -4777,8 +4777,17 @@ Respond in this exact JSON format:
         if (!set || set.userId !== ctx.user.id) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lead set not found" });
         }
-        await db.deleteLeadSet(input.id);
-        return { success: true };
+        // "Delete List" (an imported/generated batch) means the leads are
+        // dead -- archived for recovery, hard-deleted, and permanently
+        // excluded from ever resurfacing on Seamless. "Delete Tag" (a label
+        // the user applied) means the opposite: hard-deleted so they stop
+        // counting as "already owned," but NOT excluded, so the exact same
+        // Seamless search can offer them again. Both are archived so any
+        // individual lead can still be restored from "Deleted Leads."
+        const result = set.type === "list"
+          ? await db.archiveAndDeleteLeadsBySourceList(ctx.user.id, input.id, set.name)
+          : await db.archiveAndDeleteLeadsByTag(ctx.user.id, input.id, set.name);
+        return { success: true, archivedCount: result.archivedCount };
       }),
 
     merge: protectedProcedure
@@ -4839,6 +4848,82 @@ Respond in this exact JSON format:
       .mutation(async ({ ctx, input }) => {
         const leadIds = await db.getUntaggedLeadIdsBySourceList(ctx.user.id, input.sourceListId, input.count);
         return { leadIds };
+      }),
+  }),
+
+  // ============ Seamless Search History Router ============
+  // Persists each Seamless.AI search server-side so it survives a page
+  // refresh or coming back a different day -- the "Seamless Leads" nav tab
+  // reads this to let a search be resumed from exactly where it left off.
+  seamlessSearches: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.listSeamlessSearches(ctx.user.id);
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        instruction: z.string(),
+        country: z.string().optional(),
+        state: z.string().optional(),
+        companySize: z.string().optional(),
+        industryOverride: z.string().optional(),
+        titlesOverride: z.array(z.string()).optional(),
+        requestedCount: z.number(),
+        leadSetName: z.string().optional(),
+        nextToken: z.string().optional(),
+        totalAvailable: z.number().optional(),
+        extractedSoFar: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createSeamlessSearch(ctx.user.id, input);
+        return { id };
+      }),
+
+    updateProgress: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        nextToken: z.string().optional(),
+        totalAvailable: z.number().optional(),
+        extractedSoFar: z.number().optional(),
+        leadSetName: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateSeamlessSearchProgress(input.id, ctx.user.id, input);
+        return { success: true };
+      }),
+
+    getById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const search = await db.getSeamlessSearchById(input.id, ctx.user.id);
+        if (!search) throw new TRPCError({ code: "NOT_FOUND", message: "Search not found" });
+        return search;
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteSeamlessSearch(input.id, ctx.user.id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ Deleted Leads Archive Router ============
+  // Browsing + restore for leads hard-deleted via "Delete List"/"Delete Tag"
+  // (see leadSets.delete above) -- deletion is no longer a dead end.
+  deletedLeads: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getDeletedLeadsArchive(ctx.user.id);
+    }),
+
+    restore: protectedProcedure
+      .input(z.object({ archiveId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const newLeadId = await db.restoreArchivedLead(ctx.user.id, input.archiveId);
+        if (!newLeadId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Archived lead not found or already restored" });
+        }
+        return { success: true, leadId: newLeadId };
       }),
   }),
 

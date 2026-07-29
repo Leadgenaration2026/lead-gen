@@ -22,6 +22,7 @@ import SocialOutreach from "./pages/SocialOutreach";
 import MessageQueue from "./pages/MessageQueue";
 import SearchPreview from "./pages/SearchPreview";
 import Inbox from "./pages/Inbox";
+import SeamlessLeads from "./pages/SeamlessLeads";
 
 // Wrapper to add DashboardLayout to pages
 function WithLayout({ component: Component }: { component: React.ComponentType }) {
@@ -52,6 +53,7 @@ function Router() {
       <Route path={"/social-outreach"}>{() => <WithLayout component={SocialOutreach} />}</Route>
       <Route path={"/message-queue"} component={MessageQueue} />
       <Route path={"/search-preview"}>{() => <WithLayout component={SearchPreview} />}</Route>
+      <Route path={"/seamless-leads"}>{() => <WithLayout component={SeamlessLeads} />}</Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

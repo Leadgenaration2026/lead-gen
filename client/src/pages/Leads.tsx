@@ -113,7 +113,49 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     if (action === "delete-all") {
       setDeleteAllDialogOpen(true);
     }
+    const resumeId = params.get("resumeSearchId");
+    if (resumeId) {
+      setResumeSearchId(parseInt(resumeId));
+    }
   }, [searchString]);
+
+  // Support URL param ?resumeSearchId=123, arrived at from the "Seamless
+  // Leads" history page's Continue button -- loads that search's saved
+  // instruction/filters/cursor and picks up the next batch, instead of
+  // requiring the search to still be live in this page's own React state.
+  const [resumeSearchId, setResumeSearchId] = useState<number | null>(null);
+  const [pendingResumeFetch, setPendingResumeFetch] = useState(false);
+  const resumeSeamlessSearchQuery = trpc.seamlessSearches.getById.useQuery(
+    { id: resumeSearchId as number },
+    { enabled: resumeSearchId !== null }
+  );
+  useEffect(() => {
+    if (!resumeSeamlessSearchQuery.data || resumeSearchId === null) return;
+    const s: any = resumeSeamlessSearchQuery.data;
+    setInstruction(s.instruction);
+    setInstructionManuallyEdited(true);
+    setGenerateLeadSetName(s.leadSetName || "");
+    setGenerateCountry(s.country || "");
+    setGenerateState(s.state || "");
+    setGenerateCompanySize(s.companySize || "");
+    setIndustryOverride(s.industryOverride || "");
+    setIndustryManuallySet(!!s.industryOverride);
+    setTitlesOverride(s.titlesOverride || []);
+    setTitlesManuallySet((s.titlesOverride || []).length > 0);
+    setCount(s.requestedCount || 10);
+    setSeamlessSearchRecordId(s.id);
+    setSeamlessNextToken(s.nextToken || undefined);
+    setSeamlessTotalAvailable(s.totalAvailable ?? undefined);
+    setSeamlessExtractedSoFar(s.extractedSoFar || 0);
+    setSeamlessCandidates([]);
+    setSelectedSeamlessIds(new Set());
+    if (s.nextToken) {
+      setPendingResumeFetch(true);
+    } else {
+      toast.info("This search has no more results left on Seamless -- it's already been fully extracted.");
+    }
+    setResumeSearchId(null);
+  }, [resumeSeamlessSearchQuery.data]);
 
   // Handle lead selection
   const toggleLeadSelection = (leadId: number) => {
@@ -249,6 +291,14 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // remaining" (totalAvailable - extractedSoFar) needs to stay accurate
   // after some/all of the current batch has already been saved.
   const [seamlessExtractedSoFar, setSeamlessExtractedSoFar] = useState(0);
+  // Server-side id of the persisted seamlessSearches row for the search
+  // currently in progress -- lets handleSearchNextBatch update the SAME row
+  // (nextToken/extractedSoFar) instead of the cursor only living in this
+  // component's memory, so it survives a refresh or coming back another day
+  // via the "Seamless Leads" history page.
+  const [seamlessSearchRecordId, setSeamlessSearchRecordId] = useState<number | null>(null);
+  const createSeamlessSearchMutation = trpc.seamlessSearches.create.useMutation();
+  const updateSeamlessSearchProgressMutation = trpc.seamlessSearches.updateProgress.useMutation();
   const [seamlessEngagementScores, setSeamlessEngagementScores] = useState<Record<string, { score: number; metrics: any }>>({});
   const [scoringEngagementIds, setScoringEngagementIds] = useState<Set<string>>(new Set());
   const [seamlessDetailIndex, setSeamlessDetailIndex] = useState<number | null>(null);
@@ -470,6 +520,21 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setSeamlessExtractedSoFar(result.candidates.length);
       setSeamlessEngagementScores({});
       setSeamlessPreviewDialogOpen(true);
+      createSeamlessSearchMutation.mutate({
+        instruction,
+        country: generateCountry && generateCountry !== "any" ? generateCountry : undefined,
+        state: generateState && generateState !== "any" ? generateState : undefined,
+        companySize: generateCompanySize && generateCompanySize !== "any" ? generateCompanySize : undefined,
+        industryOverride: industryOverride.trim() || undefined,
+        titlesOverride: titlesOverride.length > 0 ? titlesOverride : undefined,
+        requestedCount: count,
+        leadSetName: generateLeadSetName.trim() || undefined,
+        nextToken: (result as any).nextToken,
+        totalAvailable: result.totalAvailable,
+        extractedSoFar: result.candidates.length,
+      }, {
+        onSuccess: (r) => setSeamlessSearchRecordId(r.id ?? null),
+      });
       const skipMessages = [
         result.skippedAlreadyOwned > 0 ? `${result.skippedAlreadyOwned} already in your system` : null,
         result.skippedExcluded > 0 ? `${result.skippedExcluded} previously deleted by you` : null,
@@ -523,7 +588,16 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         toast.success(`Added ${newOnes.length} new contact(s) -- ${seamlessCandidates.length + newOnes.length} extracted so far`);
         scoreEngagementForCandidates(newOnes.slice(0, 10));
       }
-      setSeamlessNextToken((result as any).nextToken);
+      const updatedNextToken = (result as any).nextToken;
+      setSeamlessNextToken(updatedNextToken);
+      if (seamlessSearchRecordId) {
+        updateSeamlessSearchProgressMutation.mutate({
+          id: seamlessSearchRecordId,
+          nextToken: updatedNextToken,
+          totalAvailable: result.totalAvailable,
+          extractedSoFar: seamlessExtractedSoFar + newOnes.length,
+        });
+      }
     } catch (error: any) {
       const msg = error?.message || error?.data?.message || "Failed to load the next batch";
       toast.error(msg, { duration: 8000 });
@@ -531,6 +605,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       setIsLoadingMoreSeamless(false);
     }
   };
+
+  // Fires the actual continuation fetch once the resume effect above has
+  // populated instruction/filters/cursor from a saved search -- split into
+  // its own effect (rather than calling handleSearchNextBatch directly from
+  // that effect) because state updates don't apply until the next render;
+  // reading `instruction`/`seamlessNextToken` here, after that render has
+  // committed, gets the real values instead of what they were before resume.
+  useEffect(() => {
+    if (!pendingResumeFetch) return;
+    setPendingResumeFetch(false);
+    handleSearchNextBatch().then(() => setSeamlessPreviewDialogOpen(true));
+  }, [pendingResumeFetch]);
 
   // Tracks the keyword text the most recently *fired* request of each kind was
   // for, so a response can tell if it's still the latest one once it comes
@@ -840,6 +926,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           setTitlesOverride([]);
           setTitlesDetected(false);
           setTitlesManuallySet(false);
+          setSeamlessSearchRecordId(null);
         }
       }
 
@@ -3949,7 +4036,8 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete this imported list? All leads from this list will become unassigned and move back to "All Imported Lists".
+              This permanently deletes every lead in this list -- they're dead leads, so they'll also be excluded from ever showing up in a Seamless search again.
+              Nothing is truly gone though: you can browse and restore any individual lead afterward from the "Seamless Leads" tab's Deleted Leads section.
             </p>
           </div>
           <DialogFooter>
@@ -3957,11 +4045,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <Button variant="destructive" onClick={async () => {
               if (!deleteListId) return;
               try {
-                await deleteListMutation.mutateAsync({ id: deleteListId });
+                const result = await deleteListMutation.mutateAsync({ id: deleteListId });
                 setDeleteListDialogOpen(false);
                 setDeleteListId(null);
                 setFilterSourceListId("all");
-                toast.success("List deleted successfully");
+                toast.success(`Deleted ${result.archivedCount} lead(s) -- excluded from future Seamless searches. Restorable from Seamless Leads > Deleted Leads.`);
                 // Refetch after dialog closes to avoid re-renders
                 setTimeout(() => {
                   leadsQuery.refetch(); listOrTagFilterQuery.refetch();
@@ -3981,15 +4069,18 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Tag</DialogTitle>
-            <DialogDescription>Are you sure you want to delete this tag? Leads will be unassigned but not deleted.</DialogDescription>
+            <DialogDescription>
+              This permanently deletes every lead under this tag -- but unlike deleting an imported list, they are NOT excluded from Seamless, so the same search can offer these exact contacts again in the future.
+              You can also restore any individual lead afterward from the "Seamless Leads" tab's Deleted Leads section.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTagDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={async () => {
               if (!deleteTagId) return;
               try {
-                await deleteListMutation.mutateAsync({ id: deleteTagId });
-                toast.success("Tag deleted successfully");
+                const result = await deleteListMutation.mutateAsync({ id: deleteTagId });
+                toast.success(`Deleted ${result.archivedCount} lead(s) -- freed up for re-extraction on Seamless. Restorable from Seamless Leads > Deleted Leads.`);
                 leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                 leadSetsQuery.refetch();
                 setDeleteTagDialogOpen(false);
