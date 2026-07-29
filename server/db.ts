@@ -1178,6 +1178,31 @@ export async function getLeadSetsByUserId(userId: number) {
   return database.select().from(leadSets).where(eq(leadSets.userId, userId)).orderBy(desc(leadSets.createdAt));
 }
 
+// Per-tag/list lead counts (total/verified/undeliverable), aggregated directly
+// in SQL rather than filtering whatever page of leads.list the client happens
+// to have loaded (capped at 50-100 rows) -- the same staleness bug fixed for
+// the Leads page's own list/tag filters (getLeadsBySourceListOrTag above):
+// any tag whose members had fallen off that capped page silently showed as
+// "0 leads" even though real leads existed under it.
+export async function getLeadCountsByTag(userId: number): Promise<Record<number, { total: number; verified: number; undeliverable: number }>> {
+  const database = await getDb();
+  if (!database) return {};
+  const rows = await database.select({
+    leadSetId: leads.leadSetId,
+    total: count(),
+    verified: sql<number>`SUM(CASE WHEN ${leads.emailVerificationStatus} = 'deliverable' THEN 1 ELSE 0 END)`,
+    undeliverable: sql<number>`SUM(CASE WHEN ${leads.emailVerificationStatus} = 'undeliverable' THEN 1 ELSE 0 END)`,
+  }).from(leads).where(eq(leads.userId, userId)).groupBy(leads.leadSetId);
+
+  const result: Record<number, { total: number; verified: number; undeliverable: number }> = {};
+  for (const r of rows) {
+    if (r.leadSetId != null) {
+      result[r.leadSetId] = { total: Number(r.total), verified: Number(r.verified), undeliverable: Number(r.undeliverable) };
+    }
+  }
+  return result;
+}
+
 export async function getLeadSetById(id: number) {
   const database = await getDb();
   if (!database) return null;

@@ -91,6 +91,17 @@ export default function EmailComposer() {
   const leadsQuery = trpc.leads.list.useQuery();
   const leadSetsQuery = trpc.leadSets.listTags.useQuery();
   const leadSets = leadSetsQuery.data || [];
+  // Real per-tag counts, aggregated server-side across ALL leads -- leads.list
+  // above is capped at 50, so an older tag's actual membership could fall
+  // entirely outside that page and show as "0 leads" even with real leads
+  // under it. Used for both the tag dropdown's displayed counts and (below)
+  // the real, unbounded lead list once a tag is actually selected.
+  const tagCountsQuery = trpc.leadSets.tagCounts.useQuery();
+  const tagCounts = tagCountsQuery.data || {};
+  const selectedTagLeadsQuery = trpc.leads.listBySourceListOrTag.useQuery(
+    { leadSetId: selectedTag ? parseInt(selectedTag) : undefined },
+    { enabled: !!selectedTag }
+  );
   const campaignsQuery = trpc.campaigns.list.useQuery();
   const rotationalEmailsQuery = trpc.rotationalEmails.list.useQuery();
   const settingsQuery = trpc.settings.get.useQuery();
@@ -121,13 +132,24 @@ export default function EmailComposer() {
 
   const selectedLeadData = leadsQuery.data?.find((l) => l.id === selectedLead);
 
-  // Filter leads by selected tag (lead set) for bulk mode
+  // Filter leads by selected tag (lead set) for bulk mode -- uses the real,
+  // unbounded per-tag query (selectedTagLeadsQuery) rather than filtering
+  // leads.list's capped 50-lead page, which used to silently produce 0
+  // leads (and 0 campaign recipients) for any tag whose members weren't in
+  // that page.
   const filteredLeads = useMemo(() => {
-    const allLeads = leadsQuery.data || [];
-    if (!selectedTag) return allLeads;
-    const setId = parseInt(selectedTag);
-    return allLeads.filter((l: any) => l.leadSetId === setId);
-  }, [leadsQuery.data, selectedTag]);
+    if (!selectedTag) return leadsQuery.data || [];
+    return selectedTagLeadsQuery.data || [];
+  }, [leadsQuery.data, selectedTag, selectedTagLeadsQuery.data]);
+
+  // Once a tag is selected, its real membership loads asynchronously
+  // (selectedTagLeadsQuery) -- populate the campaign's leadIds as soon as it
+  // arrives, instead of synchronously filtering the capped leads.list page.
+  useEffect(() => {
+    if (!selectedTag) return;
+    const tagLeads = selectedTagLeadsQuery.data || [];
+    setCampaignFormData((prev) => ({ ...prev, leadIds: tagLeads.map((l: any) => l.id) }));
+  }, [selectedTag, selectedTagLeadsQuery.data]);
 
   // Load a saved (custom-built or AI-written) template into the editor
   const handleLoadTemplateSingle = (template: any) => {
@@ -988,25 +1010,22 @@ export default function EmailComposer() {
                       onChange={(e) => {
                         const val = e.target.value;
                         setSelectedTag(val);
-                        if (val) {
-                          const setId = parseInt(val);
-                          const tagLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === setId);
-                          setCampaignFormData({ ...campaignFormData, leadIds: tagLeads.map((l: any) => l.id) });
-                        } else {
+                        if (!val) {
                           setCampaignFormData({ ...campaignFormData, leadIds: [] });
                         }
+                        // When a tag IS selected, leadIds gets populated by the
+                        // effect above once selectedTagLeadsQuery's real,
+                        // unbounded membership loads (async, so it can't be
+                        // set synchronously here).
                       }}
                       className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                     >
                       <option value="">-- Select a Tag --</option>
                       {leadSets.map((set: any) => {
-                        const setLeads = (leadsQuery.data || []).filter((l: any) => l.leadSetId === set.id);
-                        const verified = setLeads.filter((l: any) => l.emailVerificationStatus === "deliverable").length;
-                        const undeliverable = setLeads.filter((l: any) => l.emailVerificationStatus === "undeliverable").length;
-                        const total = setLeads.length;
+                        const counts = tagCounts[set.id] || { total: 0, verified: 0, undeliverable: 0 };
                         return (
                           <option key={set.id} value={String(set.id)}>
-                            {set.name} — {total} leads ({verified} verified, {undeliverable} undeliverable)
+                            {set.name} — {counts.total} leads ({counts.verified} verified, {counts.undeliverable} undeliverable)
                           </option>
                         );
                       })}

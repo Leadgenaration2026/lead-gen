@@ -20,6 +20,11 @@ export default function LeadSetsPage() {
 
   const leadSetsQuery = trpc.leadSets.listTags.useQuery(undefined, { enabled: !!user });
   const leadsQuery = trpc.leads.list.useQuery(undefined, { enabled: !!user });
+  // Real per-tag counts, aggregated server-side across ALL leads -- leads.list
+  // above is capped at 50, so an older tag's real membership could fall
+  // entirely outside that page and show as "0 leads" here too.
+  const tagCountsQuery = trpc.leadSets.tagCounts.useQuery(undefined, { enabled: !!user });
+  const tagCounts = tagCountsQuery.data || {};
   const createMutation = trpc.leadSets.create.useMutation();
   const renameMutation = trpc.leadSets.rename.useMutation();
   const deleteMutation = trpc.leadSets.delete.useMutation();
@@ -37,6 +42,12 @@ export default function LeadSetsPage() {
   const [mergeTargetId, setMergeTargetId] = useState<string>("");
 
   const [expandedSetId, setExpandedSetId] = useState<number | null>(null);
+  // Full, unbounded membership for whichever tag is currently expanded (for
+  // the verification breakdown), rather than leads.list's capped page.
+  const expandedSetLeadsQuery = trpc.leads.listBySourceListOrTag.useQuery(
+    { leadSetId: expandedSetId ?? undefined },
+    { enabled: !!user && expandedSetId !== null }
+  );
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newSetName, setNewSetName] = useState("");
@@ -57,7 +68,7 @@ export default function LeadSetsPage() {
   const leadSets = leadSetsQuery.data || [];
   const allLeads = leadsQuery.data || [];
 
-  const getLeadCount = (setId: number) => allLeads.filter((l: any) => l.leadSetId === setId).length;
+  const getLeadCount = (setId: number) => tagCounts[setId]?.total || 0;
   const unassignedCount = allLeads.filter((l: any) => !l.leadSetId).length;
 
   const handleRename = async () => {
@@ -265,7 +276,7 @@ export default function LeadSetsPage() {
                     {expandedSetId === set.id && (
                       <div className="border-t bg-muted/20 px-4 py-3">
                         {(() => {
-                          const setLeads = allLeads.filter((l: any) => l.leadSetId === set.id);
+                          const setLeads = expandedSetLeadsQuery.data || [];
                           const verified = setLeads.filter((l: any) => l.emailVerificationStatus === "deliverable").length;
                           const undeliverable = setLeads.filter((l: any) => l.emailVerificationStatus === "undeliverable").length;
                           const risky = setLeads.filter((l: any) => l.emailVerificationStatus === "risky").length;

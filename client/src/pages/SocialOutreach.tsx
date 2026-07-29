@@ -50,11 +50,19 @@ export default function SocialOutreach() {
   const leadSets = useMemo(() => leadSetsQuery.data || [], [leadSetsQuery.data]);
 
   const leads = useMemo(() => leadsQuery.data || [], [leadsQuery.data]);
+  // leads.list above is capped at 50 -- filtering it client-side by tag made
+  // older tags silently show 0 leads once their members fell off that page.
+  // listBySourceListOrTag queries a specific tag's real, unbounded membership
+  // directly instead.
+  const taggedLeadsQuery = trpc.leads.listBySourceListOrTag.useQuery(
+    { leadSetId: filterLeadSet !== "all" && filterLeadSet !== "unassigned" ? parseInt(filterLeadSet) : undefined },
+    { enabled: filterLeadSet !== "all" && filterLeadSet !== "unassigned" }
+  );
   const leadsForTag = useMemo(() => {
     if (filterLeadSet === "all") return leads;
     if (filterLeadSet === "unassigned") return leads.filter((l: any) => !l.leadSetId);
-    return leads.filter((l: any) => l.leadSetId === parseInt(filterLeadSet));
-  }, [leads, filterLeadSet]);
+    return taggedLeadsQuery.data || [];
+  }, [leads, filterLeadSet, taggedLeadsQuery.data]);
   const selectedLead = useMemo(() => {
     const lead = leads.find((l) => String(l.id) === selectedLeadId);
     if (lead) {

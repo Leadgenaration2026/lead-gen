@@ -4741,6 +4741,14 @@ Respond in this exact JSON format:
       return all.filter((s: any) => s.type === "tag");
     }),
 
+    // Real per-tag/list lead counts, aggregated in SQL across ALL leads --
+    // not just whichever page of leads.list happens to be loaded client-side
+    // (capped at 50-100 rows), which is why tag dropdowns could show "0
+    // leads" for tags whose members had simply fallen off that page.
+    tagCounts: protectedProcedure.query(async ({ ctx }) => {
+      return db.getLeadCountsByTag(ctx.user.id);
+    }),
+
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1),
