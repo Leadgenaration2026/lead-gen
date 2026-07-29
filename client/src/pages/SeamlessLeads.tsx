@@ -122,6 +122,7 @@ export default function SeamlessLeadsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Instruction</TableHead>
+                        <TableHead>Lead Set / Tag</TableHead>
                         <TableHead>Filters</TableHead>
                         <TableHead>Extracted</TableHead>
                         <TableHead>Status</TableHead>
@@ -135,6 +136,13 @@ export default function SeamlessLeadsPage() {
                         return (
                           <TableRow key={s.id}>
                             <TableCell className="max-w-[280px] truncate" title={s.instruction}>{s.instruction}</TableCell>
+                            <TableCell className="max-w-[160px] truncate text-sm" title={s.leadSetName || undefined}>
+                              {s.leadSetName ? (
+                                <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400 font-normal">{s.leadSetName}</Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Not named</span>
+                              )}
+                            </TableCell>
                             <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground" title={filtersSummary(s)}>{filtersSummary(s)}</TableCell>
                             <TableCell className="text-sm">
                               {s.extractedSoFar || 0}
