@@ -20,6 +20,12 @@ export const callLogs = mysqlTable("callLogs", {
 	// is more likely disinterest), so this is surfaced next to the recording
 	// to let a human decide whether to override that and resume follow-ups.
 	endReason: varchar({ length: 100 }),
+	// Guards the answered-vs-voicemail follow-up decision so it's made
+	// exactly once per call, and lets it be deferred (see handleRetellWebhook)
+	// until call_analysis.in_voicemail is actually known instead of guessing
+	// from disconnection_reason alone on a delivery that hasn't gotten
+	// analysis yet.
+	followUpDecisionMade: tinyint().default(0).notNull(),
 },
 (table) => [
 	index("callLogs_retellCallId_unique").on(table.retellCallId),
@@ -63,6 +69,17 @@ export const campaignLeads = mysqlTable("campaignLeads", {
 	// toggle that can be turned back on.
 	callsDisabled: tinyint().default(0).notNull(),
 	callsDisabledAt: timestamp({ mode: 'string' }),
+	// Running count of open-pixel hits (unlike emailOpened, which only marks
+	// the first one) -- needed so a call only gets scheduled once the lead
+	// has opened 3+ times, not on every single open.
+	emailOpenCount: int().default(0).notNull(),
+	// Set the moment triggerCallOnFollowUpOpen schedules a call from
+	// engagement (3+ opens or any click) -- checked BEFORE scheduling so
+	// repeat opens/clicks after the first qualifying one never schedule a
+	// second call. Distinct from callTriggered (set later, only once Retell
+	// actually confirms the call was placed) -- this one exists specifically
+	// to stop duplicate scheduling before that confirmation ever happens.
+	engagementCallScheduled: tinyint().default(0).notNull(),
 });
 
 export const campaignTemplates = mysqlTable("campaignTemplates", {

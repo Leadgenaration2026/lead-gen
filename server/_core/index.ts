@@ -60,6 +60,7 @@ async function startServer() {
       }
 
       const { processScheduledEmails, processScheduledFollowUpEmails, processScheduledFollowUpCalls } = await import("./followUpScheduler");
+      const { finalizeStaleVoicemailDecisions } = await import("./retellAI");
       const db = await import("../db");
 
       // 1. Process one-off scheduled emails
@@ -69,6 +70,14 @@ async function startServer() {
       // 2. Process follow-up emails that are due
       const followUpResult = await processScheduledFollowUpEmails();
       console.log(`[Heartbeat] Follow-up emails: ${JSON.stringify(followUpResult)}`);
+
+      // 2b. Resolve any calls still waiting on Retell's post-call analysis to
+      // tell a real answer apart from voicemail (see handleRetellWebhook) --
+      // catches the case where that analysis never arrives on a later webhook.
+      const staleResult = await finalizeStaleVoicemailDecisions();
+      if (staleResult.finalized > 0) {
+        console.log(`[Heartbeat] Finalized stale voicemail decisions: ${JSON.stringify(staleResult)}`);
+      }
 
       // 3. Process follow-up calls that are due
       // Get Retell.AI settings from the owner's settings
@@ -81,10 +90,10 @@ async function startServer() {
           (ownerSettings as any).companyName || undefined
         );
         console.log(`[Heartbeat] Follow-up calls: ${JSON.stringify(callsResult)}`);
-        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: callsResult });
+        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: callsResult, staleVoicemailDecisions: staleResult });
       } else {
         console.log(`[Heartbeat] Skipping follow-up calls - Retell.AI not configured`);
-        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: { skipped: "retell_not_configured" } });
+        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: { skipped: "retell_not_configured" }, staleVoicemailDecisions: staleResult });
       }
     } catch (error: any) {
       console.error("[Heartbeat] Handler error:", error);

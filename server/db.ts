@@ -52,6 +52,9 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS endReason VARCHAR(100) NULL`);
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS callsDisabled TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS callsDisabledAt TIMESTAMP NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS emailOpenCount INT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS engagementCallScheduled TINYINT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS followUpDecisionMade TINYINT DEFAULT 0 NOT NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 
@@ -407,6 +410,27 @@ export async function updateCampaignLead(id: number, data: Partial<InsertCampaig
   return db.update(campaignLeads).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(campaignLeads.id, id));
 }
 
+// Atomic increment (same reasoning as incrementCampaignOpenCount -- a plain
+// read-then-write loses counts under concurrent opens) -- returns the new
+// count so the caller can check the 3-open threshold without a second,
+// separately-racing read.
+export async function incrementCampaignLeadOpenCount(campaignLeadId: number): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  await database.update(campaignLeads).set({ emailOpenCount: sql`${campaignLeads.emailOpenCount} + 1`, updatedAt: new Date() } as any).where(eq(campaignLeads.id, campaignLeadId));
+  const result = await database.select({ emailOpenCount: campaignLeads.emailOpenCount }).from(campaignLeads).where(eq(campaignLeads.id, campaignLeadId));
+  return result[0]?.emailOpenCount || 0;
+}
+
+// Set the moment a call gets scheduled from engagement (3+ opens or any
+// click) -- checked before scheduling so repeat opens/clicks after the first
+// qualifying one never schedule a second call.
+export async function markEngagementCallScheduled(campaignLeadId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(campaignLeads).set({ engagementCallScheduled: 1 } as any).where(eq(campaignLeads.id, campaignLeadId));
+}
+
 // Email tracking queries
 export async function createEmailTrackingEvent(data: InsertEmailTrackingEvent) {
   const db = await getDb();
@@ -445,6 +469,32 @@ export async function updateCallLog(id: number, data: Partial<InsertCallLog>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.update(callLogs).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(callLogs.id, id));
+}
+
+export async function markCallLogDecisionMade(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  await database.update(callLogs).set({ followUpDecisionMade: 1 } as any).where(eq(callLogs.id, id));
+}
+
+// Calls stuck waiting on Retell's post-call analysis (needed to tell a real
+// answer apart from the agent's own voicemail detection -- see
+// handleRetellWebhook) for longer than a few minutes -- by then any later
+// webhook delivery carrying that analysis would almost certainly have
+// already arrived, so these are treated as a confirmed real answer instead
+// of waiting forever and never cancelling their follow-ups.
+export async function getStaleAmbiguousCallLogs(olderThanMinutes: number = 5) {
+  const database = await getDb();
+  if (!database) return [];
+  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+  return database.select().from(callLogs).where(
+    and(
+      eq(callLogs.status, "completed"),
+      eq(callLogs.followUpDecisionMade, 0),
+      isNull(callLogs.callAnalysis),
+      lte(callLogs.updatedAt, cutoff.toISOString())
+    )
+  );
 }
 
 export async function getCallLogsByCampaignLead(campaignLeadId: number) {

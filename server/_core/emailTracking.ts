@@ -68,43 +68,54 @@ export function registerEmailTrackingRoutes(app: Express) {
           console.log(`[EmailTracking] Incremented campaign ${campaignLead.campaignId} openCount`);
         }
 
-        // Trigger Retell.AI call on every email open (calls after each follow-up email open)
-        try {
-          const campaign = await db.getCampaignById(campaignLead.campaignId);
-          const lead = await db.getLeadById(campaignLead.leadId);
-          const settings = campaign ? await db.getUserSettings(campaign.userId) : null;
-          
-          console.log(`[EmailTracking] Retell check - lead: ${!!lead}, phone: ${lead?.phoneNumber}, apiKey: ${!!settings?.retellApiKey}, agentId: ${settings?.retellAgentId}, fromPhone: ${settings?.senderPhoneNumber}`);
-          
-          if (lead && lead.phoneNumber && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
-            // Normalize phone number to E.164 format
-            const normalizedLeadPhone = normalizePhoneNumber(lead.phoneNumber);
+        // Running per-lead open count (distinct from the emailOpened flag
+        // above, which only marks the first one) -- a call only gets
+        // triggered once this reaches 3, not on every single open.
+        const openCount = await db.incrementCampaignLeadOpenCount(event.campaignLeadId);
+        console.log(`[EmailTracking] campaignLead ${event.campaignLeadId} open #${openCount}`);
 
-            console.log(`[EmailTracking] Scheduling Retell.AI call - to: ${normalizedLeadPhone}, agent: ${settings.retellAgentId}`);
+        if (openCount >= 3) {
+          // Trigger Retell.AI call once the email has been opened 3+ times.
+          // triggerCallOnFollowUpOpen itself guards against scheduling more
+          // than one call per lead (engagementCallScheduled), so this is
+          // safe to attempt again on every open past the 3rd too.
+          try {
+            const campaign = await db.getCampaignById(campaignLead.campaignId);
+            const lead = await db.getLeadById(campaignLead.leadId);
+            const settings = campaign ? await db.getUserSettings(campaign.userId) : null;
 
-            const result = await triggerCallOnFollowUpOpen(
-              campaignLead.id,
-              normalizedLeadPhone,
-              'email_open'
-            );
+            console.log(`[EmailTracking] Retell check - lead: ${!!lead}, phone: ${lead?.phoneNumber}, apiKey: ${!!settings?.retellApiKey}, agentId: ${settings?.retellAgentId}, fromPhone: ${settings?.senderPhoneNumber}`);
 
-            if (result.success) {
-              // NOTE: this only means the call was successfully SCHEDULED (a
-              // "scheduled" followUpCalls row was created for ~2 min from now,
-              // per the business-hours delay). callTriggered is intentionally
-              // NOT set here -- it's set by triggerRetellCall() in retellAI.ts
-              // only once Retell's API actually confirms the call was placed,
-              // so the campaign report can't show "call made" for a call that
-              // was merely queued and never actually reached Retell.
-              console.log(`[EmailTracking] Retell.AI call scheduled for campaignLead ${event.campaignLeadId}`);
+            if (lead && lead.phoneNumber && settings?.retellApiKey && settings?.retellAgentId && settings?.senderPhoneNumber) {
+              // Normalize phone number to E.164 format
+              const normalizedLeadPhone = normalizePhoneNumber(lead.phoneNumber);
+
+              console.log(`[EmailTracking] Scheduling Retell.AI call - to: ${normalizedLeadPhone}, agent: ${settings.retellAgentId}`);
+
+              const result = await triggerCallOnFollowUpOpen(
+                campaignLead.id,
+                normalizedLeadPhone,
+                'email_open'
+              );
+
+              if (result.success) {
+                // NOTE: this only means the call was successfully SCHEDULED (a
+                // "scheduled" followUpCalls row was created for ~2 min from now,
+                // per the business-hours delay). callTriggered is intentionally
+                // NOT set here -- it's set by triggerRetellCall() in retellAI.ts
+                // only once Retell's API actually confirms the call was placed,
+                // so the campaign report can't show "call made" for a call that
+                // was merely queued and never actually reached Retell.
+                console.log(`[EmailTracking] Retell.AI call scheduled for campaignLead ${event.campaignLeadId}`);
+              } else {
+                console.log(`[EmailTracking] Retell.AI call not triggered: ${result.reason || result.error}`);
+              }
             } else {
-              console.log(`[EmailTracking] Retell.AI call not triggered: ${result.reason || result.error}`);
+              console.log(`[EmailTracking] Retell.AI call NOT triggered - missing configuration. Lead phone: ${lead?.phoneNumber}, API key: ${!!settings?.retellApiKey}, Agent ID: ${settings?.retellAgentId}, From phone: ${settings?.senderPhoneNumber}`);
             }
-          } else {
-            console.log(`[EmailTracking] Retell.AI call NOT triggered - missing configuration. Lead phone: ${lead?.phoneNumber}, API key: ${!!settings?.retellApiKey}, Agent ID: ${settings?.retellAgentId}, From phone: ${settings?.senderPhoneNumber}`);
+          } catch (error) {
+            console.error("[EmailTracking] Failed to trigger Retell call on open:", error);
           }
-        } catch (error) {
-          console.error("[EmailTracking] Failed to trigger Retell call on open:", error);
         }
       }
 

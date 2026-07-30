@@ -938,6 +938,17 @@ export async function triggerCallOnFollowUpOpen(
       }
     }
 
+    // Only one call ever gets scheduled from engagement (3+ opens, or any
+    // click), no matter how many more opens/clicks follow -- without this,
+    // every repeat open/click created its OWN "scheduled" followUpCalls row
+    // (the wasAnswered check below only catches calls that already
+    // connected, not ones still sitting scheduled/pending), so e.g. 3 clicks
+    // before the first call was even placed meant 3 separate real calls.
+    if ((campaignLead as any)?.engagementCallScheduled) {
+      console.log(`[FollowUpScheduler] Engagement call already scheduled for campaignLeadId: ${campaignLeadId} - not scheduling another`);
+      return { success: false, reason: "already_scheduled" };
+    }
+
     // Check if any previous call for this campaign lead was answered
     const allCalls = await db.getFollowUpCallsByCampaignLead(campaignLeadId);
     const wasAnswered = allCalls.some(
@@ -963,6 +974,9 @@ export async function triggerCallOnFollowUpOpen(
       status: "scheduled",
       scheduledFor,
     });
+    // Mark immediately so any further open/click for this lead is rejected
+    // by the check above -- this is what makes "only 1 call" actually hold.
+    await db.markEngagementCallScheduled(campaignLeadId);
 
     console.log(`[FollowUpScheduler] Scheduled call for campaignLeadId: ${campaignLeadId} at ${scheduledFor.toISOString()} (2 min after ${triggerType}, adjusted to 10AM-6PM Eastern)`);
 
