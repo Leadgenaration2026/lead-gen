@@ -944,7 +944,12 @@ export async function triggerCallOnFollowUpOpen(
     // (the wasAnswered check below only catches calls that already
     // connected, not ones still sitting scheduled/pending), so e.g. 3 clicks
     // before the first call was even placed meant 3 separate real calls.
-    if ((campaignLead as any)?.engagementCallScheduled) {
+    // claimEngagementCallSlot is an atomic compare-and-swap (not a plain
+    // read-then-write) specifically so that several opens/clicks arriving
+    // close together can't all slip through before the first one's write
+    // lands -- only the caller that actually flips the flag gets to proceed.
+    const claimed = await db.claimEngagementCallSlot(campaignLeadId);
+    if (!claimed) {
       console.log(`[FollowUpScheduler] Engagement call already scheduled for campaignLeadId: ${campaignLeadId} - not scheduling another`);
       return { success: false, reason: "already_scheduled" };
     }
@@ -974,9 +979,6 @@ export async function triggerCallOnFollowUpOpen(
       status: "scheduled",
       scheduledFor,
     });
-    // Mark immediately so any further open/click for this lead is rejected
-    // by the check above -- this is what makes "only 1 call" actually hold.
-    await db.markEngagementCallScheduled(campaignLeadId);
 
     console.log(`[FollowUpScheduler] Scheduled call for campaignLeadId: ${campaignLeadId} at ${scheduledFor.toISOString()} (2 min after ${triggerType}, adjusted to 10AM-6PM Eastern)`);
 

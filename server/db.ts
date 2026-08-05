@@ -422,13 +422,26 @@ export async function incrementCampaignLeadOpenCount(campaignLeadId: number): Pr
   return result[0]?.emailOpenCount || 0;
 }
 
-// Set the moment a call gets scheduled from engagement (3+ opens or any
-// click) -- checked before scheduling so repeat opens/clicks after the first
-// qualifying one never schedule a second call.
-export async function markEngagementCallScheduled(campaignLeadId: number) {
+// Atomically claims the one-and-only engagement call slot for this lead --
+// returns true only for whichever caller actually flips engagementScheduled
+// from 0 to 1, false for every other caller (already scheduled, or lost the
+// race). A plain "read the flag, decide, then write it" has a window where
+// several near-simultaneous opens/clicks (e.g. a lead clicking a link
+// several times within a few seconds, or an open pixel and a click landing
+// close together) can all read "not yet scheduled" before any of them has
+// written the flag -- each one then schedules its own call. This single
+// UPDATE...WHERE is atomic at the row level: MySQL/TiDB only lets ONE
+// concurrent statement matching `engagementCallScheduled = 0` succeed: every
+// other one that ran through the same WHERE clause won't match after the
+// winner's write, however close together they fired.
+export async function claimEngagementCallSlot(campaignLeadId: number): Promise<boolean> {
   const database = await getDb();
-  if (!database) return;
-  await database.update(campaignLeads).set({ engagementCallScheduled: 1 } as any).where(eq(campaignLeads.id, campaignLeadId));
+  if (!database) return false;
+  const result: any = await database.execute(
+    sql`UPDATE campaignLeads SET engagementCallScheduled = 1 WHERE id = ${campaignLeadId} AND engagementCallScheduled = 0`
+  );
+  const affectedRows = Number(result?.[0]?.affectedRows ?? result?.affectedRows) || 0;
+  return affectedRows === 1;
 }
 
 // Email tracking queries
@@ -471,10 +484,20 @@ export async function updateCallLog(id: number, data: Partial<InsertCallLog>) {
   return db.update(callLogs).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(callLogs.id, id));
 }
 
-export async function markCallLogDecisionMade(id: number) {
+// Atomic compare-and-swap, same reasoning as claimEngagementCallSlot --
+// Retell can redeliver the same webhook, and a plain read-then-write here
+// could let two near-simultaneous deliveries both decide to cancel
+// follow-ups (harmless if both reach the same conclusion, but not if one
+// still doesn't have call_analysis yet while a concurrent one does).
+// Returns true only for whichever caller actually makes the decision.
+export async function claimFollowUpDecisionSlot(id: number): Promise<boolean> {
   const database = await getDb();
-  if (!database) return;
-  await database.update(callLogs).set({ followUpDecisionMade: 1 } as any).where(eq(callLogs.id, id));
+  if (!database) return false;
+  const result: any = await database.execute(
+    sql`UPDATE callLogs SET followUpDecisionMade = 1 WHERE id = ${id} AND followUpDecisionMade = 0`
+  );
+  const affectedRows = Number(result?.[0]?.affectedRows ?? result?.affectedRows) || 0;
+  return affectedRows === 1;
 }
 
 // Calls stuck waiting on Retell's post-call analysis (needed to tell a real

@@ -213,24 +213,35 @@ export async function handleRetellWebhook(payload: any) {
 
     if (status === "ended" && !callLog.followUpDecisionMade) {
       if (isAmbiguousHangup && !hasAnalysis) {
+        // Not a decision -- don't claim the slot, so whichever later
+        // delivery actually has call_analysis (or the stale-call sweep,
+        // if none ever comes) is still free to decide.
         console.log(`[RetellAI] Call ended (${end_reason}) with no call_analysis yet -- deferring answered-vs-voicemail decision for campaignLead ${callLog.campaignLeadId} until a later delivery provides it (or the stale-call sweep resolves it)`);
       } else if (isVoicemail) {
-        // A voicemail message was already left on this attempt -- calling
-        // again (even from the secondary number) would just leave a second
-        // voicemail, which isn't more effective. Stop all remaining
-        // scheduled calls for this lead; follow-up emails are unaffected and
-        // continue as normal -- a voicemail means the number IS reachable,
-        // unlike a wrong/disconnected number.
-        await db.cancelPendingFollowUpCalls(callLog.campaignLeadId);
-        await db.markCallLogDecisionMade(callLog.id);
-        console.log(`[RetellAI] Voicemail reached (end_reason: ${end_reason}, in_voicemail: ${call.call_analysis?.in_voicemail}) - cancelled remaining scheduled calls for campaignLead ${callLog.campaignLeadId}`);
+        // claimFollowUpDecisionSlot is an atomic compare-and-swap -- Retell
+        // can redeliver the same webhook, so this guarantees the
+        // cancellation below only ever runs once for this call even if two
+        // deliveries with analysis arrive close together.
+        const claimed = await db.claimFollowUpDecisionSlot(callLog.id);
+        if (claimed) {
+          // A voicemail message was already left on this attempt -- calling
+          // again (even from the secondary number) would just leave a
+          // second voicemail, which isn't more effective. Stop all
+          // remaining scheduled CALLS for this lead; follow-up emails are
+          // unaffected and continue as normal -- a voicemail means the
+          // number IS reachable, unlike a wrong/disconnected number.
+          await db.cancelPendingFollowUpCalls(callLog.campaignLeadId);
+          console.log(`[RetellAI] Voicemail reached (end_reason: ${end_reason}, in_voicemail: ${call.call_analysis?.in_voicemail}) - cancelled remaining scheduled calls for campaignLead ${callLog.campaignLeadId}`);
+        }
       } else if (isAmbiguousHangup) {
-        // Confirmed (via analysis, or this delivery simply has none to
-        // wait for) that this was a genuine answer -- cancel remaining
-        // follow-ups (both emails and calls).
-        await db.cancelPendingFollowUps(callLog.campaignLeadId);
-        await db.markCallLogDecisionMade(callLog.id);
-        console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
+        const claimed = await db.claimFollowUpDecisionSlot(callLog.id);
+        if (claimed) {
+          // Confirmed (via analysis, or this delivery simply has none to
+          // wait for) that this was a genuine answer -- cancel remaining
+          // follow-ups (both emails and calls).
+          await db.cancelPendingFollowUps(callLog.campaignLeadId);
+          console.log(`[RetellAI] Call answered - cancelled pending follow-ups for campaignLead ${callLog.campaignLeadId}`);
+        }
       }
     }
 
@@ -259,8 +270,9 @@ export async function finalizeStaleVoicemailDecisions() {
   let finalized = 0;
   for (const callLog of stale) {
     try {
+      const claimed = await db.claimFollowUpDecisionSlot((callLog as any).id);
+      if (!claimed) continue; // a webhook delivery resolved it in the meantime
       await db.cancelPendingFollowUps((callLog as any).campaignLeadId);
-      await db.markCallLogDecisionMade((callLog as any).id);
       finalized++;
       console.log(`[RetellAI] Finalized stale ambiguous call ${(callLog as any).id} as answered (no analysis arrived) - cancelled pending follow-ups for campaignLead ${(callLog as any).campaignLeadId}`);
     } catch (error) {
