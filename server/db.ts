@@ -1,4 +1,4 @@
-import { eq, and, or, desc, asc, inArray, lte, count, sql, gte, notInArray, isNull } from "drizzle-orm";
+import { eq, and, or, desc, asc, inArray, lte, count, sql, gte, notInArray, isNull, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import * as schema from "../drizzle/schema";
 import { InsertUser, users, leads, campaigns, campaignLeads, emailTrackingEvents, callLogs, userSettings, InsertLead, InsertCampaign, InsertCampaignLead, InsertEmailTrackingEvent, InsertCallLog, InsertUserSettings, leadSets, InsertLeadSet, rotationalEmails, InsertRotationalEmail, webhookEvents, InsertWebhookEvent, claudeApiUsage, InsertClaudeApiUsage, searchCache, leadImports, InsertSearchCache, SearchCache, InsertLeadImport, LeadImport } from "../drizzle/schema";
@@ -1274,6 +1274,48 @@ export async function getLeadCountsByTag(userId: number): Promise<Record<number,
     }
   }
   return result;
+}
+
+// Finds leads by name, email, or phone (any one matching is enough) --
+// queried directly against the full leads table rather than filtering
+// whatever page happens to be loaded client-side, so it actually finds a
+// lead regardless of how many newer leads exist. Also resolves which
+// imported list / tag each match currently belongs to, since the point of
+// searching from the Lead Sets page is usually "which set is this lead in."
+export async function searchLeads(userId: number, query: string, limit: number = 25) {
+  const database = await getDb();
+  if (!database || !query.trim()) return [];
+  // Escape LIKE wildcards in the user's own input so a literal "%" or "_"
+  // in a search term isn't treated as a wildcard.
+  const escaped = query.trim().replace(/[%_\\]/g, (c) => `\\${c}`);
+  const pattern = `%${escaped}%`;
+  const matches = await database.select().from(leads).where(
+    and(
+      eq(leads.userId, userId),
+      or(
+        like(leads.ownerName, pattern),
+        like(leads.email, pattern),
+        like(leads.phoneNumber, pattern)
+      )
+    )
+  ).orderBy(desc(leads.createdAt)).limit(limit);
+
+  const setIds = new Set<number>();
+  for (const lead of matches as any[]) {
+    if (lead.sourceListId) setIds.add(lead.sourceListId);
+    if (lead.leadSetId) setIds.add(lead.leadSetId);
+  }
+  let setNames: Record<number, string> = {};
+  if (setIds.size > 0) {
+    const setRows = await database.select().from(leadSets).where(inArray(leadSets.id, Array.from(setIds)));
+    setNames = Object.fromEntries(setRows.map((s: any) => [s.id, s.name]));
+  }
+
+  return (matches as any[]).map((lead) => ({
+    ...lead,
+    sourceListName: lead.sourceListId ? setNames[lead.sourceListId] : undefined,
+    leadSetName: lead.leadSetId ? setNames[lead.leadSetId] : undefined,
+  }));
 }
 
 export async function getLeadSetById(id: number) {

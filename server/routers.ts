@@ -4749,6 +4749,17 @@ Respond in this exact JSON format:
       return db.getLeadCountsByTag(ctx.user.id);
     }),
 
+    // Finds a lead by name, email, or phone (any one matching) across the
+    // user's FULL lead list, not just whatever's paginated into view --
+    // resolves which imported list/tag each match belongs to so it can be
+    // used from the Lead Sets page to answer "which tag is this lead in."
+    searchLeads: protectedProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ ctx, input }) => {
+        if (!input.query.trim()) return [];
+        return db.searchLeads(ctx.user.id, input.query, 25);
+      }),
+
     create: protectedProcedure
       .input(z.object({
         name: z.string().min(1),

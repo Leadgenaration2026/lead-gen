@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle } from "lucide-react";
+import { Loader2, FolderPlus, Pencil, Trash2, Merge, Users, ChevronDown, ChevronRight, Plus, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -29,6 +29,7 @@ export default function LeadSetsPage() {
   const renameMutation = trpc.leadSets.rename.useMutation();
   const deleteMutation = trpc.leadSets.delete.useMutation();
   const mergeMutation = trpc.leadSets.merge.useMutation();
+  const assignLeadsToSetMutation = trpc.leadSets.assignLeads.useMutation();
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameSetId, setRenameSetId] = useState<number | null>(null);
@@ -51,6 +52,35 @@ export default function LeadSetsPage() {
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newSetName, setNewSetName] = useState("");
+
+  // Find a lead by name, email, or phone (any one matching) -- queried
+  // server-side against the full lead list (see db.searchLeads) rather than
+  // filtering leads.list's capped page, so it actually finds leads regardless
+  // of how many newer ones exist.
+  const [leadSearchInput, setLeadSearchInput] = useState("");
+  const [leadSearchQuery, setLeadSearchQuery] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setLeadSearchQuery(leadSearchInput.trim()), 350);
+    return () => clearTimeout(handle);
+  }, [leadSearchInput]);
+  const leadSearchResultsQuery = trpc.leadSets.searchLeads.useQuery(
+    { query: leadSearchQuery },
+    { enabled: !!user && leadSearchQuery.length > 0 }
+  );
+  const leadSearchResults = leadSearchResultsQuery.data || [];
+  const [quickAssignTargetId, setQuickAssignTargetId] = useState<Record<number, string>>({});
+
+  const handleQuickAssign = async (leadId: number) => {
+    const targetId = quickAssignTargetId[leadId];
+    if (!targetId) return;
+    try {
+      await assignLeadsToSetMutation.mutateAsync({ leadIds: [leadId], leadSetId: parseInt(targetId) });
+      toast.success("Lead assigned to tag");
+      leadSearchResultsQuery.refetch();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to assign lead to tag");
+    }
+  };
 
   if (authLoading) {
     return (
@@ -191,6 +221,88 @@ export default function LeadSetsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Lead Search */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Search Leads</CardTitle>
+            <CardDescription>Find a lead by name, email, or phone number (any one is enough) and see which tag it's in.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={leadSearchInput}
+                onChange={(e) => setLeadSearchInput(e.target.value)}
+                placeholder="Search by name, email, or phone..."
+                className="pl-9 pr-9"
+              />
+              {leadSearchInput && (
+                <button
+                  type="button"
+                  onClick={() => setLeadSearchInput("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {leadSearchQuery && (
+              <div className="mt-4">
+                {leadSearchResultsQuery.isLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Searching...
+                  </div>
+                ) : leadSearchResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">No leads found matching "{leadSearchQuery}".</p>
+                ) : (
+                  <div className="space-y-2">
+                    {leadSearchResults.map((lead: any) => (
+                      <div key={lead.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-muted/20">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{lead.ownerName} <span className="text-muted-foreground font-normal">— {lead.companyName}</span></p>
+                          <p className="text-xs text-muted-foreground truncate">{lead.email} {lead.phoneNumber ? `· ${lead.phoneNumber}` : ""}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {lead.leadSetName ? (
+                            <Badge variant="secondary">{lead.leadSetName}</Badge>
+                          ) : lead.sourceListName ? (
+                            <Badge variant="outline">List: {lead.sourceListName}</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">Untagged</Badge>
+                          )}
+                          <Select
+                            value={quickAssignTargetId[lead.id] || ""}
+                            onValueChange={(val) => setQuickAssignTargetId((prev) => ({ ...prev, [lead.id]: val }))}
+                          >
+                            <SelectTrigger className="h-8 w-40 text-xs">
+                              <SelectValue placeholder="Assign to tag..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {leadSets.map((set: any) => (
+                                <SelectItem key={set.id} value={String(set.id)}>{set.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs"
+                            disabled={!quickAssignTargetId[lead.id] || assignLeadsToSetMutation.isPending}
+                            onClick={() => handleQuickAssign(lead.id)}
+                          >
+                            Assign
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Tags List */}
         <Card>
