@@ -313,6 +313,58 @@ export async function getCampaignById(id: number) {
   return result[0];
 }
 
+// Per-campaign follow-up email/call totals, aggregated directly in SQL
+// across every campaign at once -- used to show follow-up activity (sent,
+// opened, clicked, pending, calls made, calls pending) on a campaign list
+// the same way the main Campaigns page shows its own inline stats, instead
+// of requiring one campaign to be selected first to see anything. Grouped
+// aggregates rather than reusing the existing per-lead campaignReport loop
+// (reports.campaignReport), which is fine for a single campaign's full
+// detail view but would be an expensive N+1 query fan-out run once per
+// campaign just to get summary counts.
+export async function getFollowUpSummaryByCampaign(userId: number) {
+  const database = await getDb();
+  if (!database) return {};
+  const { followUpEmails, followUpCalls } = await import("../drizzle/schema");
+
+  const emailRows = await database.select({
+    campaignId: campaignLeads.campaignId,
+    sent: sql<number>`SUM(CASE WHEN ${followUpEmails.status} IN ('sent','opened','clicked') THEN 1 ELSE 0 END)`,
+    opened: sql<number>`SUM(CASE WHEN ${followUpEmails.status} IN ('opened','clicked') THEN 1 ELSE 0 END)`,
+    clicked: sql<number>`SUM(CASE WHEN ${followUpEmails.status} = 'clicked' THEN 1 ELSE 0 END)`,
+    pending: sql<number>`SUM(CASE WHEN ${followUpEmails.status} IN ('draft','scheduled') THEN 1 ELSE 0 END)`,
+  })
+    .from(followUpEmails)
+    .innerJoin(campaignLeads, eq(followUpEmails.campaignLeadId, campaignLeads.id))
+    .innerJoin(campaigns, eq(campaignLeads.campaignId, campaigns.id))
+    .where(eq(campaigns.userId, userId))
+    .groupBy(campaignLeads.campaignId);
+
+  const callRows = await database.select({
+    campaignId: campaignLeads.campaignId,
+    made: sql<number>`SUM(CASE WHEN ${followUpCalls.status} != 'scheduled' THEN 1 ELSE 0 END)`,
+    pending: sql<number>`SUM(CASE WHEN ${followUpCalls.status} = 'scheduled' THEN 1 ELSE 0 END)`,
+  })
+    .from(followUpCalls)
+    .innerJoin(campaignLeads, eq(followUpCalls.campaignLeadId, campaignLeads.id))
+    .innerJoin(campaigns, eq(campaignLeads.campaignId, campaigns.id))
+    .where(eq(campaigns.userId, userId))
+    .groupBy(campaignLeads.campaignId);
+
+  const result: Record<number, { emailsSent: number; emailsOpened: number; emailsClicked: number; emailsPending: number; callsMade: number; callsPending: number }> = {};
+  for (const r of emailRows as any[]) {
+    result[r.campaignId] = { emailsSent: Number(r.sent), emailsOpened: Number(r.opened), emailsClicked: Number(r.clicked), emailsPending: Number(r.pending), callsMade: 0, callsPending: 0 };
+  }
+  for (const r of callRows as any[]) {
+    if (!result[r.campaignId]) {
+      result[r.campaignId] = { emailsSent: 0, emailsOpened: 0, emailsClicked: 0, emailsPending: 0, callsMade: 0, callsPending: 0 };
+    }
+    result[r.campaignId].callsMade = Number(r.made);
+    result[r.campaignId].callsPending = Number(r.pending);
+  }
+  return result;
+}
+
 function convertToDbFormat(data: any): any {
   const result = { ...data };
   for (const key in result) {

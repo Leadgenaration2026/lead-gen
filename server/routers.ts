@@ -3160,6 +3160,14 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
   // Comprehensive reports router
   reports: router({
+    // Per-campaign follow-up email/call totals for every campaign at once --
+    // lets the Follow-ups page show a Campaigns-page-style list (stats
+    // visible immediately on each card) instead of requiring one campaign to
+    // be picked first just to see whether anything is happening.
+    followUpSummaryByCampaign: protectedProcedure.query(async ({ ctx }) => {
+      return db.getFollowUpSummaryByCampaign(ctx.user.id);
+    }),
+
     // Get full campaign report with all emails, follow-ups, and calls
     campaignReport: protectedProcedure
       .input(z.number())

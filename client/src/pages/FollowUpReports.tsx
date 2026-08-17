@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { Mail, Phone, CheckCircle, Clock, AlertCircle, TrendingUp, Eye, MousePointerClick, ArrowRight, Calendar, Linkedin, Instagram, Facebook, Globe, UserX, CalendarCheck } from "lucide-react";
@@ -18,6 +17,14 @@ export default function FollowUpReports() {
 
   // Fetch campaigns list
   const { data: campaigns } = trpc.campaigns.list.useQuery(undefined, {
+    enabled: !!user,
+  });
+
+  // Per-campaign follow-up totals for every campaign at once, so activity is
+  // visible immediately on a list -- same idea as the main Campaigns page's
+  // inline stats -- instead of requiring one campaign to be picked first
+  // just to find out whether anything is happening.
+  const { data: followUpSummary } = trpc.reports.followUpSummaryByCampaign.useQuery(undefined, {
     enabled: !!user,
   });
 
@@ -76,25 +83,75 @@ export default function FollowUpReports() {
         </p>
       </div>
 
-      {/* Campaign Selector */}
+      {/* Campaign List -- same format as the main Campaigns page: every
+          campaign's follow-up activity visible inline, no need to pick one
+          first just to find out whether anything is happening. Click a row
+          to load its full detailed report below. */}
       <Card className="border-gray-200 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold">Select Campaign</CardTitle>
-          <CardDescription>Choose a campaign to view its full report</CardDescription>
+          <CardTitle className="text-lg font-semibold">Follow-Up Activity by Campaign</CardTitle>
+          <CardDescription>Click a campaign to see its full report -- every email sent, opened, clicked, and every call made -- below</CardDescription>
         </CardHeader>
         <CardContent>
-          <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-            <SelectTrigger className="w-full md:w-80">
-              <SelectValue placeholder="Choose a campaign..." />
-            </SelectTrigger>
-            <SelectContent>
-              {campaigns?.map((campaign: any) => (
-                <SelectItem key={campaign.id} value={String(campaign.id)}>
-                  {campaign.name} ({campaign.status})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!campaigns || campaigns.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">No campaigns yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {campaigns.map((campaign: any) => {
+                const fu = followUpSummary?.[campaign.id] || { emailsSent: 0, emailsOpened: 0, emailsClicked: 0, emailsPending: 0, callsMade: 0, callsPending: 0 };
+                const isSelected = selectedCampaignId === String(campaign.id);
+                return (
+                  <button
+                    key={campaign.id}
+                    type="button"
+                    onClick={() => setSelectedCampaignId(isSelected ? "" : String(campaign.id))}
+                    className={`w-full text-left p-4 border rounded-lg transition-colors ${isSelected ? "border-blue-400 bg-blue-50/50" : "border-border hover:bg-muted/50"}`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className="font-semibold">{campaign.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-0.5">{campaign.description}</p>
+                      </div>
+                      <Badge variant={
+                        campaign.status === "active" ? "default" :
+                        campaign.status === "draft" ? "secondary" :
+                        campaign.status === "paused" ? "outline" :
+                        "secondary"
+                      }>
+                        {campaign.status}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-4 py-3 border-y border-border/60">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total Leads</p>
+                        <p className="text-lg font-semibold">{campaign.totalLeads}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" /> Follow-ups Sent</p>
+                        <p className="text-lg font-semibold text-blue-600">{fu.emailsSent}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye className="w-3 h-3" /> Opened</p>
+                        <p className="text-lg font-semibold text-purple-600">{fu.emailsOpened}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><MousePointerClick className="w-3 h-3" /> Clicked</p>
+                        <p className="text-lg font-semibold text-green-600">{fu.emailsClicked}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" /> Pending</p>
+                        <p className="text-lg font-semibold text-amber-600">{fu.emailsPending}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" /> Calls Made / Pending</p>
+                        <p className="text-lg font-semibold text-indigo-600">{fu.callsMade} <span className="text-muted-foreground text-sm">/ {fu.callsPending}</span></p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -748,16 +805,17 @@ export default function FollowUpReports() {
         </>
       )}
 
-      {/* Empty State */}
-      {!selectedCampaignId && (
+      {/* Empty State -- only when there's a real choice to make; if there
+          are no campaigns at all, the list card above already says so. */}
+      {!selectedCampaignId && campaigns && campaigns.length > 0 && (
         <Card className="border-gray-200 shadow-sm">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-4">
               <TrendingUp className="w-8 h-8 text-blue-500" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Select a Campaign</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Click a Campaign Above</h3>
             <p className="text-muted-foreground text-center max-w-md">
-              Choose a campaign above to see the full report — all emails sent, opened, clicked, follow-ups done and pending, and all calls made with their status.
+              See the full report — every email sent, opened, clicked, which follow-ups are done vs. still pending, and every call made with its status.
             </p>
           </CardContent>
         </Card>
