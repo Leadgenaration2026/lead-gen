@@ -63,38 +63,68 @@ async function startServer() {
       const { finalizeStaleVoicemailDecisions } = await import("./retellAI");
       const db = await import("../db");
 
+      // Each step below is independently try/caught -- these used to run as
+      // one unbroken chain, so a throw in ANY earlier step (a bad email
+      // template, a transient DB hiccup, anything) skipped every step after
+      // it for that entire tick, including sending due follow-up CALLS --
+      // with no visible error, this looks exactly like "calls stuck
+      // pending forever" even though the scheduling itself was fine.
+
       // 1. Process one-off scheduled emails
-      const scheduledResult = await processScheduledEmails();
-      console.log(`[Heartbeat] Scheduled emails: ${JSON.stringify(scheduledResult)}`);
+      let scheduledResult: any;
+      try {
+        scheduledResult = await processScheduledEmails();
+        console.log(`[Heartbeat] Scheduled emails: ${JSON.stringify(scheduledResult)}`);
+      } catch (err: any) {
+        console.error("[Heartbeat] processScheduledEmails failed:", err);
+        scheduledResult = { error: err?.message || String(err) };
+      }
 
       // 2. Process follow-up emails that are due
-      const followUpResult = await processScheduledFollowUpEmails();
-      console.log(`[Heartbeat] Follow-up emails: ${JSON.stringify(followUpResult)}`);
+      let followUpResult: any;
+      try {
+        followUpResult = await processScheduledFollowUpEmails();
+        console.log(`[Heartbeat] Follow-up emails: ${JSON.stringify(followUpResult)}`);
+      } catch (err: any) {
+        console.error("[Heartbeat] processScheduledFollowUpEmails failed:", err);
+        followUpResult = { error: err?.message || String(err) };
+      }
 
       // 2b. Resolve any calls still waiting on Retell's post-call analysis to
       // tell a real answer apart from voicemail (see handleRetellWebhook) --
       // catches the case where that analysis never arrives on a later webhook.
-      const staleResult = await finalizeStaleVoicemailDecisions();
-      if (staleResult.finalized > 0) {
-        console.log(`[Heartbeat] Finalized stale voicemail decisions: ${JSON.stringify(staleResult)}`);
+      let staleResult: any;
+      try {
+        staleResult = await finalizeStaleVoicemailDecisions();
+        if (staleResult.finalized > 0) {
+          console.log(`[Heartbeat] Finalized stale voicemail decisions: ${JSON.stringify(staleResult)}`);
+        }
+      } catch (err: any) {
+        console.error("[Heartbeat] finalizeStaleVoicemailDecisions failed:", err);
+        staleResult = { error: err?.message || String(err) };
       }
 
       // 3. Process follow-up calls that are due
-      // Get Retell.AI settings from the owner's settings
-      const ownerSettings = await db.getUserSettings(1); // Owner userId
-      if (ownerSettings?.retellApiKey && ownerSettings?.retellAgentId && ownerSettings?.senderPhoneNumber) {
-        const callsResult = await processScheduledFollowUpCalls(
-          ownerSettings.retellApiKey,
-          ownerSettings.retellAgentId,
-          ownerSettings.senderPhoneNumber,
-          (ownerSettings as any).companyName || undefined
-        );
-        console.log(`[Heartbeat] Follow-up calls: ${JSON.stringify(callsResult)}`);
-        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: callsResult, staleVoicemailDecisions: staleResult });
-      } else {
-        console.log(`[Heartbeat] Skipping follow-up calls - Retell.AI not configured`);
-        res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: { skipped: "retell_not_configured" }, staleVoicemailDecisions: staleResult });
+      let callsResult: any = { skipped: "retell_not_configured" };
+      try {
+        const ownerSettings = await db.getUserSettings(1); // Owner userId
+        if (ownerSettings?.retellApiKey && ownerSettings?.retellAgentId && ownerSettings?.senderPhoneNumber) {
+          callsResult = await processScheduledFollowUpCalls(
+            ownerSettings.retellApiKey,
+            ownerSettings.retellAgentId,
+            ownerSettings.senderPhoneNumber,
+            (ownerSettings as any).companyName || undefined
+          );
+          console.log(`[Heartbeat] Follow-up calls: ${JSON.stringify(callsResult)}`);
+        } else {
+          console.log(`[Heartbeat] Skipping follow-up calls - Retell.AI not configured`);
+        }
+      } catch (err: any) {
+        console.error("[Heartbeat] processScheduledFollowUpCalls failed:", err);
+        callsResult = { error: err?.message || String(err) };
       }
+
+      res.json({ ok: true, scheduled: scheduledResult, followUpEmails: followUpResult, followUpCalls: callsResult, staleVoicemailDecisions: staleResult });
     } catch (error: any) {
       console.error("[Heartbeat] Handler error:", error);
       res.status(500).json({
