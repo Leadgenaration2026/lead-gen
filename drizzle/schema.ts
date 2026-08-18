@@ -229,6 +229,13 @@ export const followUpEmails = mysqlTable("followUpEmails", {
 	openedAt: timestamp({ mode: 'string' }),
 	clickedAt: timestamp({ mode: 'string' }),
 	trackingToken: varchar({ length: 255 }),
+	// Click tracking used a fresh, never-persisted token per send (only the
+	// open pixel's token was ever saved back to this row) -- meaning a
+	// follow-up email's own openedAt/clickedAt/status could never actually
+	// be set from a real open/click, regardless of whether the recipient
+	// engaged. Saving this alongside trackingToken lets the click handler
+	// resolve a click back to this specific follow-up email.
+	clickTrackingToken: varchar({ length: 255 }),
 	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
 },

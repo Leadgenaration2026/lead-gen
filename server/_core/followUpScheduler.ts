@@ -617,10 +617,17 @@ export async function processScheduledFollowUpEmails() {
           },
         });
 
-        // Mark as sent
+        // Mark as sent -- also (re-)save both tracking tokens on this row so
+        // the pixel/click handlers (emailTracking.ts) can resolve an
+        // open/click back to THIS specific follow-up email and update its
+        // own openedAt/clickedAt/status. clickTrackingToken in particular
+        // was generated fresh above but never persisted before, so a
+        // follow-up email's click could never be attributed back to it.
         await db.updateFollowUpEmail(followUpEmail.id, {
           status: "sent",
           sentAt: new Date(),
+          trackingToken,
+          clickTrackingToken,
         });
 
         // Store sender mailbox and message ID on the campaign lead

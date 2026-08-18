@@ -55,6 +55,7 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS emailOpenCount INT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS engagementCallScheduled TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS followUpDecisionMade TINYINT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE followUpEmails ADD COLUMN IF NOT EXISTS clickTrackingToken VARCHAR(255) NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 
@@ -665,6 +666,55 @@ export async function updateFollowUpEmail(id: number, data: any) {
   if (!db) throw new Error("Database not available");
   const { followUpEmails } = await import("../drizzle/schema");
   return db.update(followUpEmails).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(followUpEmails.id, id));
+}
+
+export async function getFollowUpEmailByTrackingToken(token: string) {
+  const database = await getDb();
+  if (!database) return null;
+  const { followUpEmails } = await import("../drizzle/schema");
+  const result = await database.select().from(followUpEmails).where(eq(followUpEmails.trackingToken, token)).limit(1);
+  return result[0] || null;
+}
+
+export async function getFollowUpEmailByClickTrackingToken(token: string) {
+  const database = await getDb();
+  if (!database) return null;
+  const { followUpEmails } = await import("../drizzle/schema");
+  const result = await database.select().from(followUpEmails).where(eq(followUpEmails.clickTrackingToken, token)).limit(1);
+  return result[0] || null;
+}
+
+// The pixel/click handlers only ever updated campaignLeads-level flags --
+// nothing updated a specific follow-up email's OWN openedAt/clickedAt/status,
+// so the Follow-Up Emails report always showed 0 opened/0 clicked no matter
+// what the recipient actually did. These are additive to that existing
+// campaignLeads-level logic, not a replacement for it. Never regresses
+// status backwards (clicked implies opened, so a late-arriving open ping
+// after a click shouldn't downgrade it back to "opened").
+export async function markFollowUpEmailOpened(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  const { followUpEmails } = await import("../drizzle/schema");
+  const rows = await database.select().from(followUpEmails).where(eq(followUpEmails.id, id)).limit(1);
+  const email = rows[0] as any;
+  if (!email) return;
+  const patch: any = { updatedAt: new Date() };
+  if (!email.openedAt) patch.openedAt = new Date();
+  if (email.status === "sent") patch.status = "opened";
+  await database.update(followUpEmails).set(patch).where(eq(followUpEmails.id, id));
+}
+
+export async function markFollowUpEmailClicked(id: number) {
+  const database = await getDb();
+  if (!database) return;
+  const { followUpEmails } = await import("../drizzle/schema");
+  const rows = await database.select().from(followUpEmails).where(eq(followUpEmails.id, id)).limit(1);
+  const email = rows[0] as any;
+  if (!email) return;
+  const patch: any = { status: "clicked", updatedAt: new Date() };
+  if (!email.openedAt) patch.openedAt = new Date();
+  if (!email.clickedAt) patch.clickedAt = new Date();
+  await database.update(followUpEmails).set(patch).where(eq(followUpEmails.id, id));
 }
 
 // Follow-up calls queries

@@ -24,6 +24,17 @@ export function registerEmailTrackingRoutes(app: Express) {
       const { token } = req.params;
       console.log(`[EmailTracking] Pixel request received for token: ${token}`);
 
+      // If this token belongs to a specific follow-up email, update ITS OWN
+      // openedAt/status -- this is additive to the campaignLeads-level
+      // logic below (which already worked correctly for follow-ups too,
+      // since their tokens are also logged as emailTrackingEvents), not a
+      // replacement. Without this, the Follow-Up Emails report always
+      // showed 0 opened regardless of what recipients actually did.
+      const followUpEmailMatch = await db.getFollowUpEmailByTrackingToken(token);
+      if (followUpEmailMatch) {
+        await db.markFollowUpEmailOpened((followUpEmailMatch as any).id);
+      }
+
       // Get the tracking event
       const event = await db.getEmailTrackingEventByToken(token);
       if (!event) {
@@ -145,6 +156,14 @@ export function registerEmailTrackingRoutes(app: Express) {
 
       if (!url || typeof url !== "string") {
         return res.status(400).json({ error: "Missing or invalid url parameter" });
+      }
+
+      // If this token belongs to a specific follow-up email's click link,
+      // update ITS OWN clickedAt/status -- see the matching comment in the
+      // pixel handler above for why this was missing.
+      const followUpEmailClickMatch = await db.getFollowUpEmailByClickTrackingToken(token);
+      if (followUpEmailClickMatch) {
+        await db.markFollowUpEmailClicked((followUpEmailClickMatch as any).id);
       }
 
       // Get the tracking event
