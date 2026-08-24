@@ -4954,6 +4954,79 @@ Respond in this exact JSON format:
       }),
   }),
 
+  // ============ Call Suggestions Router ============
+  // Automatic calling is disabled (see followUpScheduler.ts) -- when a lead
+  // opens or clicks, a suggestion lands here instead of a real call ever
+  // being placed. The client polls `list` and shows a "call now?" popup.
+  callSuggestions: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getPendingCallSuggestions(ctx.user.id);
+    }),
+
+    dismiss: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.dismissCallSuggestion(input.id, ctx.user.id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ Manual Calling Router ============
+  calls: router({
+    // Places a real Retell.AI call right now, on demand -- the only way a
+    // call happens at all now that automatic scheduling is disabled.
+    // Bypasses the followUpCalls scheduling table entirely and calls
+    // triggerRetellCall directly (same function the old cron used).
+    callNow: protectedProcedure
+      .input(z.object({ suggestionId: z.number().optional(), campaignLeadId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Campaign lead not found" });
+        }
+        const lead = await db.getLeadById(campaignLead.leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lead not found" });
+        }
+        if (!lead.phoneNumber) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Lead has no phone number" });
+        }
+        if (campaignLead.unsubscribed || campaignLead.replied || (lead as any).unsubscribed) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This lead is unsubscribed or has already replied" });
+        }
+
+        const settings = await db.getUserSettings(ctx.user.id);
+        if (!settings?.retellApiKey || !settings?.retellAgentId || !settings?.senderPhoneNumber) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Retell.AI is not configured in Settings" });
+        }
+
+        const { normalizePhoneNumber } = await import("./_core/followUpScheduler");
+        const normalizedPhone = normalizePhoneNumber(lead.phoneNumber);
+        const normalizedFromPhone = normalizePhoneNumber(settings.senderPhoneNumber);
+
+        const callId = await triggerRetellCall(
+          input.campaignLeadId,
+          normalizedPhone,
+          settings.retellApiKey,
+          settings.retellAgentId,
+          normalizedFromPhone,
+          "email_open",
+          { customerName: lead.ownerName, customerEmail: lead.email, customerCompanyName: lead.companyName },
+          (settings as any).companyName || undefined
+        );
+
+        if (!callId) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Retell.AI rejected the call attempt" });
+        }
+
+        if (input.suggestionId) {
+          await db.markCallSuggestionActioned(input.suggestionId, ctx.user.id);
+        }
+
+        return { success: true, callId };
+      }),
+  }),
+
   // ============ Rotational Emails Router ============
   rotationalEmails: router({
     list: protectedProcedure.query(async ({ ctx }) => {
@@ -5174,6 +5247,20 @@ Respond in this exact JSON format:
 
   // Social outreach message generation
   social: router({
+    // Drives the in-app "LinkedIn message ready" popup -- replaces the email
+    // that used to go to settings.socialNotificationEmail (see
+    // followUpScheduler.ts's processScheduledFollowUpEmails).
+    listPendingPopups: protectedProcedure.query(async ({ ctx }) => {
+      return db.getPendingSocialOutreachPopups(ctx.user.id);
+    }),
+
+    dismissPopup: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.dismissSocialOutreachPopup(input.id, ctx.user.id);
+        return { success: true };
+      }),
+
     // Generate a social outreach message using AI
     generateMessage: protectedProcedure
       .input(z.object({

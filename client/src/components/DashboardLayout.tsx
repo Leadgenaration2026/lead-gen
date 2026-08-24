@@ -26,6 +26,7 @@ import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { EngagementPopups } from "./EngagementPopups";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", color: "text-blue-500", activeBg: "data-[active=true]:bg-blue-50 dark:data-[active=true]:bg-blue-950/30" },
@@ -279,6 +280,7 @@ function DashboardLayoutContent({
         )}
         <main className="flex-1 p-4">{children}</main>
       </SidebarInset>
+      <EngagementPopups />
     </>
   );
 }

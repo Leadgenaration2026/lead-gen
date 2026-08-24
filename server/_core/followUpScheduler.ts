@@ -229,40 +229,20 @@ export async function scheduleFollowUpEmails(
 }
 
 /**
- * Schedule follow-up calls for a campaign lead.
- * Calls are scheduled 1 day after each follow-up email.
+ * DISABLED: this used to auto-schedule the day-N fallback call cadence
+ * (1, 3, 5... days out, independent of whether the lead ever engaged) the
+ * moment a campaign email sent. Per explicit instruction, NO calls should
+ * ever be placed automatically anymore -- calling is now purely manual,
+ * triggered from the "Call Now" popup (see callSuggestions / calls.callNow)
+ * that appears when a lead opens or clicks. Kept as a no-op (rather than
+ * deleting the function and its 3 call sites) so this is a single,
+ * reversible switch if automatic calling is ever turned back on.
  */
 export async function scheduleFollowUpCalls(
-  campaignLeadId: number,
-  leadPhone: string
+  _campaignLeadId: number,
+  _leadPhone: string
 ) {
-  try {
-    const now = new Date();
-    const normalizedPhone = normalizePhoneNumber(leadPhone);
-
-    for (let i = 0; i < FOLLOW_UP_CALL_SCHEDULE.length; i++) {
-      const schedule = FOLLOW_UP_CALL_SCHEDULE[i];
-      // Deliberately built via easternDateAtHour, not Date.setHours() (which
-      // operates in the SERVER's own local timezone, not Eastern -- on a
-      // server running in UTC, setHours(10, ...) actually landed at 10 AM
-      // UTC, i.e. 5-6 AM Eastern, well before business hours).
-      const scheduledDate = easternDateAtHour(now, schedule.dayOffset, schedule.hour);
-
-      await db.createFollowUpCall({
-        campaignLeadId,
-        attemptNumber: i + 2, // +2 because attempt #1 is the initial call
-        phoneNumber: normalizedPhone,
-        status: "scheduled",
-        scheduledFor: scheduledDate,
-      });
-    }
-
-    console.log(`[FollowUpScheduler] Scheduled ${FOLLOW_UP_CALL_SCHEDULE.length} follow-up calls for campaignLead ${campaignLeadId}`);
-    return { success: true, callsScheduled: FOLLOW_UP_CALL_SCHEDULE.length };
-  } catch (error) {
-    console.error("[FollowUpScheduler] Error scheduling follow-up calls:", error);
-    throw error;
-  }
+  return { success: true, callsScheduled: 0, disabled: true };
 }
 
 /**
@@ -474,35 +454,11 @@ export async function processScheduledFollowUpEmails() {
                         characterCount: message.length,
                       });
                       console.log(`[FollowUpScheduler] Queued ${platform} connection request for ${lead.ownerName} (${message.length} chars)`);
-                      // Send notification email if configured
-                      if (settings.socialNotificationEmail) {
-                        try {
-                          const nodemailer = await import("nodemailer");
-                          const transporter = nodemailer.default.createTransport({
-                            host: settings.smtpHost || '',
-                            port: settings.smtpPort || 587,
-                            secure: (settings.smtpPort || 587) === 465,
-                            auth: { user: settings.smtpUsername || '', pass: settings.smtpPassword || '' },
-                          });
-                          await transporter.sendMail({
-                            from: `"Lead Gen System" <${settings.senderEmail || settings.smtpUsername}>`,
-                            to: settings.socialNotificationEmail,
-                            subject: `Social Message Due: ${lead.ownerName} (${platform})`,
-                            html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                              <h2 style="color: #1a1a1a;">Social Message Ready to Send</h2>
-                              <p>A <strong>${platform}</strong> message is ready for <strong>${lead.ownerName}</strong> at <strong>${lead.companyName}</strong>.</p>
-                              <div style="background: #f5f5f5; padding: 16px; border-radius: 8px; margin: 16px 0;">
-                                <p style="margin: 0; font-style: italic;">"${message}"</p>
-                              </div>
-                              <p><strong>Profile URL:</strong> <a href="${profileUrl}">${profileUrl}</a></p>
-                              <p style="margin-top: 20px;">Go to your <strong>Message Queue</strong> to copy the message and open the profile.</p>
-                            </div>`,
-                          });
-                          console.log(`[FollowUpScheduler] Notification sent to ${settings.socialNotificationEmail} for ${platform} message`);
-                        } catch (notifError) {
-                          console.error(`[FollowUpScheduler] Failed to send notification email:`, notifError);
-                        }
-                      }
+                      // DISABLED: this used to also email settings.socialNotificationEmail
+                      // ("Social Message Due..."). Per explicit instruction, no more emails
+                      // for this -- the socialOutreach row inserted above (status: "pending")
+                      // is exactly what the in-app popup (socialOutreach.listPendingPopups)
+                      // polls for instead, so the notification still happens, just in-app.
                     }
                   }
                 }
@@ -911,15 +867,14 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
 }
 
 /**
- * Schedule a Retell.AI call for 2 minutes after a follow-up email is opened
- * or clicked, adjusted into the 10 AM - 6 PM Eastern call window if that
- * lands outside it. This is the primary call trigger mechanism -- it does
- * NOT call immediately (the lead needs a moment to actually read the email
- * first) and does NOT call Retell.AI directly; it creates a "scheduled"
- * followUpCalls row that the existing processScheduledFollowUpCalls cron
- * (running every few minutes) picks up and actually places, once due --
- * that cron already re-fetches lead context and settings fresh at call time,
- * so nothing needs to be passed through here beyond what identifies the call.
+ * DISABLED (renamed in intent, not in name, to avoid touching its 2 call
+ * sites in emailTracking.ts): no calls get placed or scheduled automatically
+ * anymore, per explicit instruction -- this used to create a "scheduled"
+ * followUpCalls row ~2 minutes after an open/click that processScheduled-
+ * FollowUpCalls would later place for real. Now it only raises a
+ * callSuggestion row so the UI can pop up "this lead just engaged -- call
+ * now?" and a human decides, via calls.callNow (routers.ts), which calls
+ * triggerRetellCall directly and bypasses scheduling entirely.
  */
 export async function triggerCallOnFollowUpOpen(
   campaignLeadId: number,
@@ -930,34 +885,32 @@ export async function triggerCallOnFollowUpOpen(
     // Skip unsubscribed (this campaign, or globally via any other campaign) or replied leads
     const campaignLead = await db.getCampaignLeadById(campaignLeadId);
     if (campaignLead?.unsubscribed || campaignLead?.replied) {
-      console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
+      console.log(`[FollowUpScheduler] Not suggesting a call for campaignLeadId: ${campaignLeadId} - ${campaignLead.replied ? 'replied' : 'unsubscribed'}`);
       return { success: false, reason: campaignLead.replied ? "replied" : "unsubscribed" };
     }
     if ((campaignLead as any)?.callsDisabled) {
-      console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - calls manually disabled for this lead`);
+      console.log(`[FollowUpScheduler] Not suggesting a call for campaignLeadId: ${campaignLeadId} - calls manually disabled for this lead`);
       return { success: false, reason: "calls_disabled" };
     }
-    if (campaignLead) {
-      const lead = await db.getLeadById(campaignLead.leadId);
-      if ((lead as any)?.unsubscribed) {
-        console.log(`[FollowUpScheduler] Not scheduling call for campaignLeadId: ${campaignLeadId} - lead globally unsubscribed`);
-        return { success: false, reason: "unsubscribed" };
-      }
+    const lead = campaignLead ? await db.getLeadById(campaignLead.leadId) : null;
+    if ((lead as any)?.unsubscribed) {
+      console.log(`[FollowUpScheduler] Not suggesting a call for campaignLeadId: ${campaignLeadId} - lead globally unsubscribed`);
+      return { success: false, reason: "unsubscribed" };
+    }
+    if (!campaignLead || !lead) {
+      return { success: false, reason: "not_found" };
     }
 
-    // Only one call ever gets scheduled from engagement (3+ opens, or any
-    // click), no matter how many more opens/clicks follow -- without this,
-    // every repeat open/click created its OWN "scheduled" followUpCalls row
-    // (the wasAnswered check below only catches calls that already
-    // connected, not ones still sitting scheduled/pending), so e.g. 3 clicks
-    // before the first call was even placed meant 3 separate real calls.
+    // Only one suggestion ever gets raised from engagement (3+ opens, or
+    // any click), no matter how many more opens/clicks follow -- without
+    // this, every repeat open/click would pop up its own suggestion.
     // claimEngagementCallSlot is an atomic compare-and-swap (not a plain
     // read-then-write) specifically so that several opens/clicks arriving
     // close together can't all slip through before the first one's write
     // lands -- only the caller that actually flips the flag gets to proceed.
     const claimed = await db.claimEngagementCallSlot(campaignLeadId);
     if (!claimed) {
-      console.log(`[FollowUpScheduler] Engagement call already scheduled for campaignLeadId: ${campaignLeadId} - not scheduling another`);
+      console.log(`[FollowUpScheduler] Call already suggested for campaignLeadId: ${campaignLeadId} - not suggesting another`);
       return { success: false, reason: "already_scheduled" };
     }
 
@@ -968,30 +921,16 @@ export async function triggerCallOnFollowUpOpen(
     );
 
     if (wasAnswered) {
-      console.log(`[FollowUpScheduler] Lead already answered a call. Not scheduling another for campaignLeadId: ${campaignLeadId}`);
+      console.log(`[FollowUpScheduler] Lead already answered a call. Not suggesting another for campaignLeadId: ${campaignLeadId}`);
       return { success: false, reason: "already_answered" };
     }
 
-    // Wait 2 minutes to give the lead time to actually read the email, then
-    // only within the 10 AM - 6 PM Eastern call window -- if that lands
-    // outside it, push to 10 AM Eastern the next day instead of skipping.
-    const scheduledFor = nextEasternBusinessSlot(new Date(Date.now() + 2 * 60 * 1000));
+    await db.createCallSuggestion(lead.userId, campaignLeadId, lead.id, triggerType);
+    console.log(`[FollowUpScheduler] Raised call suggestion for campaignLeadId: ${campaignLeadId} (${triggerType})`);
 
-    const normalizedPhone = normalizePhoneNumber(leadPhone);
-    const existingCalls = allCalls.length;
-    await db.createFollowUpCall({
-      campaignLeadId,
-      attemptNumber: existingCalls + 1,
-      phoneNumber: normalizedPhone,
-      status: "scheduled",
-      scheduledFor,
-    });
-
-    console.log(`[FollowUpScheduler] Scheduled call for campaignLeadId: ${campaignLeadId} at ${scheduledFor.toISOString()} (2 min after ${triggerType}, adjusted to 10AM-6PM Eastern)`);
-
-    return { success: true, scheduledFor };
+    return { success: true, suggested: true };
   } catch (error) {
-    console.error("[FollowUpScheduler] Error scheduling call on follow-up open:", error);
+    console.error("[FollowUpScheduler] Error raising call suggestion on follow-up open:", error);
     return { success: false, error: String(error) };
   }
 }

@@ -376,6 +376,10 @@ export const socialOutreach = mysqlTable("socialOutreach", {
 	respondedAt: timestamp({ mode: 'string' }),
 	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	// A new queued message used to trigger an email to socialNotificationEmail
+	// -- now it drives an in-app popup instead (see socialOutreach.listPendingPopups),
+	// dismissed independently of the message's own send/skip status below.
+	popupDismissedAt: timestamp({ mode: 'string' }),
 });
 
 export const userSettings = mysqlTable("userSettings", {

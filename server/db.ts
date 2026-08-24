@@ -56,6 +56,7 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS engagementCallScheduled TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS followUpDecisionMade TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE followUpEmails ADD COLUMN IF NOT EXISTS clickTrackingToken VARCHAR(255) NULL`);
+  await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS popupDismissedAt TIMESTAMP NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 
@@ -111,6 +112,50 @@ export async function getSocialCountToday(userId: number, platform: string, mess
     )
   );
   return rows.length;
+}
+
+// Drives the in-app "LinkedIn message ready" popup -- replaces the email
+// that used to go to settings.socialNotificationEmail. Joins in the lead's
+// name so the popup doesn't need a second round-trip per item.
+export async function getPendingSocialOutreachPopups(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  const { socialOutreach } = await import("../drizzle/schema");
+  const rows = await database.select().from(socialOutreach).where(
+    and(
+      eq(socialOutreach.userId, userId),
+      eq(socialOutreach.status, "pending"),
+      isNull(socialOutreach.popupDismissedAt)
+    )
+  ).orderBy(desc(socialOutreach.createdAt)).limit(20);
+
+  if (rows.length === 0) return [];
+  const leadIds = [...new Set(rows.map((r: any) => r.leadId))];
+  const leadRows = await database.select().from(leads).where(inArray(leads.id, leadIds));
+  const leadById = new Map(leadRows.map((l: any) => [l.id, l]));
+
+  return rows.map((r: any) => {
+    const lead: any = leadById.get(r.leadId);
+    return {
+      id: r.id,
+      leadId: r.leadId,
+      platform: r.platform,
+      message: r.message,
+      profileUrl: r.profileUrl,
+      createdAt: r.createdAt,
+      leadName: lead?.ownerName || "Unknown",
+      companyName: lead?.companyName || "",
+    };
+  });
+}
+
+export async function dismissSocialOutreachPopup(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  const { socialOutreach } = await import("../drizzle/schema");
+  await database.update(socialOutreach).set({ popupDismissedAt: new Date() } as any).where(
+    and(eq(socialOutreach.id, id), eq(socialOutreach.userId, userId))
+  );
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -577,6 +622,111 @@ export async function getCallLogsByCampaignLead(campaignLeadId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.select().from(callLogs).where(eq(callLogs.campaignLeadId, campaignLeadId));
+}
+
+// Automatic calling is disabled (see scheduleFollowUpCalls/
+// triggerCallOnFollowUpOpen) -- when a lead opens or clicks, instead of
+// auto-scheduling a real Retell call, a row lands here so the UI can pop up
+// "this lead just engaged -- call now?" and the user decides. Raw-SQL lazy
+// table, same pattern as excludedSeamlessContacts (no migration tool access
+// in this environment).
+let callSuggestionsTableReady = false;
+async function ensureCallSuggestionsTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (callSuggestionsTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS callSuggestions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      campaignLeadId INT NOT NULL,
+      leadId INT NOT NULL,
+      triggerType VARCHAR(20) NOT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      actionedAt TIMESTAMP NULL,
+      dismissedAt TIMESTAMP NULL,
+      INDEX callSuggestions_pending (userId, actionedAt, dismissedAt)
+    )
+  `);
+  callSuggestionsTableReady = true;
+}
+
+export async function createCallSuggestion(userId: number, campaignLeadId: number, leadId: number, triggerType: "email_open" | "email_click") {
+  const database = await getDb();
+  if (!database) return;
+  try {
+    await ensureCallSuggestionsTable(database);
+    await database.execute(sql`
+      INSERT INTO callSuggestions (userId, campaignLeadId, leadId, triggerType)
+      VALUES (${userId}, ${campaignLeadId}, ${leadId}, ${triggerType})
+    `);
+  } catch (error) {
+    console.error("[createCallSuggestion] Failed:", error);
+  }
+}
+
+// Joined with leads/campaignLeads/campaigns in JS (rather than a raw SQL
+// join) so this stays consistent with how the rest of this file reads
+// drizzle-defined tables -- callSuggestions itself isn't in schema.ts since
+// it's created lazily like the other ad-hoc tables here.
+export async function getPendingCallSuggestions(userId: number) {
+  const database = await getDb();
+  if (!database) return [];
+  try {
+    await ensureCallSuggestionsTable(database);
+    const result: any = await database.execute(
+      sql`SELECT * FROM callSuggestions WHERE userId = ${userId} AND actionedAt IS NULL AND dismissedAt IS NULL ORDER BY createdAt DESC LIMIT 20`
+    );
+    const rows: any[] = Array.isArray(result?.[0]) ? result[0] : Array.isArray(result) ? result : [];
+    if (rows.length === 0) return [];
+
+    const leadIds = [...new Set(rows.map((r) => r.leadId))];
+    const campaignLeadIds = [...new Set(rows.map((r) => r.campaignLeadId))];
+    const [leadRows, campaignLeadRows] = await Promise.all([
+      database.select().from(leads).where(inArray(leads.id, leadIds)),
+      database.select().from(campaignLeads).where(inArray(campaignLeads.id, campaignLeadIds)),
+    ]);
+    const leadById = new Map(leadRows.map((l: any) => [l.id, l]));
+    const campaignIds = [...new Set(campaignLeadRows.map((cl: any) => cl.campaignId))];
+    const campaignRows = campaignIds.length > 0 ? await database.select().from(campaigns).where(inArray(campaigns.id, campaignIds)) : [];
+    const campaignById = new Map(campaignRows.map((c: any) => [c.id, c]));
+    const campaignLeadById = new Map(campaignLeadRows.map((cl: any) => [cl.id, cl]));
+
+    return rows
+      .map((r) => {
+        const lead: any = leadById.get(r.leadId);
+        const campaignLead: any = campaignLeadById.get(r.campaignLeadId);
+        const campaign: any = campaignLead ? campaignById.get(campaignLead.campaignId) : null;
+        if (!lead) return null;
+        return {
+          id: r.id,
+          campaignLeadId: r.campaignLeadId,
+          leadId: r.leadId,
+          triggerType: r.triggerType,
+          createdAt: r.createdAt,
+          leadName: lead.ownerName,
+          companyName: lead.companyName,
+          phoneNumber: lead.phoneNumber,
+          campaignName: campaign?.name || null,
+        };
+      })
+      .filter(Boolean);
+  } catch (error) {
+    console.error("[getPendingCallSuggestions] Failed:", error);
+    return [];
+  }
+}
+
+export async function dismissCallSuggestion(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureCallSuggestionsTable(database);
+  await database.execute(sql`UPDATE callSuggestions SET dismissedAt = CURRENT_TIMESTAMP WHERE id = ${id} AND userId = ${userId}`);
+}
+
+export async function markCallSuggestionActioned(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureCallSuggestionsTable(database);
+  await database.execute(sql`UPDATE callSuggestions SET actionedAt = CURRENT_TIMESTAMP WHERE id = ${id} AND userId = ${userId}`);
 }
 
 // Lazily adds the IMAP inbox-sync columns to the existing userSettings table
