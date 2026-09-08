@@ -16,6 +16,7 @@ import LeadSets from "./pages/LeadSets";
 import CampaignDetail from "./pages/CampaignDetail";
 import AllLeads from "./pages/Leads";
 import Campaigns from "./pages/Campaigns";
+import AllCampaigns from "./pages/AllCampaigns";
 import SettingsPage from "./pages/Settings";
 import SocialOutreach from "./pages/SocialOutreach";
 import MessageQueue from "./pages/MessageQueue";
@@ -46,6 +47,7 @@ function Router() {
       <Route path={"/all-leads"}>{() => <WithLayout component={AllLeads} />}</Route>
       <Route path={"/campaigns/:id"}>{() => <WithLayout component={CampaignDetail} />}</Route>
       <Route path={"/campaigns"}>{() => <WithLayout component={Campaigns} />}</Route>
+      <Route path={"/all-campaigns"}>{() => <WithLayout component={AllCampaigns} />}</Route>
       <Route path={"/inbox"}>{() => <WithLayout component={Inbox} />}</Route>
       <Route path={"/settings"}>{() => <WithLayout component={SettingsPage} />}</Route>
       <Route path={"/social-outreach"}>{() => <WithLayout component={SocialOutreach} />}</Route>

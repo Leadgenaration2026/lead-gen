@@ -78,13 +78,19 @@ export function registerEmailTrackingRoutes(app: Express) {
           console.log(`[EmailTracking] Incremented campaign ${campaignLead.campaignId} openCount`);
         }
 
-        // Running per-lead open count -- kept for reporting even though it
-        // no longer drives a call suggestion here (that now happens at SEND
-        // time instead, see routers.ts/followUpScheduler.ts, so the popup
-        // shows up on every email/follow-up sent rather than waiting on the
-        // lead to open/click).
+        // Running per-lead open count -- also drives the LinkedIn/social
+        // popup (queued once a lead has opened 3+ times, see below). No
+        // longer drives a call suggestion here (that happens at SEND time
+        // instead, see routers.ts/followUpScheduler.ts).
         const openCount = await db.incrementCampaignLeadOpenCount(event.campaignLeadId);
         console.log(`[EmailTracking] campaignLead ${event.campaignLeadId} open #${openCount}`);
+
+        if (openCount === 3) {
+          const { queueSocialOutreachForLead } = await import("./followUpScheduler");
+          queueSocialOutreachForLead(campaignLead.id, campaignLead.leadId).catch((err: any) => {
+            console.error(`[EmailTracking] Failed to queue social outreach for campaignLead ${campaignLead.id}:`, err);
+          });
+        }
       }
 
       // Return pixel
@@ -155,6 +161,16 @@ export function registerEmailTrackingRoutes(app: Express) {
           // No call-suggestion trigger here anymore -- that now happens at
           // SEND time (routers.ts/followUpScheduler.ts) so the popup shows
           // up on every email/follow-up sent, not just on a click.
+
+          // Running per-lead click count -- drives the LinkedIn/social popup
+          // (queued once a lead has clicked 3+ times), same as the open count.
+          const clickCount = await db.incrementCampaignLeadClickCount(campaignLead.id);
+          if (clickCount === 3) {
+            const { queueSocialOutreachForLead } = await import("./followUpScheduler");
+            queueSocialOutreachForLead(campaignLead.id, campaignLead.leadId).catch((err: any) => {
+              console.error(`[EmailTracking] Failed to queue social outreach for campaignLead ${campaignLead.id}:`, err);
+            });
+          }
         }
       }
 

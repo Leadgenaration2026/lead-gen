@@ -26,7 +26,6 @@ import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
-import { EngagementPopups } from "./EngagementPopups";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", color: "text-blue-500", activeBg: "data-[active=true]:bg-blue-50 dark:data-[active=true]:bg-blue-950/30" },
@@ -36,6 +35,7 @@ const menuItems = [
   { icon: History, label: "Seamless Leads", path: "/seamless-leads", color: "text-teal-600", activeBg: "data-[active=true]:bg-teal-50 dark:data-[active=true]:bg-teal-950/30" },
   { icon: Mail, label: "Email Composer", path: "/email-composer", color: "text-sky-500", activeBg: "data-[active=true]:bg-sky-50 dark:data-[active=true]:bg-sky-950/30" },
   { icon: Megaphone, label: "Campaigns", path: "/campaigns", color: "text-pink-500", activeBg: "data-[active=true]:bg-pink-50 dark:data-[active=true]:bg-pink-950/30" },
+  { icon: Megaphone, label: "All Campaigns", path: "/all-campaigns", color: "text-rose-600", activeBg: "data-[active=true]:bg-rose-50 dark:data-[active=true]:bg-rose-950/30" },
   { icon: Inbox, label: "Inbox", path: "/inbox", color: "text-fuchsia-500", activeBg: "data-[active=true]:bg-fuchsia-50 dark:data-[active=true]:bg-fuchsia-950/30" },
   { icon: FileText, label: "Templates", path: "/templates", color: "text-indigo-500", activeBg: "data-[active=true]:bg-indigo-50 dark:data-[active=true]:bg-indigo-950/30" },
   { icon: BarChart3, label: "Analytics", path: "/analytics", color: "text-emerald-500", activeBg: "data-[active=true]:bg-emerald-50 dark:data-[active=true]:bg-emerald-950/30" },
@@ -279,7 +279,6 @@ function DashboardLayoutContent({
         )}
         <main className="flex-1 p-4">{children}</main>
       </SidebarInset>
-      <EngagementPopups />
     </>
   );
 }

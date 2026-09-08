@@ -5349,6 +5349,13 @@ Respond in this exact JSON format:
         return { success: true };
       }),
 
+    // One-time cleanup: wipes every still-pending social message queued
+    // under the old fixed-timing trigger, across all campaigns.
+    clearAllPending: protectedProcedure.mutation(async ({ ctx }) => {
+      const cleared = await db.clearAllPendingSocialOutreach(ctx.user.id);
+      return { success: true, cleared };
+    }),
+
     // Generate a social outreach message using AI
     generateMessage: protectedProcedure
       .input(z.object({

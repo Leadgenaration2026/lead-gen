@@ -372,6 +372,93 @@ export function getFollowUpCallScheduleDescription() {
 }
 
 /**
+ * Generates and queues a LinkedIn/Instagram/Facebook connection-request
+ * message for a lead -- used to always fire on a fixed "before follow-up
+ * email #2" schedule regardless of engagement; now called once a lead has
+ * opened or clicked 3+ times (see emailTracking.ts), so it only fires for
+ * leads who are actually engaging. Idempotent per lead+platform (skips if
+ * a connection request is already queued/sent), so it's safe to call again
+ * on every open/click past the 3rd without duplicating messages.
+ */
+export async function queueSocialOutreachForLead(campaignLeadId: number, leadId: number) {
+  try {
+    const campaignLead = await db.getCampaignLeadById(campaignLeadId);
+    const lead = await db.getLeadById(leadId);
+    if (!campaignLead || !lead) return;
+    if (campaignLead.unsubscribed || campaignLead.replied || (lead as any).unsubscribed) return;
+
+    const campaign = await db.getCampaignById(campaignLead.campaignId);
+    if (!campaign) return;
+    const settings = await db.getUserSettings(campaign.userId);
+    const { socialOutreach } = await import("../../drizzle/schema");
+    const { eq, and, inArray } = await import("drizzle-orm");
+    const database = await db.getDb();
+    if (!database || !settings) return;
+
+    const charLimit = settings.socialMessageCharLimit || 300;
+    const platforms: Array<"linkedin" | "instagram" | "facebook"> = [];
+    if (lead.linkedinUrl) platforms.push("linkedin");
+    if (lead.instagramUrl) platforms.push("instagram");
+    if ((lead as any).facebookUrl) platforms.push("facebook");
+
+    for (const platform of platforms) {
+      // Per-platform, per-action-type daily cap
+      const platformDailyLimit = db.getSocialDailyLimit(settings, platform, "connection_request");
+      const todayCount = await db.getSocialCountToday(campaign.userId, platform, "connection_request");
+      if (todayCount >= platformDailyLimit) {
+        console.log(`[FollowUpScheduler] Skipping ${platform} connection request - daily limit reached (${todayCount}/${platformDailyLimit})`);
+        continue;
+      }
+
+      // Check if a connection request was already queued/sent
+      const existing = await database.select().from(socialOutreach).where(
+        and(
+          eq(socialOutreach.leadId, lead.id),
+          eq(socialOutreach.platform, platform),
+          eq(socialOutreach.messageType, "connection_request"),
+          inArray(socialOutreach.status, ["sent", "pending"])
+        )
+      );
+      if (existing.length > 0) continue;
+
+      // Generate message with AI
+      const { invokeLLM } = await import("./llm");
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: `You are a social media outreach expert. Generate a brief, personalized ${platform} connection request note. Keep under ${Math.min(charLimit, 200)} characters. Be genuine, mention their industry. Do NOT pitch services. Do NOT use hashtags. Return ONLY the message text.` },
+          { role: "user", content: `Connection request for: ${lead.ownerName} at ${lead.companyName} (${lead.industry || "business"})` },
+        ],
+      });
+      const content = response.choices?.[0]?.message?.content;
+      let message = typeof content === "string" ? content.trim() : "";
+      if (message.length > charLimit) message = message.slice(0, charLimit - 3) + "...";
+
+      if (message) {
+        const profileUrl = platform === "linkedin" ? lead.linkedinUrl :
+          platform === "instagram" ? lead.instagramUrl : (lead as any).facebookUrl;
+        // Queued, not sent yet — there's no API integration to actually post
+        // this on the platform, so it waits for the user to copy and send it
+        // themselves (via the in-app popup or Message Queue).
+        await database.insert(socialOutreach).values({
+          userId: campaign.userId,
+          leadId: lead.id,
+          campaignLeadId: campaignLead.id,
+          platform,
+          messageType: "connection_request",
+          message,
+          status: "pending",
+          profileUrl: profileUrl || "",
+          characterCount: message.length,
+        });
+        console.log(`[FollowUpScheduler] Queued ${platform} connection request for ${lead.ownerName} (${message.length} chars)`);
+      }
+    }
+  } catch (error) {
+    console.error(`[FollowUpScheduler] queueSocialOutreachForLead failed for lead ${leadId}:`, error);
+  }
+}
+
+/**
  * Process scheduled follow-up emails (called by cron/heartbeat).
  * Finds all pending follow-up emails whose scheduledFor <= now, sends them via SMTP,
  * and updates their status.
@@ -412,87 +499,10 @@ export async function processScheduledFollowUpEmails() {
           continue;
         }
 
-        // === SOCIAL OUTREACH: Before 2nd follow-up email, send connection requests ===
-        if (followUpEmail.sequenceNumber === 2 && lead) {
-          try {
-            const campaign = await db.getCampaignById(campaignLead.campaignId);
-            if (campaign) {
-              const settings = await db.getUserSettings(campaign.userId);
-              const { socialOutreach } = await import("../../drizzle/schema");
-              const { eq, and, inArray } = await import("drizzle-orm");
-              const database = await db.getDb();
-              if (database && settings) {
-                const charLimit = settings.socialMessageCharLimit || 300;
-
-                const platforms: Array<"linkedin" | "instagram" | "facebook"> = [];
-                if (lead.linkedinUrl) platforms.push("linkedin");
-                if (lead.instagramUrl) platforms.push("instagram");
-                if ((lead as any).facebookUrl) platforms.push("facebook");
-
-                for (const platform of platforms) {
-                    // Per-platform, per-action-type daily cap
-                    const platformDailyLimit = db.getSocialDailyLimit(settings, platform, "connection_request");
-                    const todayCount = await db.getSocialCountToday(campaign.userId, platform, "connection_request");
-                    if (todayCount >= platformDailyLimit) {
-                      console.log(`[FollowUpScheduler] Skipping ${platform} connection request - daily limit reached (${todayCount}/${platformDailyLimit})`);
-                      continue;
-                    }
-
-                    // Check if a connection request was already queued/sent
-                    const existing = await database.select().from(socialOutreach).where(
-                      and(
-                        eq(socialOutreach.leadId, lead.id),
-                        eq(socialOutreach.platform, platform),
-                        eq(socialOutreach.messageType, "connection_request"),
-                        inArray(socialOutreach.status, ["sent", "pending"])
-                      )
-                    );
-                    if (existing.length > 0) continue;
-
-                    // Generate message with AI
-                    const { invokeLLM } = await import("./llm");
-                    const response = await invokeLLM({
-                      messages: [
-                        { role: "system", content: `You are a social media outreach expert. Generate a brief, personalized ${platform} connection request note. Keep under ${Math.min(charLimit, 200)} characters. Be genuine, mention their industry. Do NOT pitch services. Do NOT use hashtags. Return ONLY the message text.` },
-                        { role: "user", content: `Connection request for: ${lead.ownerName} at ${lead.companyName} (${lead.industry || "business"})` },
-                      ],
-                    });
-                    const content = response.choices?.[0]?.message?.content;
-                    let message = typeof content === "string" ? content.trim() : "";
-                    if (message.length > charLimit) message = message.slice(0, charLimit - 3) + "...";
-
-                    if (message) {
-                      const profileUrl = platform === "linkedin" ? lead.linkedinUrl :
-                        platform === "instagram" ? lead.instagramUrl : (lead as any).facebookUrl;
-                      // Queued, not sent yet — there's no API integration to actually post
-                      // this on the platform, so it waits in the Message Queue for the
-                      // user to copy and send it themselves.
-                      await database.insert(socialOutreach).values({
-                        userId: campaign.userId,
-                        leadId: lead.id,
-                        campaignLeadId: campaignLead.id,
-                        platform,
-                        messageType: "connection_request",
-                        message,
-                        status: "pending",
-                        profileUrl: profileUrl || "",
-                        characterCount: message.length,
-                      });
-                      console.log(`[FollowUpScheduler] Queued ${platform} connection request for ${lead.ownerName} (${message.length} chars)`);
-                      // DISABLED: this used to also email settings.socialNotificationEmail
-                      // ("Social Message Due..."). Per explicit instruction, no more emails
-                      // for this -- the socialOutreach row inserted above (status: "pending")
-                      // is exactly what the in-app popup (socialOutreach.listPendingPopups)
-                      // polls for instead, so the notification still happens, just in-app.
-                    }
-                  }
-                }
-            }
-          } catch (socialError) {
-            console.error(`[FollowUpScheduler] Social outreach error for lead ${lead?.id}:`, socialError);
-            // Don't fail the follow-up email if social outreach fails
-          }
-        }
+        // Social outreach (LinkedIn/Instagram/Facebook) no longer queues on
+        // a fixed "before follow-up #2" schedule -- see queueSocialOutreachForLead,
+        // now called from emailTracking.ts once a lead has opened or clicked
+        // 3+ times (real engagement, not just time passing).
         if (!lead) {
           await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
           failCount++;

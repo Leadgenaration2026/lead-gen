@@ -53,6 +53,7 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS callsDisabled TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS callsDisabledAt TIMESTAMP NULL`);
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS emailOpenCount INT DEFAULT 0 NOT NULL`);
+  await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS emailClickCount INT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE campaignLeads ADD COLUMN IF NOT EXISTS engagementCallScheduled TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS followUpDecisionMade TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE followUpEmails ADD COLUMN IF NOT EXISTS clickTrackingToken VARCHAR(255) NULL`);
@@ -158,6 +159,22 @@ export async function dismissSocialOutreachPopup(id: number, userId: number) {
   await database.update(socialOutreach).set({ popupDismissedAt: new Date() } as any).where(
     and(eq(socialOutreach.id, id), eq(socialOutreach.userId, userId))
   );
+}
+
+// One-time cleanup: every LinkedIn/Instagram/Facebook message queued under
+// the OLD "before follow-up email #2" trigger (fixed timing, not
+// engagement) is stale now that queueSocialOutreachForLead only fires on
+// real 3+ opens/clicks -- wipes every still-pending message for this user
+// across all campaigns so the popup/Message Queue starts clean under the
+// new rule.
+export async function clearAllPendingSocialOutreach(userId: number): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  const { socialOutreach } = await import("../drizzle/schema");
+  const result: any = await database.delete(socialOutreach).where(
+    and(eq(socialOutreach.userId, userId), eq(socialOutreach.status, "pending"))
+  );
+  return Number(result?.[0]?.affectedRows ?? result?.affectedRows) || 0;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -520,6 +537,17 @@ export async function incrementCampaignLeadOpenCount(campaignLeadId: number): Pr
   await database.update(campaignLeads).set({ emailOpenCount: sql`${campaignLeads.emailOpenCount} + 1`, updatedAt: new Date() } as any).where(eq(campaignLeads.id, campaignLeadId));
   const result = await database.select({ emailOpenCount: campaignLeads.emailOpenCount }).from(campaignLeads).where(eq(campaignLeads.id, campaignLeadId));
   return result[0]?.emailOpenCount || 0;
+}
+
+// Same atomic-increment reasoning as incrementCampaignLeadOpenCount --
+// tracks how many times THIS lead has clicked (any link, any email) so the
+// LinkedIn/social-outreach popup can trigger once it reaches 3, same as opens.
+export async function incrementCampaignLeadClickCount(campaignLeadId: number): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  await database.update(campaignLeads).set({ emailClickCount: sql`${campaignLeads.emailClickCount} + 1`, updatedAt: new Date() } as any).where(eq(campaignLeads.id, campaignLeadId));
+  const result = await database.select({ emailClickCount: campaignLeads.emailClickCount }).from(campaignLeads).where(eq(campaignLeads.id, campaignLeadId));
+  return result[0]?.emailClickCount || 0;
 }
 
 // Atomically claims the one-and-only engagement call slot for this lead --

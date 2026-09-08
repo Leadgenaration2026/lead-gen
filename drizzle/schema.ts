@@ -73,6 +73,9 @@ export const campaignLeads = mysqlTable("campaignLeads", {
 	// the first one) -- needed so a call only gets scheduled once the lead
 	// has opened 3+ times, not on every single open.
 	emailOpenCount: int().default(0).notNull(),
+	// Running count of click hits, same reasoning as emailOpenCount above --
+	// used by the LinkedIn/social-outreach popup's "3+ clicks" trigger.
+	emailClickCount: int().default(0).notNull(),
 	// Set the moment triggerCallOnFollowUpOpen schedules a call from
 	// engagement (3+ opens or any click) -- checked BEFORE scheduling so
 	// repeat opens/clicks after the first qualifying one never schedule a
