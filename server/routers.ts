@@ -891,6 +891,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           return {
             count: 0,
             duplicatesSkipped,
+            leadSetId: null as number | null,
             message: `Found ${leadsData.length} contacts from Seamless.AI, but all ${duplicatesSkipped} are already in your system. Try a different search criteria or location to find new leads.`,
           };
         }
@@ -1030,6 +1031,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           source: input.source || "ai",
           extractedFromSeamless: input.source === "seamless" ? leadsData.length : 0,
           enrichmentCreditsUsed, // Option A: 1 credit per Seamless.AI lead enriched
+          // See the matching comment on enrichSeamlessSelection's return --
+          // lets a caller fetch the real saved lead rows afterward.
+          leadSetId,
         };
       }),
 
@@ -1249,6 +1253,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             duplicatesSkipped,
             droppedForMissingContact,
             enrichmentCreditsUsed: seamlessCreditsSpent,
+            leadSetId: null as number | null,
             message: `All ${duplicatesSkipped} selected contact(s) are already in your system.`,
           };
         }
@@ -1345,6 +1350,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           duplicatesSkipped,
           droppedForMissingContact,
           enrichmentCreditsUsed: seamlessCreditsSpent,
+          // The created/found list these leads were filed under -- needed by
+          // callers (e.g. the AI Agent wizard) that want to fetch the real
+          // saved lead rows afterward via leads.listBySourceListOrTag, since
+          // db.createLead's own return value isn't exposed here.
+          leadSetId,
         };
       }),
 

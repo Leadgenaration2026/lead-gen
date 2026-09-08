@@ -23,6 +23,7 @@ import MessageQueue from "./pages/MessageQueue";
 import SearchPreview from "./pages/SearchPreview";
 import Inbox from "./pages/Inbox";
 import SeamlessLeads from "./pages/SeamlessLeads";
+import AIAgent from "./pages/AIAgent";
 
 // Wrapper to add DashboardLayout to pages
 function WithLayout({ component: Component }: { component: React.ComponentType }) {
@@ -39,6 +40,7 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"}>{() => <WithLayout component={Dashboard} />}</Route>
+      <Route path={"/ai-agent"}>{() => <WithLayout component={AIAgent} />}</Route>
       <Route path={"/email-composer"}>{() => <WithLayout component={EmailComposer} />}</Route>
       <Route path={"/templates"}>{() => <WithLayout component={CampaignTemplates} />}</Route>
       <Route path={"/scheduled-emails"} component={ScheduledEmails} />

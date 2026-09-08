@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, CalendarDays, MessageSquare, Trash2, Search, Inbox, History } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, CalendarDays, MessageSquare, Trash2, Search, Inbox, History, Sparkles } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -29,6 +29,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", color: "text-blue-500", activeBg: "data-[active=true]:bg-blue-50 dark:data-[active=true]:bg-blue-950/30" },
+  { icon: Sparkles, label: "AI Agent", path: "/ai-agent", color: "text-purple-500", activeBg: "data-[active=true]:bg-purple-50 dark:data-[active=true]:bg-purple-950/30" },
   { icon: Search, label: "Search Leads", path: "/search-preview", color: "text-lime-500", activeBg: "data-[active=true]:bg-lime-50 dark:data-[active=true]:bg-lime-950/30" },
   { icon: Users, label: "All Leads", path: "/all-leads", color: "text-violet-500", activeBg: "data-[active=true]:bg-violet-50 dark:data-[active=true]:bg-violet-950/30" },
   { icon: FolderOpen, label: "Lead Sets", path: "/lead-sets", color: "text-amber-500", activeBg: "data-[active=true]:bg-amber-50 dark:data-[active=true]:bg-amber-950/30" },
