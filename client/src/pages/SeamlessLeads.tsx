@@ -133,6 +133,17 @@ export default function SeamlessLeadsPage() {
                     <TableBody>
                       {searches.map((s: any) => {
                         const remaining = typeof s.totalAvailable === "number" ? Math.max(0, s.totalAvailable - (s.extractedSoFar || 0)) : null;
+                        // A search can lose its own pagination cursor
+                        // (nextToken) while Seamless's totalAvailable estimate
+                        // still shows more -- their pagination for a query
+                        // doesn't always reach the exact count they report.
+                        // Only treat it as a genuine dead end when we KNOW
+                        // there's nothing left (remaining === 0); otherwise
+                        // Continue still works, it just starts a fresh search
+                        // with the same criteria instead of resuming the old
+                        // cursor (the backend's dedup keeps it from repeating
+                        // already-extracted leads).
+                        const knownExhausted = remaining === 0;
                         return (
                           <TableRow key={s.id}>
                             <TableCell className="max-w-[280px] truncate" title={s.instruction}>{s.instruction}</TableCell>
@@ -152,10 +163,10 @@ export default function SeamlessLeadsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {s.status === "active" ? (
-                                <Badge variant="outline" className="border-blue-300 text-blue-700 dark:text-blue-400">More available</Badge>
-                              ) : (
+                              {knownExhausted ? (
                                 <Badge variant="outline" className="border-gray-300 text-gray-500">Exhausted</Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-blue-300 text-blue-700 dark:text-blue-400">More available</Badge>
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">{formatDate(s.updatedAt)}</TableCell>
@@ -165,9 +176,9 @@ export default function SeamlessLeadsPage() {
                                   size="sm"
                                   variant="outline"
                                   className="h-7 text-xs gap-1"
-                                  disabled={s.status !== "active" || !s.nextToken}
+                                  disabled={knownExhausted}
                                   onClick={() => handleContinueSearch(s.id)}
-                                  title={s.status !== "active" ? "Seamless has no more results for this search" : undefined}
+                                  title={knownExhausted ? "Seamless has no more results for this search" : s.nextToken ? undefined : "No saved cursor -- this will run a fresh search with the same criteria"}
                                 >
                                   Continue <ArrowRight className="w-3 h-3" />
                                 </Button>

@@ -125,6 +125,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   // requiring the search to still be live in this page's own React state.
   const [resumeSearchId, setResumeSearchId] = useState<number | null>(null);
   const [pendingResumeFetch, setPendingResumeFetch] = useState(false);
+  // A search's own stored cursor (nextToken) can run out from Seamless's
+  // side even while its own totalAvailable estimate still shows more --
+  // Seamless's pagination for a given query doesn't always reach the exact
+  // count it reports up front. Rather than dead-ending (the old behavior:
+  // Continue was just disabled with nothing else to try), a fresh search
+  // with the same instruction/filters is queued instead -- the existing
+  // "already owned" dedup on the backend means it naturally surfaces
+  // whatever's left rather than repeating what's already been extracted.
+  const [pendingFreshSearch, setPendingFreshSearch] = useState(false);
   const resumeSeamlessSearchQuery = trpc.seamlessSearches.getById.useQuery(
     { id: resumeSearchId as number },
     { enabled: resumeSearchId !== null }
@@ -152,7 +161,17 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     if (s.nextToken) {
       setPendingResumeFetch(true);
     } else {
-      toast.info("This search has no more results left on Seamless -- it's already been fully extracted.");
+      // No cursor to continue from -- only a genuine dead end if we KNOW
+      // there's nothing left (a known totalAvailable already fully
+      // extracted). Otherwise, try a fresh search with the same criteria;
+      // the backend's "already owned" dedup keeps it from repeating what's
+      // already been extracted.
+      const knownExhausted = typeof s.totalAvailable === "number" && (s.extractedSoFar || 0) >= s.totalAvailable;
+      if (knownExhausted) {
+        toast.info("This search has no more results left on Seamless -- it's already been fully extracted.");
+      } else {
+        setPendingFreshSearch(true);
+      }
     }
     setResumeSearchId(null);
   }, [resumeSeamlessSearchQuery.data]);
@@ -617,6 +636,15 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     setPendingResumeFetch(false);
     handleSearchNextBatch().then(() => setSeamlessPreviewDialogOpen(true));
   }, [pendingResumeFetch]);
+
+  // Same idea, for the case above where there's no cursor to continue from
+  // but Seamless is still estimated to have more -- runs a brand-new search
+  // (not a continuation) with the restored instruction/filters.
+  useEffect(() => {
+    if (!pendingFreshSearch) return;
+    setPendingFreshSearch(false);
+    handleSearchSeamless();
+  }, [pendingFreshSearch]);
 
   // Tracks the keyword text the most recently *fired* request of each kind was
   // for, so a response can tell if it's still the latest one once it comes
