@@ -649,7 +649,7 @@ async function ensureCallSuggestionsTable(database: NonNullable<Awaited<ReturnTy
   callSuggestionsTableReady = true;
 }
 
-export async function createCallSuggestion(userId: number, campaignLeadId: number, leadId: number, triggerType: "email_open" | "email_click") {
+export async function createCallSuggestion(userId: number, campaignLeadId: number, leadId: number, triggerType: "email_open" | "email_click" | "email_sent" | "followup_sent") {
   const database = await getDb();
   if (!database) return;
   try {

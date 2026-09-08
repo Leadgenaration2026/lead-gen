@@ -2,7 +2,8 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, Linkedin, Instagram, Facebook, Copy, X, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Phone, Linkedin, Instagram, Facebook, Copy, X, Loader2, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 
 const PLATFORM_ICON: Record<string, typeof Linkedin> = {
@@ -11,21 +12,32 @@ const PLATFORM_ICON: Record<string, typeof Linkedin> = {
   facebook: Facebook,
 };
 
+const TRIGGER_LABEL: Record<string, string> = {
+  email_sent: "Email just sent to",
+  followup_sent: "Follow-up email just sent to",
+  email_open: "opened your email --",
+  email_click: "clicked a link --",
+};
+
 // Automatic calling and the LinkedIn-reminder email are both disabled (see
 // followUpScheduler.ts) -- this is what replaces them: a floating panel,
-// visible everywhere in the app, that polls for "a lead just engaged" /
-// "a LinkedIn message is ready" and lets the user act (or dismiss) instead
-// of anything happening on its own.
+// visible everywhere in the app, that polls for "an email/follow-up just
+// went out" / "a LinkedIn message is ready" and lets the user act (call
+// now, schedule N calls, or dismiss) instead of anything happening on its
+// own.
 export function EngagementPopups() {
   const callSuggestionsQuery = trpc.callSuggestions.list.useQuery(undefined, { refetchInterval: 25000 });
   const socialPopupsQuery = trpc.social.listPendingPopups.useQuery(undefined, { refetchInterval: 25000 });
   const callNowMutation = trpc.calls.callNow.useMutation();
+  const scheduleCallsMutation = trpc.calls.scheduleCalls.useMutation();
   const dismissCallMutation = trpc.callSuggestions.dismiss.useMutation();
   const dismissSocialMutation = trpc.social.dismissPopup.useMutation();
   const markSentMutation = trpc.social.markSent.useMutation();
 
   const [callingId, setCallingId] = useState<number | null>(null);
+  const [schedulingId, setSchedulingId] = useState<number | null>(null);
   const [copyingId, setCopyingId] = useState<number | null>(null);
+  const [scheduleCounts, setScheduleCounts] = useState<Record<number, string>>({});
 
   const suggestions = callSuggestionsQuery.data || [];
   const socialPopups = socialPopupsQuery.data || [];
@@ -41,6 +53,21 @@ export function EngagementPopups() {
       toast.error(error?.message || "Failed to place the call");
     } finally {
       setCallingId(null);
+      callSuggestionsQuery.refetch();
+    }
+  };
+
+  const handleScheduleCalls = async (suggestionId: number, campaignLeadId: number, leadName: string) => {
+    const raw = scheduleCounts[suggestionId] || "1";
+    const count = Math.min(10, Math.max(1, parseInt(raw, 10) || 1));
+    setSchedulingId(suggestionId);
+    try {
+      await scheduleCallsMutation.mutateAsync({ suggestionId, campaignLeadId, count });
+      toast.success(`Scheduled ${count} call${count > 1 ? "s" : ""} to ${leadName}`);
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to schedule calls");
+    } finally {
+      setSchedulingId(null);
       callSuggestionsQuery.refetch();
     }
   };
@@ -76,7 +103,7 @@ export function EngagementPopups() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3 w-full max-w-sm">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3 w-full max-w-sm max-h-[80vh] overflow-y-auto">
       {suggestions.map((s: any) => (
         <Card key={`call-${s.id}`} className="shadow-lg border-blue-300 bg-white dark:bg-background">
           <CardContent className="p-4 space-y-2">
@@ -86,7 +113,7 @@ export function EngagementPopups() {
                   <Phone className="w-3.5 h-3.5 text-blue-600" />
                 </div>
                 <p className="text-sm font-semibold leading-tight">
-                  {s.leadName} {s.triggerType === "email_click" ? "clicked a link" : "opened your follow-up 3+ times"}
+                  {TRIGGER_LABEL[s.triggerType] || "Ready to call"} {s.leadName}
                 </p>
               </div>
               <button onClick={() => handleDismissCall(s.id)} className="text-muted-foreground hover:text-foreground shrink-0">
@@ -105,6 +132,26 @@ export function EngagementPopups() {
                 Call Now
               </Button>
               <Button size="sm" variant="outline" onClick={() => handleDismissCall(s.id)}>Dismiss</Button>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={scheduleCounts[s.id] ?? "1"}
+                onChange={(e) => setScheduleCounts((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                className="h-8 w-16 text-xs"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 gap-1.5 text-xs"
+                disabled={schedulingId === s.id}
+                onClick={() => handleScheduleCalls(s.id, s.campaignLeadId, s.leadName)}
+              >
+                {schedulingId === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarClock className="w-3.5 h-3.5" />}
+                Schedule Calls
+              </Button>
             </div>
           </CardContent>
         </Card>

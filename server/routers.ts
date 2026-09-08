@@ -2687,12 +2687,18 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               console.error(`[CampaignLaunch] Failed to schedule follow-ups for lead ${leadForFollowUp.id}:`, err);
             });
 
-            // Without this, a lead who never opens/clicks any email would never get a
-            // fallback call at all — the open/click-triggered call is the only other
-            // call path in the app.
+            // scheduleFollowUpCalls is disabled (no more automatic calls) --
+            // kept here as a no-op call for the same reason it's a no-op
+            // internally: a single, reversible switch. What actually
+            // happens now: a call suggestion pops up for every email sent
+            // (see EngagementPopups.tsx), letting a human choose to call
+            // now or schedule N calls, instead of anything auto-scheduling.
             if (leadForFollowUp.phoneNumber) {
               scheduleFollowUpCalls(campaignLead.id, leadForFollowUp.phoneNumber).catch((err: any) => {
                 console.error(`[CampaignLaunch] Failed to schedule follow-up calls for lead ${leadForFollowUp.id}:`, err);
+              });
+              db.createCallSuggestion(ctx.user.id, campaignLead.id, leadForFollowUp.id, "email_sent").catch((err: any) => {
+                console.error(`[CampaignLaunch] Failed to raise call suggestion for lead ${leadForFollowUp.id}:`, err);
               });
             }
           }
@@ -3302,7 +3308,11 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               followUpEmailsList.some((e: any) => e.status === "failed") ||
               followUpCallsList.some((c: any) => c.status === "failed")
             ),
-            // Follow-up emails breakdown
+            // Follow-up emails breakdown -- openCount/clickCount are real
+            // counts (every matching emailTrackingEvents row for THIS
+            // specific follow-up's own tokens), not just a single
+            // opened/clicked timestamp, so "how many times" is an actual
+            // answer instead of a yes/no.
             followUpEmails: followUpEmailsList.map((e: any) => ({
               id: e.id,
               sequenceNumber: e.sequenceNumber,
@@ -3314,6 +3324,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               sentAt: e.sentAt,
               openedAt: e.openedAt,
               clickedAt: e.clickedAt,
+              openCount: e.trackingToken ? trackingEvents.filter((t: any) => t.trackingToken === e.trackingToken).length : 0,
+              clickCount: e.clickTrackingToken ? trackingEvents.filter((t: any) => t.trackingToken === e.clickTrackingToken).length : 0,
             })),
             // Follow-up calls breakdown
             followUpCalls: followUpCallsList.map((c: any) => ({
@@ -4149,6 +4161,9 @@ Respond in this exact JSON format:
             if (lead.phoneNumber) {
               scheduleFollowUpCalls(campaignLeadId, lead.phoneNumber).catch((err: any) => {
                 console.error(`[sendIndividual] Failed to schedule follow-up calls for lead ${lead.id}:`, err);
+              });
+              db.createCallSuggestion(ctx.user.id, campaignLeadId, lead.id, "email_sent").catch((err: any) => {
+                console.error(`[sendIndividual] Failed to raise call suggestion for lead ${lead.id}:`, err);
               });
             }
           }
@@ -5024,6 +5039,59 @@ Respond in this exact JSON format:
         }
 
         return { success: true, callId };
+      }),
+
+    // Schedules N call attempts for a customer, spread across business
+    // days -- the "how many times should we call this customer" control
+    // from the popup. Just creates "scheduled" followUpCalls rows; the
+    // existing processScheduledFollowUpCalls cron (unchanged) is what
+    // actually places each one once it's due, same mechanism the old
+    // automatic cadence used, now only ever started by an explicit choice.
+    scheduleCalls: protectedProcedure
+      .input(z.object({ suggestionId: z.number().optional(), campaignLeadId: z.number(), count: z.number().min(1).max(10) }))
+      .mutation(async ({ ctx, input }) => {
+        const campaignLead = await db.getCampaignLeadById(input.campaignLeadId);
+        if (!campaignLead) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Campaign lead not found" });
+        }
+        const lead = await db.getLeadById(campaignLead.leadId);
+        if (!lead || lead.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lead not found" });
+        }
+        if (!lead.phoneNumber) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Lead has no phone number" });
+        }
+        if (campaignLead.unsubscribed || campaignLead.replied || (lead as any).unsubscribed) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This lead is unsubscribed or has already replied" });
+        }
+
+        const { normalizePhoneNumber, easternDateAtHour, nextEasternBusinessSlot } = await import("./_core/followUpScheduler");
+        const normalizedPhone = normalizePhoneNumber(lead.phoneNumber);
+        const existingCalls = await db.getFollowUpCallsByCampaignLead(input.campaignLeadId);
+        const now = new Date();
+
+        for (let i = 0; i < input.count; i++) {
+          // First attempt ~2 min from now (adjusted into the 10AM-6PM
+          // Eastern call window); each additional attempt one more business
+          // day out at 10 AM Eastern -- same spacing the old automatic
+          // cadence used, just never started without this explicit call.
+          const scheduledFor = i === 0
+            ? nextEasternBusinessSlot(new Date(now.getTime() + 2 * 60 * 1000))
+            : easternDateAtHour(now, i, 10);
+          await db.createFollowUpCall({
+            campaignLeadId: input.campaignLeadId,
+            attemptNumber: existingCalls.length + i + 1,
+            phoneNumber: normalizedPhone,
+            status: "scheduled",
+            scheduledFor,
+          });
+        }
+
+        if (input.suggestionId) {
+          await db.markCallSuggestionActioned(input.suggestionId, ctx.user.id);
+        }
+
+        return { success: true, scheduled: input.count };
       }),
   }),
 

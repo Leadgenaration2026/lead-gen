@@ -597,6 +597,15 @@ export async function processScheduledFollowUpEmails() {
 
         sentCount++;
         console.log(`[FollowUpScheduler] Sent follow-up email #${followUpEmail.sequenceNumber} to ${lead.email}`);
+
+        // Popup opportunity to call this lead, on every follow-up sent (not
+        // gated on the lead opening/clicking it) -- per explicit
+        // instruction, no call ever gets placed without this being acted on.
+        if (campaignLead && lead.phoneNumber) {
+          db.createCallSuggestion((lead as any).userId, campaignLead.id, lead.id, "followup_sent").catch((err: any) => {
+            console.error(`[FollowUpScheduler] Failed to raise call suggestion for lead ${lead.id}:`, err);
+          });
+        }
       } catch (emailError: any) {
         console.error(`[FollowUpScheduler] Failed to send follow-up email ${followUpEmail.id}:`, emailError);
         await db.updateFollowUpEmail(followUpEmail.id, { status: "failed" });
@@ -867,14 +876,14 @@ export async function processScheduledFollowUpCalls(retellApiKey: string, retell
 }
 
 /**
- * DISABLED (renamed in intent, not in name, to avoid touching its 2 call
- * sites in emailTracking.ts): no calls get placed or scheduled automatically
- * anymore, per explicit instruction -- this used to create a "scheduled"
- * followUpCalls row ~2 minutes after an open/click that processScheduled-
- * FollowUpCalls would later place for real. Now it only raises a
- * callSuggestion row so the UI can pop up "this lead just engaged -- call
- * now?" and a human decides, via calls.callNow (routers.ts), which calls
- * triggerRetellCall directly and bypasses scheduling entirely.
+ * No longer called from anywhere (kept, not deleted, since several existing
+ * tests mock this export -- see webhookVerification.test.ts,
+ * webhookEvents.test.ts, positiveResponse.test.ts). The call-suggestion
+ * popup used to trigger from here on open/click; per explicit instruction
+ * it now triggers at SEND time instead (every email and follow-up sent, see
+ * the createCallSuggestion calls in routers.ts and processScheduled-
+ * FollowUpEmails below), so a suggestion no longer waits on the lead to
+ * actually open or click anything.
  */
 export async function triggerCallOnFollowUpOpen(
   campaignLeadId: number,

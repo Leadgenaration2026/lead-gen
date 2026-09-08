@@ -418,8 +418,18 @@ export default function FollowUpReports() {
                                                   <TableCell className="text-sm max-w-[200px] truncate">{email.subject || "—"}</TableCell>
                                                   <TableCell>{getEmailStatusBadge(email.status)}</TableCell>
                                                   <TableCell className="text-sm">{formatDate(email.sentAt)}</TableCell>
-                                                  <TableCell className="text-sm">{formatDate(email.openedAt)}</TableCell>
-                                                  <TableCell className="text-sm">{formatDate(email.clickedAt)}</TableCell>
+                                                  <TableCell className="text-sm">
+                                                    <span className={`font-semibold ${email.openCount > 0 ? "text-purple-600" : "text-muted-foreground"}`}>
+                                                      {email.openCount || 0}×
+                                                    </span>
+                                                    {email.openedAt && <p className="text-xs text-muted-foreground">first: {formatDate(email.openedAt)}</p>}
+                                                  </TableCell>
+                                                  <TableCell className="text-sm">
+                                                    <span className={`font-semibold ${email.clickCount > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                                                      {email.clickCount || 0}×
+                                                    </span>
+                                                    {email.clickedAt && <p className="text-xs text-muted-foreground">first: {formatDate(email.clickedAt)}</p>}
+                                                  </TableCell>
                                                   <TableCell className="text-center">
                                                     {email.emailBody && (
                                                       <EmailPreviewDialog
@@ -744,8 +754,8 @@ export default function FollowUpReports() {
                                                       ) : (
                                                         <>
                                                           <p className="text-xs text-muted-foreground">Sent: {formatDate(email.sentAt)}</p>
-                                                          {email.openedAt && <p className="text-xs text-purple-600">Opened: {formatDate(email.openedAt)}</p>}
-                                                          {email.clickedAt && <p className="text-xs text-green-600">Clicked: {formatDate(email.clickedAt)}</p>}
+                                                          {email.openedAt && <p className="text-xs text-purple-600">Opened {email.openCount || 1}× (first: {formatDate(email.openedAt)})</p>}
+                                                          {email.clickedAt && <p className="text-xs text-green-600">Clicked {email.clickCount || 1}× (first: {formatDate(email.clickedAt)})</p>}
                                                         </>
                                                       )}
                                                       <div className="mt-0.5">{getEmailStatusBadge(email.status)}</div>
