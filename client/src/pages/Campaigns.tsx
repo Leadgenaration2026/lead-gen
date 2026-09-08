@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Mail, Play, Pause, Trash2, ShieldCheck, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
+import { CampaignFollowUpActivity } from "@/components/CampaignFollowUpActivity";
 
 export default function CampaignsPage() {
   const [, navigate] = useLocation();
@@ -241,8 +242,9 @@ export default function CampaignsPage() {
                     </Button>
                   </div>
                   {selectedCampaignId === campaign.id && (
-                    <div className="mt-4 pt-4 border-t border-border">
+                    <div className="mt-4 pt-4 border-t border-border space-y-4">
                       <ActivityFeed campaignId={campaign.id} />
+                      <CampaignFollowUpActivity campaignId={campaign.id} />
                     </div>
                   )}
                 </div>

@@ -538,7 +538,8 @@ async function startServer() {
             lead.companyName,
             lead.industry || 'business services',
             ctaLinkForFollowUp,
-            campaign.userId
+            campaign.userId,
+            (campaign as any).followUpCount ?? 7
           ).catch((err: any) => {
             console.error(`[Daily Send] Failed to schedule follow-ups for lead ${lead.id}:`, err);
           });

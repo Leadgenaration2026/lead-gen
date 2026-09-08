@@ -22,6 +22,29 @@ const FOLLOW_UP_EMAIL_SCHEDULE = [
   { sequenceNumber: 7, dayOffset: 26, emailType: "custom" as const },
 ];
 
+// The number of follow-up emails is configurable per template/campaign
+// now (Create Template's "Number of Follow-up Emails" field) instead of
+// always being exactly 7. For the first 7, uses FOLLOW_UP_EMAIL_SCHEDULE
+// unchanged (so an existing 7-follow-up campaign schedules identically to
+// before); beyond 7, keeps the same "every 5 days" spacing and cycles
+// through the later email types.
+function buildFollowUpEmailSchedule(count: number) {
+  const extraTypeCycle: Array<"value_prop" | "social_proof" | "urgency" | "custom"> = ["value_prop", "social_proof", "urgency", "custom"];
+  const schedule: Array<{ sequenceNumber: number; dayOffset: number; emailType: "discovery" | "value_prop" | "social_proof" | "urgency" | "custom" }> = [];
+  let lastDayOffset = 0;
+  for (let i = 0; i < count; i++) {
+    if (i < FOLLOW_UP_EMAIL_SCHEDULE.length) {
+      schedule.push(FOLLOW_UP_EMAIL_SCHEDULE[i]);
+      lastDayOffset = FOLLOW_UP_EMAIL_SCHEDULE[i].dayOffset;
+    } else {
+      lastDayOffset += 5;
+      const emailType = extraTypeCycle[(i - FOLLOW_UP_EMAIL_SCHEDULE.length) % extraTypeCycle.length];
+      schedule.push({ sequenceNumber: i + 1, dayOffset: lastDayOffset, emailType });
+    }
+  }
+  return schedule;
+}
+
 /**
  * Follow-up call schedule:
  * A call is triggered each time a follow-up email is opened.
@@ -144,10 +167,11 @@ export async function scheduleFollowUpEmails(
   companyName: string,
   industry: string,
   ctaLink: string,
-  userId: number
+  userId: number,
+  followUpCount: number = 7
 ) {
   try {
-    console.log(`[FollowUpScheduler] Scheduling 7 follow-up emails for campaignLead ${campaignLeadId}`);
+    console.log(`[FollowUpScheduler] Scheduling ${followUpCount} follow-up emails for campaignLead ${campaignLeadId}`);
 
     // Get lead weak points
     let weakPoints: any = await db.getLeadWeakPoints(leadId);
@@ -165,10 +189,11 @@ export async function scheduleFollowUpEmails(
 
     const weakPointsList = (weakPoints?.weakPoints as string[]) || ["business growth"];
 
-    // Generate all 7 follow-up emails using Claude
+    // Generate all follow-up emails using Claude
     const { generateEmailWithClaude } = await import("../claude");
+    const emailSchedule = buildFollowUpEmailSchedule(followUpCount);
 
-    for (const schedule of FOLLOW_UP_EMAIL_SCHEDULE) {
+    for (const schedule of emailSchedule) {
       const scheduledDate = new Date();
       scheduledDate.setDate(scheduledDate.getDate() + schedule.dayOffset);
 
@@ -221,7 +246,7 @@ export async function scheduleFollowUpEmails(
       console.log(`[FollowUpScheduler] Scheduled follow-up email #${schedule.sequenceNumber} for day ${schedule.dayOffset} (${scheduledDate.toISOString()})`);
     }
 
-    return { success: true, emailsScheduled: 7 };
+    return { success: true, emailsScheduled: followUpCount };
   } catch (error) {
     console.error("[FollowUpScheduler] Error scheduling follow-up emails:", error);
     throw error;

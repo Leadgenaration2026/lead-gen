@@ -2243,6 +2243,18 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
     create: protectedProcedure
       .input(createCampaignSchema)
       .mutation(async ({ input, ctx }) => {
+        // How many follow-up emails this campaign should get -- copied from
+        // the template it was created from (Create Template's own "Number
+        // of Follow-up Emails" field), defaulting to 7 for templateless
+        // campaigns.
+        let followUpCount = 7;
+        if (input.templateId) {
+          const template = await db.getCampaignTemplateById(input.templateId);
+          if (template && (template as any).followUpCount != null) {
+            followUpCount = (template as any).followUpCount;
+          }
+        }
+
         // Create campaign
         const campaignId = await db.createCampaign({
           userId: ctx.user.id,
@@ -2255,7 +2267,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           totalLeads: input.leadIds.length,
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt).toISOString() : null,
           dailySendLimit: input.dailySendLimit || null,
-        });
+          followUpCount,
+        } as any);
 
         // Add leads to campaign
         if (input.leadIds.length > 0 && campaignId) {
@@ -2682,7 +2695,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               leadForFollowUp.companyName,
               leadForFollowUp.industry || 'business services',
               ctaLink,
-              ctx.user.id
+              ctx.user.id,
+              (campaign as any).followUpCount ?? 7
             ).catch((err: any) => {
               console.error(`[CampaignLaunch] Failed to schedule follow-ups for lead ${leadForFollowUp.id}:`, err);
             });
@@ -4145,6 +4159,7 @@ Respond in this exact JSON format:
           if (campaignLeadId) {
             const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./_core/followUpScheduler");
             const followUpCtaLink = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
+            const sendIndividualCampaign = await db.getCampaignById(campaignId);
             scheduleFollowUpEmails(
               campaignLeadId,
               lead.id,
@@ -4154,7 +4169,8 @@ Respond in this exact JSON format:
               lead.companyName,
               lead.industry || 'business services',
               followUpCtaLink,
-              ctx.user.id
+              ctx.user.id,
+              (sendIndividualCampaign as any)?.followUpCount ?? 7
             ).catch((err: any) => {
               console.error(`[sendIndividual] Failed to schedule follow-ups for lead ${lead.id}:`, err);
             });
@@ -4445,6 +4461,7 @@ Respond in this exact JSON format:
         emailTemplate: z.string().min(1),
         emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]).optional(),
         tags: z.string().optional(),
+        followUpCount: z.number().min(0).max(20).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const id = await db.createCampaignTemplate({
@@ -4456,7 +4473,8 @@ Respond in this exact JSON format:
           emailType: input.emailType || "custom",
           tags: input.tags,
           usageCount: 0,
-        });
+          followUpCount: input.followUpCount ?? 7,
+        } as any);
         return { success: true, id };
       }),
 
@@ -4469,6 +4487,7 @@ Respond in this exact JSON format:
         emailTemplate: z.string().min(1),
         emailType: z.enum(["discovery", "value_prop", "social_proof", "urgency", "custom"]).optional(),
         tags: z.string().optional(),
+        followUpCount: z.number().min(0).max(20).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const existing = await db.getCampaignTemplateById(input.id);
@@ -4482,7 +4501,8 @@ Respond in this exact JSON format:
           emailTemplate: input.emailTemplate,
           emailType: input.emailType || "custom",
           tags: input.tags,
-        });
+          followUpCount: input.followUpCount ?? 7,
+        } as any);
         return { success: true };
       }),
 

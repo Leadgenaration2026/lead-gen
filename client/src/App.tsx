@@ -9,7 +9,6 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import DashboardLayout from "./components/DashboardLayout";
 import EmailComposer from "./pages/EmailComposer";
-import FollowUpReports from "./pages/FollowUpReports";
 import CampaignTemplates from "./pages/CampaignTemplates";
 import ScheduledEmails from "./pages/ScheduledEmails";
 import Analytics from "./pages/Analytics";
@@ -40,7 +39,6 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"}>{() => <WithLayout component={Dashboard} />}</Route>
       <Route path={"/email-composer"}>{() => <WithLayout component={EmailComposer} />}</Route>
-      <Route path={"/follow-up-reports"}>{() => <WithLayout component={FollowUpReports} />}</Route>
       <Route path={"/templates"}>{() => <WithLayout component={CampaignTemplates} />}</Route>
       <Route path={"/scheduled-emails"} component={ScheduledEmails} />
       <Route path={"/analytics"}>{() => <WithLayout component={Analytics} />}</Route>

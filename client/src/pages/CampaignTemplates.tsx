@@ -45,6 +45,7 @@ export default function CampaignTemplates() {
     emailTemplate: "",
     emailType: "custom" as EmailType,
     tags: "",
+    followUpCount: 7,
   });
 
   const templatesQuery = trpc.campaignTemplates.list.useQuery();
@@ -86,7 +87,7 @@ export default function CampaignTemplates() {
         await createMutation.mutateAsync(newTemplate);
         toast.success("Template created successfully!");
       }
-      setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "" });
+      setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "", followUpCount: 7 });
       setEditingTemplateId(null);
       setLastTemplateAIPrompt(null);
       setTemplateDeliverabilityResult(null);
@@ -106,6 +107,7 @@ export default function CampaignTemplates() {
       emailTemplate: template.emailTemplate,
       emailType: (template.emailType || "custom") as EmailType,
       tags: template.tags || "",
+      followUpCount: template.followUpCount ?? 7,
     });
     setEditingTemplateId(template.id);
     setCreateOpen(true);
@@ -267,7 +269,7 @@ export default function CampaignTemplates() {
             setCreateOpen(open);
             if (!open) {
               setEditingTemplateId(null);
-              setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "" });
+              setNewTemplate({ name: "", description: "", subject: "", emailTemplate: "", emailType: "custom", tags: "", followUpCount: 7 });
             }
           }}>
             <DialogTrigger asChild>
@@ -509,6 +511,18 @@ export default function CampaignTemplates() {
                 <div className="space-y-2">
                   <Label>Tags (comma-separated)</Label>
                   <Input value={newTemplate.tags} onChange={(e) => setNewTemplate({ ...newTemplate, tags: e.target.value })} placeholder="e.g., saas, cold-email, b2b" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Number of Follow-up Emails</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={newTemplate.followUpCount}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, followUpCount: Math.min(20, Math.max(0, parseInt(e.target.value, 10) || 0)) })}
+                    className="w-32"
+                  />
+                  <p className="text-xs text-muted-foreground">How many automatic follow-up emails a campaign created from this template sends (0 disables follow-ups entirely).</p>
                 </div>
                 <Button onClick={handleCreate} disabled={createMutation.isPending || updateMutation.isPending} className="w-full">
                   {(createMutation.isPending || updateMutation.isPending)

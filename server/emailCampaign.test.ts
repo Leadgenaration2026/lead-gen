@@ -24,6 +24,7 @@ vi.mock('./db', async (importOriginal) => {
     createCampaign: vi.fn().mockResolvedValue(99),
     addLeadsToCampaign: vi.fn().mockResolvedValue(undefined),
     getCampaignLeads: vi.fn().mockResolvedValue([{ id: 1, campaignId: 99, leadId: 1 }]),
+    getCampaignById: vi.fn().mockResolvedValue({ id: 99, userId: 1, followUpCount: 7 }),
     updateCampaignLead: vi.fn().mockResolvedValue(undefined),
     createEmailTrackingEvent: vi.fn().mockResolvedValue(undefined),
     getRotationalEmailsByUser: vi.fn().mockResolvedValue([]),

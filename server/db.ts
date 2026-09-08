@@ -57,6 +57,8 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE callLogs ADD COLUMN IF NOT EXISTS followUpDecisionMade TINYINT DEFAULT 0 NOT NULL`);
   await database.execute(sql`ALTER TABLE followUpEmails ADD COLUMN IF NOT EXISTS clickTrackingToken VARCHAR(255) NULL`);
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS popupDismissedAt TIMESTAMP NULL`);
+  await database.execute(sql`ALTER TABLE campaignTemplates ADD COLUMN IF NOT EXISTS followUpCount INT DEFAULT 7 NOT NULL`);
+  await database.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS followUpCount INT DEFAULT 7 NOT NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 

@@ -94,6 +94,9 @@ export const campaignTemplates = mysqlTable("campaignTemplates", {
 	usageCount: int().default(0).notNull(),
 	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
 	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	// How many follow-up emails a campaign created from this template should
+	// get (was a hardcoded 7 for every campaign regardless of template).
+	followUpCount: int().default(7).notNull(),
 });
 
 export const campaigns = mysqlTable("campaigns", {
@@ -118,6 +121,9 @@ export const campaigns = mysqlTable("campaigns", {
 	dailySendLimit: int(),
 	dailySendCronTaskUid: varchar({ length: 65 }),
 	bounceCount: int().default(0).notNull(),
+	// Copied from the template at creation time (or defaults to 7) --
+	// scheduleFollowUpEmails uses this instead of a fixed 7 for every campaign.
+	followUpCount: int().default(7).notNull(),
 });
 
 export const claudeApiUsage = mysqlTable("claudeApiUsage", {
