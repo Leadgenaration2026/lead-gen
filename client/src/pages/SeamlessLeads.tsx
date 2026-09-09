@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ArrowRight, Trash2, RotateCcw, History, Archive } from "lucide-react";
+import { Loader2, ArrowRight, Trash2, RotateCcw, History, Archive, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 function formatDate(value: string | null | undefined): string {
@@ -35,6 +35,13 @@ export default function SeamlessLeadsPage() {
 
   const handleContinueSearch = (id: number) => {
     navigate(`/all-leads?resumeSearchId=${id}`);
+  };
+
+  // Same saved search, but resumed inside the conversational AI Agent
+  // wizard instead of the manual Leads page -- for extracting more leads
+  // from a past search without re-entering all the criteria by hand.
+  const handleContinueWithAgent = (id: number) => {
+    navigate(`/ai-agent?resumeSearchId=${id}`);
   };
 
   const handleDeleteSearch = async (id: number) => {
@@ -181,6 +188,16 @@ export default function SeamlessLeadsPage() {
                                   title={knownExhausted ? "Seamless has no more results for this search" : s.nextToken ? undefined : "No saved cursor -- this will run a fresh search with the same criteria"}
                                 >
                                   Continue <ArrowRight className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1"
+                                  disabled={knownExhausted}
+                                  onClick={() => handleContinueWithAgent(s.id)}
+                                  title={knownExhausted ? "Seamless has no more results for this search" : "Continue extracting from this search inside the AI Agent chat"}
+                                >
+                                  <Sparkles className="w-3 h-3" /> AI Agent
                                 </Button>
                                 <Button
                                   size="sm"

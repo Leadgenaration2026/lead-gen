@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
-import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight } from "lucide-react";
+import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X } from "lucide-react";
 
 // Same fixed value lists the Leads page uses for these same selects (Leads.tsx
 // ~2716-2819) -- kept identical since Seamless.AI only accepts these exact
@@ -64,6 +64,7 @@ const JOB_TITLE_OPTIONS = [
 ];
 
 type Step =
+  | "resumeConfirm"
   | "location" | "companySize" | "industry" | "jobTitles" | "otherCriteria" | "count" | "leadSetName"
   | "searchingLeads"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
@@ -91,6 +92,13 @@ interface WizardData {
   criteria: string;
   count: number;
   leadSetName: string;
+  // Set when this run was launched via "Continue with AI Agent" from a saved
+  // Seamless search (Seamless Leads > Search History) -- carries the saved
+  // pagination cursor/progress so runLeadGeneration resumes instead of
+  // starting a brand-new search from scratch.
+  resumeSearchId: number | null;
+  resumeNextToken: string | null;
+  resumeExtractedSoFar: number;
   usedSeamless: boolean;
   leadSetId: number | null;
   leadIds: number[];
@@ -117,7 +125,8 @@ interface WizardData {
 const DEFAULTS: WizardData = {
   country: "United States", state: "", companySize: "",
   industries: [], jobTitles: [], otherCriteria: "", criteria: "", count: 25,
-  leadSetName: "", usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
+  leadSetName: "", resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0,
+  usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
   sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
   emailPrompt: "", subject: "", body: "", followUpCount: 7, followUpPreviews: [], templateName: "", templateId: null,
   scheduleNow: true, scheduledAt: "", campaignName: "", campaignId: null,
@@ -133,6 +142,15 @@ export default function AIAgentPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
 
+  // Read synchronously (not in a useEffect) so it's correct on the very
+  // first render -- the "generic greeting" effect below checks this same
+  // value on mount, and a useEffect-set value wouldn't be visible there
+  // until a second render.
+  const [resumeSearchId] = useState<number | null>(() => {
+    const id = new URLSearchParams(window.location.search).get("resumeSearchId");
+    return id ? parseInt(id, 10) : null;
+  });
+
   const utils = trpc.useUtils();
   const settingsQuery = trpc.settings.get.useQuery();
   const searchPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
@@ -143,6 +161,12 @@ export default function AIAgentPage() {
   const createTemplateMutation = trpc.campaignTemplates.create.useMutation();
   const createCampaignMutation = trpc.campaigns.create.useMutation();
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
+  const resumeSearchQuery = trpc.seamlessSearches.getById.useQuery(
+    { id: resumeSearchId as number },
+    { enabled: resumeSearchId !== null }
+  );
+  const createSeamlessSearchMutation = trpc.seamlessSearches.create.useMutation();
+  const updateSeamlessSearchProgressMutation = trpc.seamlessSearches.updateProgress.useMutation();
 
   const nextId = () => ++idCounter.current;
   const addAgent = (text?: string, content?: ReactNode) => {
@@ -156,13 +180,47 @@ export default function AIAgentPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  // Opening question -- runs once.
+  // Opening question -- runs once, unless we're resuming a saved search (that
+  // flow shows its own greeting once the search record loads, below).
   useEffect(() => {
+    if (resumeSearchId !== null) return;
     addAgent(
       "Hi! I'm your AI Agent. I'll find leads matching your criteria, write an email to reach out to them, set up follow-ups, and schedule the campaign -- all in one go.\n\nLet's start: what location are you targeting?"
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // "Continue with AI Agent" from Seamless Leads > Search History -- hydrates
+  // the wizard from the saved search (criteria, saved pagination cursor, and
+  // how many leads have been extracted so far / are still available) and
+  // jumps straight to a confirm step instead of re-asking every question.
+  useEffect(() => {
+    if (!resumeSearchQuery.data) return;
+    const s: any = resumeSearchQuery.data;
+    setData((d) => ({
+      ...d,
+      country: s.country || "",
+      state: s.state || "",
+      companySize: s.companySize || "",
+      industries: s.industryOverride ? [s.industryOverride] : [],
+      jobTitles: s.titlesOverride || [],
+      criteria: s.instruction || "",
+      count: s.requestedCount || 25,
+      leadSetName: s.leadSetName || "",
+      resumeSearchId: s.id,
+      resumeNextToken: s.nextToken || null,
+      resumeExtractedSoFar: s.extractedSoFar || 0,
+    }));
+    const remaining = typeof s.totalAvailable === "number" ? Math.max(0, s.totalAvailable - (s.extractedSoFar || 0)) : null;
+    addAgent(
+      `Welcome back! I found your saved search: "${s.instruction}"${s.leadSetName ? ` (list: ${s.leadSetName})` : ""}.\n\n` +
+      `${s.extractedSoFar || 0} lead(s) extracted so far` +
+      `${typeof s.totalAvailable === "number" ? ` out of ~${s.totalAvailable} total available` : ""}` +
+      `${remaining !== null ? ` (~${remaining} remaining).` : "."}`
+    );
+    setStep("resumeConfirm");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeSearchQuery.data]);
 
   // ---- Step 1: location ----
   const submitLocation = () => {
@@ -276,11 +334,19 @@ export default function AIAgentPage() {
           // `criteria` let the free-text parser pick them all up correctly.
           industryOverride: data.industries.length === 1 ? data.industries[0] : undefined,
           titlesOverride: data.jobTitles.length ? data.jobTitles.slice(0, 10) : undefined,
+          // Resumes from a saved search's pagination cursor when launched via
+          // "Continue with AI Agent" from Seamless Leads > Search History --
+          // undefined (a brand-new search) otherwise.
+          nextToken: data.resumeNextToken || undefined,
         });
+        const totalAvailable = typeof preview.totalAvailable === "number" ? preview.totalAvailable : null;
         if (preview.candidates.length === 0) {
           setBusy(false);
+          const totalNote = totalAvailable !== null
+            ? ` Seamless reports ${totalAvailable} total matching lead(s) for this criteria, but none of them are new right now.`
+            : "";
           addAgent(
-            `I couldn't find any new candidates for that criteria (${preview.skippedAlreadyOwned} already in your system, ${preview.skippedExcluded} previously discarded). Want to try different criteria? Let's pick again.`
+            `I couldn't find any new candidates for that criteria (${preview.skippedAlreadyOwned} already in your system, ${preview.skippedExcluded} previously discarded).${totalNote} Want to try different criteria? Let's pick again.`
           );
           setStep("industry");
           return;
@@ -308,8 +374,46 @@ export default function AIAgentPage() {
           return;
         }
         resolvedLeadSetId = enrichResult.leadSetId ?? null;
-        resolvedSummary = `${enrichResult.count} lead(s) extracted from Seamless.AI (${enrichResult.enrichmentCreditsUsed} credit(s) used)${enrichResult.duplicatesSkipped ? `, ${enrichResult.duplicatesSkipped} duplicate(s) skipped` : ""}.`;
+        const totalExtracted = (data.resumeExtractedSoFar || 0) + enrichResult.count;
+        const remaining = totalAvailable !== null ? Math.max(0, totalAvailable - totalExtracted) : null;
+        resolvedSummary = `${enrichResult.count} lead(s) extracted from Seamless.AI (${enrichResult.enrichmentCreditsUsed} credit(s) used)${enrichResult.duplicatesSkipped ? `, ${enrichResult.duplicatesSkipped} duplicate(s) skipped` : ""}.` +
+          (remaining !== null && remaining > 0
+            ? ` ~${remaining} more may still be available for this criteria -- find it later under Seamless Leads > Search History to extract more.`
+            : "");
         setData((d) => ({ ...d, usedSeamless: true, leadSetId: resolvedLeadSetId, leadsSummary: resolvedSummary }));
+
+        // Save/update this search's progress so it shows up (with a real
+        // remaining count) on Seamless Leads > Search History, resumable
+        // either from there or by coming back into the AI Agent later. Best
+        // effort -- the leads themselves are already saved successfully
+        // above regardless of whether this bookkeeping call succeeds.
+        try {
+          if (data.resumeSearchId) {
+            await updateSeamlessSearchProgressMutation.mutateAsync({
+              id: data.resumeSearchId,
+              nextToken: preview.nextToken,
+              totalAvailable: totalAvailable ?? undefined,
+              extractedSoFar: totalExtracted,
+              leadSetName: leadSetName || undefined,
+            });
+          } else {
+            await createSeamlessSearchMutation.mutateAsync({
+              instruction: data.criteria,
+              country: data.country || undefined,
+              state: data.state || undefined,
+              companySize: data.companySize || undefined,
+              industryOverride: data.industries.length === 1 ? data.industries[0] : undefined,
+              titlesOverride: data.jobTitles.length ? data.jobTitles.slice(0, 10) : undefined,
+              requestedCount: data.count,
+              leadSetName: leadSetName || undefined,
+              nextToken: preview.nextToken,
+              totalAvailable: totalAvailable ?? undefined,
+              extractedSoFar: enrichResult.count,
+            });
+          }
+        } catch (historyError) {
+          console.error("Failed to save search history:", historyError);
+        }
       } else {
         const criteriaWithSize = data.companySize ? `${data.criteria} (company size: ${data.companySize})` : data.criteria;
         const result = await generateLeadsMutation.mutateAsync({
@@ -574,8 +678,24 @@ export default function AIAgentPage() {
     setData(DEFAULTS);
     setMessages([]);
     setStep("location");
+    setTextInput("");
+    setBusy(false);
     idCounter.current = 0;
     setTimeout(() => addAgent("Let's set up another campaign. What location are you targeting?"), 0);
+  };
+
+  // Whether restarting/cancelling now would actually discard anything --
+  // used to decide whether a confirmation is worth showing.
+  const hasProgress = step !== "location" || messages.length > 1;
+
+  const handleRestartClick = () => {
+    if (hasProgress && !confirm("Restart the AI Agent? This discards everything entered so far.")) return;
+    restart();
+  };
+
+  const handleCancelClick = () => {
+    if (hasProgress && !confirm("Leave the AI Agent? Everything entered so far will be lost.")) return;
+    navigate("/dashboard");
   };
 
   // ---------- Render helpers for the input area ----------
@@ -590,6 +710,31 @@ export default function AIAgentPage() {
     }
 
     switch (step) {
+      case "resumeConfirm":
+        return (
+          <div className="flex flex-wrap gap-2 p-4 border-t">
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => { addUser("Continue extracting"); runLeadGeneration(data.leadSetName); }}
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Continue Extraction
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                addUser("Start fresh instead");
+                setData((d) => ({ ...d, resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0 }));
+                addAgent("No problem -- let's start fresh. What location are you targeting?");
+                setStep("location");
+              }}
+            >
+              Start Fresh Instead
+            </Button>
+          </div>
+        );
+
       case "location":
         return (
           <div className="flex flex-wrap items-end gap-2 p-4 border-t">
@@ -782,11 +927,23 @@ export default function AIAgentPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Sparkles className="w-6 h-6 text-primary" /> AI Agent</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Tell me who you're targeting and I'll find the leads, write the email, set up follow-ups, and schedule the campaign.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Sparkles className="w-6 h-6 text-primary" /> AI Agent</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Tell me who you're targeting and I'll find the leads, write the email, set up follow-ups, and schedule the campaign.
+          </p>
+        </div>
+        {step !== "done" && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={handleRestartClick} disabled={busy}>
+              <RotateCcw className="w-3.5 h-3.5" /> Restart
+            </Button>
+            <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground" onClick={handleCancelClick} disabled={busy}>
+              <X className="w-3.5 h-3.5" /> Cancel
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm" style={{ height: "70vh" }}>
