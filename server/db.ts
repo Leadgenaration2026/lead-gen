@@ -60,6 +60,7 @@ async function ensureLeadsAndTrackingColumns(database: NonNullable<typeof _db>) 
   await database.execute(sql`ALTER TABLE socialOutreach ADD COLUMN IF NOT EXISTS popupDismissedAt TIMESTAMP NULL`);
   await database.execute(sql`ALTER TABLE campaignTemplates ADD COLUMN IF NOT EXISTS followUpCount INT DEFAULT 7 NOT NULL`);
   await database.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS followUpCount INT DEFAULT 7 NOT NULL`);
+  await database.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS landingPageId INT NULL`);
   leadsAndTrackingColumnsReady = true;
 }
 
@@ -1281,6 +1282,149 @@ export async function deleteSeamlessSearch(id: number, userId: number) {
   } catch (error) {
     console.error("[deleteSeamlessSearch] Failed:", error);
   }
+}
+
+// AI-generated landing page + matching 8-email sequence (the "AI Landing
+// Page + 8-Email Campaign Generator" feature). Two new tables, created lazily
+// like seamlessSearches above since there's no migration pipeline in this
+// deployment -- schema.ts's landingPages/landingPageEmails definitions exist
+// only for typing the drizzle query builder calls below, they don't create
+// anything live on their own.
+let landingPagesTablesReady = false;
+async function ensureLandingPagesTables(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (landingPagesTablesReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS landingPages (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      slug VARCHAR(255) NULL,
+      status ENUM('draft','published') NOT NULL DEFAULT 'draft',
+      industry VARCHAR(100) NULL,
+      targetAudience VARCHAR(500) NULL,
+      offer TEXT NULL,
+      companyName VARCHAR(255) NULL,
+      logoUrl VARCHAR(2048) NULL,
+      proofPoints JSON NULL,
+      theme JSON NOT NULL,
+      sections JSON NOT NULL,
+      researchNote TEXT NULL,
+      campaignId INT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+      publishedAt TIMESTAMP NULL,
+      INDEX landingPages_userId (userId),
+      UNIQUE INDEX landingPages_slug_unique (slug)
+    )
+  `);
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS landingPageEmails (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      landingPageId INT NOT NULL,
+      sequenceNumber INT NOT NULL,
+      slotPurpose VARCHAR(50) NOT NULL,
+      subject VARCHAR(255) NOT NULL,
+      bodyHtml TEXT NOT NULL,
+      bodyPlainText TEXT NULL,
+      dayOffset INT NOT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+      INDEX landingPageEmails_landingPageId (landingPageId),
+      UNIQUE INDEX landingPageEmails_lp_seq_unique (landingPageId, sequenceNumber)
+    )
+  `);
+  landingPagesTablesReady = true;
+}
+
+export async function createLandingPage(data: any): Promise<number | null> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureLandingPagesTables(database);
+  const { landingPages } = await import("../drizzle/schema");
+  const result: any = await database.insert(landingPages).values(convertToDbFormat(data));
+  return Number(result?.[0]?.insertId ?? result?.insertId) || null;
+}
+
+export async function getLandingPageById(id: number): Promise<any> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureLandingPagesTables(database);
+  const { landingPages } = await import("../drizzle/schema");
+  const rows = await database.select().from(landingPages).where(eq(landingPages.id, id)).limit(1);
+  return rows[0] || null;
+}
+
+export async function getLandingPageBySlug(slug: string): Promise<any> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureLandingPagesTables(database);
+  const { landingPages } = await import("../drizzle/schema");
+  const rows = await database.select().from(landingPages).where(eq(landingPages.slug, slug)).limit(1);
+  return rows[0] || null;
+}
+
+export async function getLandingPagesByUserId(userId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureLandingPagesTables(database);
+  const { landingPages } = await import("../drizzle/schema");
+  return database.select().from(landingPages).where(eq(landingPages.userId, userId)).orderBy(desc(landingPages.createdAt));
+}
+
+export async function updateLandingPage(id: number, data: any) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  await ensureLandingPagesTables(database);
+  const { landingPages } = await import("../drizzle/schema");
+  return database.update(landingPages).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(landingPages.id, id));
+}
+
+export async function deleteLandingPage(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureLandingPagesTables(database);
+  const { landingPages, landingPageEmails } = await import("../drizzle/schema");
+  await database.delete(landingPageEmails).where(eq(landingPageEmails.landingPageId, id));
+  await database.delete(landingPages).where(and(eq(landingPages.id, id), eq(landingPages.userId, userId)));
+}
+
+// Bulk-replaces every landingPageEmails row for a page (used both by the
+// initial generate and by a full regenerate) -- delete+insert rather than
+// per-row upsert since Phase 1 always (re)generates the complete 8-slot set
+// together, never a sparse subset.
+export async function replaceLandingPageEmails(landingPageId: number, emails: any[]) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureLandingPagesTables(database);
+  const { landingPageEmails } = await import("../drizzle/schema");
+  await database.delete(landingPageEmails).where(eq(landingPageEmails.landingPageId, landingPageId));
+  if (emails.length === 0) return;
+  await database.insert(landingPageEmails).values(emails.map((e) => convertToDbFormat({ ...e, landingPageId })));
+}
+
+export async function getLandingPageEmailsByLandingPageId(landingPageId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureLandingPagesTables(database);
+  const { landingPageEmails } = await import("../drizzle/schema");
+  return database.select().from(landingPageEmails).where(eq(landingPageEmails.landingPageId, landingPageId)).orderBy(asc(landingPageEmails.sequenceNumber));
+}
+
+export async function getLandingPageEmailById(id: number): Promise<any> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureLandingPagesTables(database);
+  const { landingPageEmails } = await import("../drizzle/schema");
+  const rows = await database.select().from(landingPageEmails).where(eq(landingPageEmails.id, id)).limit(1);
+  return rows[0] || null;
+}
+
+export async function updateLandingPageEmail(id: number, data: any) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  await ensureLandingPagesTables(database);
+  const { landingPageEmails } = await import("../drizzle/schema");
+  return database.update(landingPageEmails).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(landingPageEmails.id, id));
 }
 
 // Archive of hard-deleted leads, so "Delete List"/"Delete Tag" (below) can

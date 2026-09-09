@@ -24,6 +24,9 @@ import SearchPreview from "./pages/SearchPreview";
 import Inbox from "./pages/Inbox";
 import SeamlessLeads from "./pages/SeamlessLeads";
 import AIAgent from "./pages/AIAgent";
+import LandingPagesList from "./pages/LandingPagesList";
+import CampaignBuilder from "./pages/CampaignBuilder";
+import LandingPageEditor from "./pages/LandingPageEditor";
 
 // Wrapper to add DashboardLayout to pages
 function WithLayout({ component: Component }: { component: React.ComponentType }) {
@@ -41,6 +44,9 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"}>{() => <WithLayout component={Dashboard} />}</Route>
       <Route path={"/ai-agent"}>{() => <WithLayout component={AIAgent} />}</Route>
+      <Route path={"/landing-pages/new"}>{() => <WithLayout component={CampaignBuilder} />}</Route>
+      <Route path={"/landing-pages/:id"}>{() => <WithLayout component={LandingPageEditor} />}</Route>
+      <Route path={"/landing-pages"}>{() => <WithLayout component={LandingPagesList} />}</Route>
       <Route path={"/email-composer"}>{() => <WithLayout component={EmailComposer} />}</Route>
       <Route path={"/templates"}>{() => <WithLayout component={CampaignTemplates} />}</Route>
       <Route path={"/scheduled-emails"} component={ScheduledEmails} />

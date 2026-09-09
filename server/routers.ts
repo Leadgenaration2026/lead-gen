@@ -54,6 +54,14 @@ const createCampaignSchema = z.object({
   dailySendLimit: z.number().min(1).max(500).optional(), // Max emails per day (null = send all at once)
 });
 
+// Used by landingPages.generate/duplicate to build a URL-safe /p/:slug
+// segment from a page's internal name (a short nanoid suffix, appended by
+// the caller, keeps it unique even for two pages with the same name).
+function slugify(name: string): string {
+  const base = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return base || "landing-page";
+}
+
 const generateLeadsSchema = z.object({
   instruction: z.string().min(10),
   count: z.number().min(1).max(1000),
@@ -2720,27 +2728,51 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
 
         // Schedule 7 follow-up emails + the fallback follow-up call cadence for each
         // lead that was sent today (async, don't block)
-        const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./_core/followUpScheduler");
+        const { scheduleFollowUpEmails, scheduleFollowUpCalls, scheduleCampaignEmailsFromSequence } = await import("./_core/followUpScheduler");
         const followUpSettings = await db.getUserSettings(ctx.user.id);
         const ctaLink = followUpSettings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
+        // Fetched once (not per-lead) when this campaign came from the AI
+        // landing-page generator -- its emails link to the landing page
+        // itself rather than the generic booking-link CTA.
+        let landingPageCtaLink: string | null = null;
+        if ((campaign as any).landingPageId) {
+          const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+          const linkedLandingPage = await db.getLandingPageById((campaign as any).landingPageId);
+          landingPageCtaLink = linkedLandingPage?.slug ? buildPublicLandingPageUrl(linkedLandingPage.slug) : ctaLink;
+        }
         for (const campaignLead of toSendToday) {
           if (!successfullySentCampaignLeadIds.has(campaignLead.id)) continue; // Only schedule follow-ups for actually sent emails
           const leadForFollowUp = await db.getLeadById(campaignLead.leadId);
           if (leadForFollowUp) {
-            scheduleFollowUpEmails(
-              campaignLead.id,
-              leadForFollowUp.id,
-              leadForFollowUp.email,
-              leadForFollowUp.phoneNumber || '',
-              leadForFollowUp.ownerName,
-              leadForFollowUp.companyName,
-              leadForFollowUp.industry || 'business services',
-              ctaLink,
-              ctx.user.id,
-              (campaign as any).followUpCount ?? 7
-            ).catch((err: any) => {
-              console.error(`[CampaignLaunch] Failed to schedule follow-ups for lead ${leadForFollowUp.id}:`, err);
-            });
+            // Campaigns created from a generated landing page + 8-email
+            // sequence get their pre-generated follow-ups instead of the
+            // generic scheduler -- every existing campaign has landingPageId
+            // NULL and takes the unchanged path below.
+            if ((campaign as any).landingPageId) {
+              scheduleCampaignEmailsFromSequence(
+                campaignLead.id,
+                leadForFollowUp.id,
+                (campaign as any).landingPageId,
+                landingPageCtaLink || ctaLink
+              ).catch((err: any) => {
+                console.error(`[CampaignLaunch] Failed to schedule landing-page campaign emails for lead ${leadForFollowUp.id}:`, err);
+              });
+            } else {
+              scheduleFollowUpEmails(
+                campaignLead.id,
+                leadForFollowUp.id,
+                leadForFollowUp.email,
+                leadForFollowUp.phoneNumber || '',
+                leadForFollowUp.ownerName,
+                leadForFollowUp.companyName,
+                leadForFollowUp.industry || 'business services',
+                ctaLink,
+                ctx.user.id,
+                (campaign as any).followUpCount ?? 7
+              ).catch((err: any) => {
+                console.error(`[CampaignLaunch] Failed to schedule follow-ups for lead ${leadForFollowUp.id}:`, err);
+              });
+            }
 
             // scheduleFollowUpCalls is disabled (no more automatic calls) --
             // kept here as a no-op call for the same reason it's a no-op
@@ -4198,23 +4230,37 @@ Respond in this exact JSON format:
           const campaignLeadsForFollowUp = await db.getCampaignLeads(campaignId);
           const campaignLeadId = campaignLeadsForFollowUp[0]?.id;
           if (campaignLeadId) {
-            const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./_core/followUpScheduler");
+            const { scheduleFollowUpEmails, scheduleFollowUpCalls, scheduleCampaignEmailsFromSequence } = await import("./_core/followUpScheduler");
             const followUpCtaLink = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
             const sendIndividualCampaign = await db.getCampaignById(campaignId);
-            scheduleFollowUpEmails(
-              campaignLeadId,
-              lead.id,
-              lead.email,
-              lead.phoneNumber || '',
-              lead.ownerName,
-              lead.companyName,
-              lead.industry || 'business services',
-              followUpCtaLink,
-              ctx.user.id,
-              (sendIndividualCampaign as any)?.followUpCount ?? 7
-            ).catch((err: any) => {
-              console.error(`[sendIndividual] Failed to schedule follow-ups for lead ${lead.id}:`, err);
-            });
+            if ((sendIndividualCampaign as any)?.landingPageId) {
+              const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+              const linkedLandingPage = await db.getLandingPageById((sendIndividualCampaign as any).landingPageId);
+              const landingPageCtaLink = linkedLandingPage?.slug ? buildPublicLandingPageUrl(linkedLandingPage.slug) : followUpCtaLink;
+              scheduleCampaignEmailsFromSequence(
+                campaignLeadId,
+                lead.id,
+                (sendIndividualCampaign as any).landingPageId,
+                landingPageCtaLink
+              ).catch((err: any) => {
+                console.error(`[sendIndividual] Failed to schedule landing-page campaign emails for lead ${lead.id}:`, err);
+              });
+            } else {
+              scheduleFollowUpEmails(
+                campaignLeadId,
+                lead.id,
+                lead.email,
+                lead.phoneNumber || '',
+                lead.ownerName,
+                lead.companyName,
+                lead.industry || 'business services',
+                followUpCtaLink,
+                ctx.user.id,
+                (sendIndividualCampaign as any)?.followUpCount ?? 7
+              ).catch((err: any) => {
+                console.error(`[sendIndividual] Failed to schedule follow-ups for lead ${lead.id}:`, err);
+              });
+            }
             if (lead.phoneNumber) {
               scheduleFollowUpCalls(campaignLeadId, lead.phoneNumber).catch((err: any) => {
                 console.error(`[sendIndividual] Failed to schedule follow-up calls for lead ${lead.id}:`, err);
@@ -4636,6 +4682,372 @@ Respond in this exact JSON format:
       .mutation(async ({ input: id }) => {
         await db.incrementTemplateUsage(id);
         return { success: true };
+      }),
+  }),
+
+  // ============ AI Landing Page + 8-Email Campaign Generator ============
+  landingPages: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getLandingPagesByUserId(ctx.user.id);
+    }),
+
+    get: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
+      const page = await db.getLandingPageById(id);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      return page;
+    }),
+
+    generate: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        industry: z.string().min(1),
+        targetAudience: z.string().min(1),
+        offer: z.string().min(1),
+        proofPoints: z.array(z.string()).optional(),
+        logoUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const settings = await db.getUserSettings(ctx.user.id);
+        const companyName = settings?.companyName || "Your Company";
+        // Slug is assigned at generation time, not at publish -- avoids a
+        // chicken-and-egg problem where the 8 emails need a real landing-page
+        // URL to link to before the page has ever been published. /p/:slug
+        // 404s until the page's status is actually "published".
+        const slug = `${slugify(input.name)}-${nanoid(6)}`;
+        const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+        const landingPageUrl = buildPublicLandingPageUrl(slug);
+
+        const { generateFullCampaign } = await import("./_core/campaignGenerator");
+        const generated = await generateFullCampaign({
+          industry: input.industry,
+          targetAudience: input.targetAudience,
+          offer: input.offer,
+          companyName,
+          proofPoints: input.proofPoints,
+          landingPageUrl,
+        });
+
+        const landingPageId = await db.createLandingPage({
+          userId: ctx.user.id,
+          name: input.name,
+          slug,
+          status: "draft",
+          industry: input.industry,
+          targetAudience: input.targetAudience,
+          offer: input.offer,
+          companyName,
+          logoUrl: input.logoUrl || null,
+          proofPoints: input.proofPoints || null,
+          theme: generated.theme,
+          sections: generated.sections,
+          researchNote: generated.researchNote,
+        });
+        if (!landingPageId) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save the generated landing page." });
+        }
+
+        const { buildBrandedEmailBody } = await import("./_core/emailBrandShell");
+        const heroCtaText = generated.sections.find((s) => s.type === "hero")?.ctaText || "Learn More";
+        const emailRows = generated.emails.map((e) => ({
+          sequenceNumber: e.sequenceNumber,
+          slotPurpose: e.slotPurpose,
+          subject: e.subject,
+          bodyHtml: buildBrandedEmailBody({
+            bodyText: e.body,
+            logoUrl: input.logoUrl,
+            companyName,
+            primaryColor: generated.theme.primary,
+            ctaColor: generated.theme.cta,
+            ctaText: heroCtaText,
+            ctaUrl: landingPageUrl,
+          }),
+          bodyPlainText: e.body,
+          dayOffset: e.dayOffset,
+        }));
+        await db.replaceLandingPageEmails(landingPageId, emailRows);
+
+        const landingPage = await db.getLandingPageById(landingPageId);
+        const emails = await db.getLandingPageEmailsByLandingPageId(landingPageId);
+        return { landingPageId, landingPage, emails };
+      }),
+
+    updateSections: protectedProcedure
+      .input(z.object({ id: z.number(), sections: z.array(z.record(z.string(), z.any())) }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getLandingPageById(input.id);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.updateLandingPage(input.id, { sections: input.sections });
+        return { success: true };
+      }),
+
+    updateTheme: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        theme: z.object({ primary: z.string(), secondary: z.string(), cta: z.string(), background: z.string(), text: z.string(), accent: z.string() }),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getLandingPageById(input.id);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.updateLandingPage(input.id, { theme: input.theme });
+        return { success: true };
+      }),
+
+    updateMeta: protectedProcedure
+      .input(z.object({ id: z.number(), name: z.string().optional(), logoUrl: z.string().optional(), companyName: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const { id, ...rest } = input;
+        const page = await db.getLandingPageById(id);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.updateLandingPage(id, rest);
+        return { success: true };
+      }),
+
+    regenerateSection: protectedProcedure
+      .input(z.object({ id: z.number(), sectionIndex: z.number(), sectionType: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getLandingPageById(input.id);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        const sections = Array.isArray(page.sections) ? [...page.sections] : [];
+        if (input.sectionIndex < 0 || input.sectionIndex >= sections.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid section index" });
+        }
+        const type = input.sectionType || sections[input.sectionIndex].type;
+        const { generateSectionContent } = await import("./_core/campaignGenerator");
+        const newSection = await generateSectionContent(type as any, {
+          industry: page.industry || "",
+          targetAudience: page.targetAudience || "",
+          offer: page.offer || "",
+          companyName: page.companyName || "",
+          proofPoints: (page.proofPoints as string[] | null) || undefined,
+        });
+        sections[input.sectionIndex] = newSection;
+        await db.updateLandingPage(input.id, { sections });
+        return { section: newSection };
+      }),
+
+    // "Regenerate Theme" -- re-runs just the color/theme half of
+    // synthesizeThemeAndResearch, leaving sections/emails untouched. Paired
+    // with updateTheme (manual "Choose My Colors" override) on the client.
+    regenerateTheme: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const page = await db.getLandingPageById(id);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const { synthesizeThemeAndResearch } = await import("./_core/campaignGenerator");
+      const { theme, researchNote } = await synthesizeThemeAndResearch({
+        industry: page.industry || "",
+        targetAudience: page.targetAudience || "",
+        offer: page.offer || "",
+        companyName: page.companyName || "",
+        proofPoints: (page.proofPoints as string[] | null) || undefined,
+      });
+      await db.updateLandingPage(id, { theme, researchNote });
+      return { theme, researchNote };
+    }),
+
+    previewHtml: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
+      const page = await db.getLandingPageById(id);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const { renderLandingPageHtml } = await import("./_core/publicPages");
+      return { html: renderLandingPageHtml(page) };
+    }),
+
+    publish: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const page = await db.getLandingPageById(id);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateLandingPage(id, { status: "published", publishedAt: new Date() });
+      const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+      return { success: true, url: buildPublicLandingPageUrl(page.slug) };
+    }),
+
+    unpublish: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const page = await db.getLandingPageById(id);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateLandingPage(id, { status: "draft" });
+      return { success: true };
+    }),
+
+    duplicate: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const page = await db.getLandingPageById(id);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const slug = `${slugify(page.name)}-${nanoid(6)}`;
+      const newId = await db.createLandingPage({
+        userId: ctx.user.id,
+        name: `${page.name} (Copy)`,
+        slug,
+        status: "draft",
+        industry: page.industry,
+        targetAudience: page.targetAudience,
+        offer: page.offer,
+        companyName: page.companyName,
+        logoUrl: page.logoUrl,
+        proofPoints: page.proofPoints,
+        theme: page.theme,
+        sections: page.sections,
+        researchNote: page.researchNote,
+      });
+      const emails = await db.getLandingPageEmailsByLandingPageId(id);
+      if (newId && emails.length > 0) {
+        await db.replaceLandingPageEmails(newId, emails.map((e: any) => ({
+          sequenceNumber: e.sequenceNumber,
+          slotPurpose: e.slotPurpose,
+          subject: e.subject,
+          bodyHtml: e.bodyHtml,
+          bodyPlainText: e.bodyPlainText,
+          dayOffset: e.dayOffset,
+        })));
+      }
+      return { landingPageId: newId };
+    }),
+
+    delete: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      await db.deleteLandingPage(id, ctx.user.id);
+      return { success: true };
+    }),
+
+    // Bridges a generated sequence into a real, sendable campaign -- reuses
+    // db.createCampaign/addLeadsToCampaign exactly as campaigns.create does,
+    // setting landingPageId so the launch flow schedules emails 2-8 from
+    // landingPageEmails instead of the generic follow-up scheduler. Actual
+    // sending stays a separate campaigns.launch call, unchanged.
+    createCampaignFromSequence: protectedProcedure
+      .input(z.object({ landingPageId: z.number(), campaignName: z.string().min(1), leadIds: z.array(z.number()).min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getLandingPageById(input.landingPageId);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        const emails = await db.getLandingPageEmailsByLandingPageId(input.landingPageId);
+        const initial = emails.find((e: any) => e.sequenceNumber === 1);
+        if (!initial) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This landing page has no generated initial email yet." });
+        }
+
+        const campaignId = await db.createCampaign({
+          userId: ctx.user.id,
+          name: input.campaignName,
+          subject: initial.subject,
+          emailTemplate: initial.bodyHtml,
+          status: "draft",
+          totalLeads: input.leadIds.length,
+          landingPageId: input.landingPageId,
+        } as any);
+        if (input.leadIds.length > 0 && campaignId) {
+          await db.addLeadsToCampaign(campaignId, input.leadIds);
+        }
+        if (campaignId) {
+          await db.updateLandingPage(input.landingPageId, { campaignId });
+        }
+        return { campaignId };
+      }),
+  }),
+
+  landingPageEmails: router({
+    list: protectedProcedure.input(z.number()).query(async ({ input: landingPageId, ctx }) => {
+      const page = await db.getLandingPageById(landingPageId);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      return db.getLandingPageEmailsByLandingPageId(landingPageId);
+    }),
+
+    update: protectedProcedure
+      .input(z.object({ id: z.number(), subject: z.string().min(1), bodyPlainText: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const email = await db.getLandingPageEmailById(input.id);
+        if (!email) throw new TRPCError({ code: "NOT_FOUND" });
+        const page = await db.getLandingPageById(email.landingPageId);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const { buildBrandedEmailBody } = await import("./_core/emailBrandShell");
+        const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+        const ctaText = (page.sections as any[])?.find((s) => s.type === "hero")?.ctaText || "Learn More";
+        const theme = page.theme as any;
+        const bodyHtml = buildBrandedEmailBody({
+          bodyText: input.bodyPlainText,
+          logoUrl: page.logoUrl,
+          companyName: page.companyName,
+          primaryColor: theme.primary,
+          ctaColor: theme.cta,
+          ctaText,
+          ctaUrl: page.slug ? buildPublicLandingPageUrl(page.slug) : null,
+        });
+        await db.updateLandingPageEmail(input.id, { subject: input.subject, bodyPlainText: input.bodyPlainText, bodyHtml });
+        return { success: true };
+      }),
+
+    regenerate: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const email = await db.getLandingPageEmailById(id);
+      if (!email) throw new TRPCError({ code: "NOT_FOUND" });
+      const page = await db.getLandingPageById(email.landingPageId);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const { generateCampaignEmail } = await import("./_core/campaignGenerator");
+      const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+      const landingPageUrl = page.slug ? buildPublicLandingPageUrl(page.slug) : "";
+      const { subject, body } = await generateCampaignEmail(
+        { sequenceNumber: email.sequenceNumber, slotPurpose: email.slotPurpose, dayOffset: email.dayOffset },
+        {
+          industry: page.industry || "",
+          targetAudience: page.targetAudience || "",
+          offer: page.offer || "",
+          companyName: page.companyName || "",
+          proofPoints: (page.proofPoints as string[] | null) || undefined,
+        },
+        landingPageUrl
+      );
+
+      const { buildBrandedEmailBody } = await import("./_core/emailBrandShell");
+      const theme = page.theme as any;
+      const ctaText = (page.sections as any[])?.find((s) => s.type === "hero")?.ctaText || "Learn More";
+      const bodyHtml = buildBrandedEmailBody({
+        bodyText: body,
+        logoUrl: page.logoUrl,
+        companyName: page.companyName,
+        primaryColor: theme.primary,
+        ctaColor: theme.cta,
+        ctaText,
+        ctaUrl: landingPageUrl,
+      });
+      await db.updateLandingPageEmail(id, { subject, bodyPlainText: body, bodyHtml });
+      return { subject, body, bodyHtml };
+    }),
+
+    renderHtml: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
+      const email = await db.getLandingPageEmailById(id);
+      if (!email) throw new TRPCError({ code: "NOT_FOUND" });
+      const page = await db.getLandingPageById(email.landingPageId);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const { wrapAsHtmlDocument } = await import("./_core/emailBrandShell");
+      return { html: wrapAsHtmlDocument(email.subject, email.bodyHtml) };
+    }),
+
+    // Bridges into the EXISTING campaignTemplates table/library -- this
+    // single-email shape fits it perfectly, so "Save Template" needs no new
+    // table of its own.
+    saveAsTemplate: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const email = await db.getLandingPageEmailById(id);
+      if (!email) throw new TRPCError({ code: "NOT_FOUND" });
+      const page = await db.getLandingPageById(email.landingPageId);
+      if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const templateId = await db.createCampaignTemplate({
+        userId: ctx.user.id,
+        name: `${page.name} - Email ${email.sequenceNumber}`,
+        subject: email.subject,
+        emailTemplate: email.bodyPlainText || email.bodyHtml,
+        emailType: "custom",
+        usageCount: 0,
+        followUpCount: 7,
+      } as any);
+      return { success: true, templateId };
+    }),
+  }),
+
+  media: router({
+    uploadImage: protectedProcedure
+      .input(z.object({ dataUrl: z.string().min(1), filename: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        const match = input.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "Expected a base64 data URL" });
+        const [, mimeType, base64] = match;
+        const buffer = Buffer.from(base64, "base64");
+        const { storagePut } = await import("./storage");
+        const { url } = await storagePut(`landing-pages/${input.filename}`, buffer, mimeType);
+        return { url };
       }),
   }),
 

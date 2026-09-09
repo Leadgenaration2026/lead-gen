@@ -272,6 +272,64 @@ export async function scheduleFollowUpEmails(
   }
 }
 
+// Schedules follow-up emails 2-8 of a generated landing-page campaign
+// (landingPageEmails, see the AI Landing Page + 8-Email Campaign Generator
+// feature) into the SAME followUpEmails table scheduleFollowUpEmails already
+// writes to -- identical row shape, so processScheduledFollowUpEmails (the
+// actual sender, further down this file) needs no changes at all to send
+// these. Email 1 (initial_outreach) isn't scheduled here -- it becomes the
+// campaign's own subject/emailTemplate at creation time
+// (landingPages.createCampaignFromSequence) and is sent by the normal
+// campaigns.launch flow, exactly like every other campaign's first email.
+// Renumbers landingPageEmails' 2-8 to followUpEmails' 1-7 so the existing
+// table's sequenceNumber semantics ("Nth follow-up after the initial email")
+// stay meaningful.
+export async function scheduleCampaignEmailsFromSequence(
+  campaignLeadId: number,
+  leadId: number,
+  landingPageId: number,
+  ctaLink: string
+) {
+  try {
+    const lead = await db.getLeadById(leadId);
+    if (!lead) return { success: false, emailsScheduled: 0 };
+
+    const allEmails = await db.getLandingPageEmailsByLandingPageId(landingPageId);
+    const followUps = allEmails
+      .filter((e: any) => e.sequenceNumber > 1)
+      .sort((a: any, b: any) => a.sequenceNumber - b.sequenceNumber);
+
+    const { substituteVariables } = await import("@shared/personalization");
+    const { SLOT_PURPOSE_TO_EMAIL_TYPE } = await import("./campaignGenerator");
+
+    for (const e of followUps) {
+      const scheduledDate = new Date();
+      scheduledDate.setDate(scheduledDate.getDate() + e.dayOffset);
+
+      const subject = substituteVariables(e.subject, lead, { ctaLink });
+      const emailBody = substituteVariables(e.bodyHtml, lead, { ctaLink });
+      const trackingToken = nanoid();
+
+      await db.createFollowUpEmail({
+        campaignLeadId,
+        sequenceNumber: e.sequenceNumber - 1,
+        emailType: SLOT_PURPOSE_TO_EMAIL_TYPE[e.slotPurpose] || "custom",
+        subject,
+        emailBody,
+        ctaLink,
+        status: "scheduled",
+        scheduledFor: scheduledDate,
+        trackingToken,
+      });
+    }
+
+    return { success: true, emailsScheduled: followUps.length };
+  } catch (error) {
+    console.error("[FollowUpScheduler] Error scheduling landing-page campaign emails:", error);
+    throw error;
+  }
+}
+
 /**
  * DISABLED: this used to auto-schedule the day-N fallback call cadence
  * (1, 3, 5... days out, independent of whether the lead ever engaged) the

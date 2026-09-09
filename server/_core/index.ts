@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerEmailTrackingRoutes } from "./emailTracking";
+import { registerPublicPageRoutes } from "./publicPages";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -47,6 +48,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerEmailTrackingRoutes(app);
+  registerPublicPageRoutes(app);
 
   // Scheduled email processor endpoint (called by heartbeat cron)
   // Processes: 1) Scheduled one-off emails, 2) Follow-up emails, 3) Follow-up calls
@@ -523,26 +525,43 @@ async function startServer() {
 
       // Schedule follow-ups (emails + fallback call cadence) for today's batch —
       // only for leads whose email actually sent, not ones skipped/failed above.
-      const { scheduleFollowUpEmails, scheduleFollowUpCalls } = await import("./followUpScheduler");
+      const { scheduleFollowUpEmails, scheduleFollowUpCalls, scheduleCampaignEmailsFromSequence } = await import("./followUpScheduler");
       const ctaLinkForFollowUp = settings?.ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min";
+      let landingPageCtaLinkForDailySend: string | null = null;
+      if ((campaign as any).landingPageId) {
+        const { buildPublicLandingPageUrl } = await import("./publicPages");
+        const linkedLandingPage = await db.getLandingPageById((campaign as any).landingPageId);
+        landingPageCtaLinkForDailySend = linkedLandingPage?.slug ? buildPublicLandingPageUrl(linkedLandingPage.slug) : ctaLinkForFollowUp;
+      }
       for (const campaignLead of toSendToday) {
         if (!successfullySentCampaignLeadIds.has(campaignLead.id)) continue;
         const lead = await db.getLeadById(campaignLead.leadId);
         if (lead) {
-          scheduleFollowUpEmails(
-            campaignLead.id,
-            lead.id,
-            lead.email,
-            lead.phoneNumber || '',
-            lead.ownerName,
-            lead.companyName,
-            lead.industry || 'business services',
-            ctaLinkForFollowUp,
-            campaign.userId,
-            (campaign as any).followUpCount ?? 7
-          ).catch((err: any) => {
-            console.error(`[Daily Send] Failed to schedule follow-ups for lead ${lead.id}:`, err);
-          });
+          if ((campaign as any).landingPageId) {
+            scheduleCampaignEmailsFromSequence(
+              campaignLead.id,
+              lead.id,
+              (campaign as any).landingPageId,
+              landingPageCtaLinkForDailySend || ctaLinkForFollowUp
+            ).catch((err: any) => {
+              console.error(`[Daily Send] Failed to schedule landing-page campaign emails for lead ${lead.id}:`, err);
+            });
+          } else {
+            scheduleFollowUpEmails(
+              campaignLead.id,
+              lead.id,
+              lead.email,
+              lead.phoneNumber || '',
+              lead.ownerName,
+              lead.companyName,
+              lead.industry || 'business services',
+              ctaLinkForFollowUp,
+              campaign.userId,
+              (campaign as any).followUpCount ?? 7
+            ).catch((err: any) => {
+              console.error(`[Daily Send] Failed to schedule follow-ups for lead ${lead.id}:`, err);
+            });
+          }
 
           if (lead.phoneNumber) {
             scheduleFollowUpCalls(campaignLead.id, lead.phoneNumber).catch((err: any) => {

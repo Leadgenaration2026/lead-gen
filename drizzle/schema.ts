@@ -127,7 +127,68 @@ export const campaigns = mysqlTable("campaigns", {
 	// Copied from the template at creation time (or defaults to 7) --
 	// scheduleFollowUpEmails uses this instead of a fixed 7 for every campaign.
 	followUpCount: int().default(7).notNull(),
+	// Set when this campaign was created from a generated landing page + 8-email
+	// sequence (landingPages.createCampaignFromSequence) -- NULL for every
+	// campaign created the normal way. Read at the same 3 call sites that
+	// schedule follow-ups to decide whether to schedule the pre-generated
+	// landingPageEmails sequence instead of the generic follow-up scheduler.
+	landingPageId: int(),
 });
+
+export const landingPages = mysqlTable("landingPages", {
+	id: int().autoincrement().notNull(),
+	userId: int().notNull(),
+	name: varchar({ length: 255 }).notNull(),
+	slug: varchar({ length: 255 }),
+	status: mysqlEnum(['draft','published']).default('draft').notNull(),
+	industry: varchar({ length: 100 }),
+	targetAudience: varchar({ length: 500 }),
+	offer: text(),
+	companyName: varchar({ length: 255 }),
+	logoUrl: varchar({ length: 2048 }),
+	// Real, user-supplied proof points (verified testimonial quotes, case
+	// study facts, stats) -- generation is instructed to use ONLY these and
+	// never invent its own; kept alongside the page so a later single-section
+	// or single-email regenerate still has them available.
+	proofPoints: json(),
+	// {primary,secondary,cta,background,text,accent}
+	theme: json().notNull(),
+	// Ordered array of section objects -- one JSON blob rather than a child
+	// table, so add/remove/duplicate/reorder is a single UPDATE.
+	sections: json().notNull(),
+	// The honest "closed-book synthesis, not a live competitor audit"
+	// disclosure sentence, stored so it's always shown, not just generated once.
+	researchNote: text(),
+	campaignId: int(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	publishedAt: timestamp({ mode: 'string' }),
+},
+(table) => [
+	index("landingPages_userId").on(table.userId),
+	index("landingPages_slug_unique").on(table.slug),
+]);
+
+export const landingPageEmails = mysqlTable("landingPageEmails", {
+	id: int().autoincrement().notNull(),
+	landingPageId: int().notNull(),
+	// 1-8, matching the user-facing "Email 1"..."Email 8" labeling. Email 1
+	// (initial_outreach) becomes the campaign's own subject/emailTemplate at
+	// createCampaignFromSequence time; 2-8 are scheduled into the existing
+	// followUpEmails table (renumbered 1-7 there) by scheduleCampaignEmailsFromSequence.
+	sequenceNumber: int().notNull(),
+	slotPurpose: varchar({ length: 50 }).notNull(),
+	subject: varchar({ length: 255 }).notNull(),
+	bodyHtml: text().notNull(),
+	bodyPlainText: text(),
+	dayOffset: int().notNull(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+},
+(table) => [
+	index("landingPageEmails_landingPageId").on(table.landingPageId),
+	index("landingPageEmails_lp_seq_unique").on(table.landingPageId, table.sequenceNumber),
+]);
 
 export const claudeApiUsage = mysqlTable("claudeApiUsage", {
 	id: int().autoincrement().notNull(),
