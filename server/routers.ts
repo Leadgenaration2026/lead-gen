@@ -2368,6 +2368,43 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         return { success: true, campaignId, scheduled: !!input.scheduledAt };
       }),
 
+    // Schedules an ALREADY-EXISTING draft campaign for later -- needed
+    // because landingPages.createCampaignFromSequence creates the campaign
+    // before the AI Agent wizard's schedule-choice step runs (the campaign
+    // has to exist first so its landing page + 8 emails can be reviewed),
+    // unlike the classic single-email path where campaigns.create and
+    // scheduling happen together. Same heartbeat-cron logic campaigns.create
+    // already uses for its own scheduledAt branch, just applied to a
+    // pre-existing campaign instead of a brand-new one.
+    scheduleExisting: protectedProcedure
+      .input(z.object({ campaignId: z.number(), scheduledAt: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        await db.updateCampaign(input.campaignId, { scheduledAt: new Date(input.scheduledAt).toISOString() } as any);
+        try {
+          const { parse: parseCookie } = await import("cookie");
+          const { COOKIE_NAME } = await import("@shared/const");
+          const { createHeartbeatJob } = await import("./_core/heartbeat");
+          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+          const scheduledDate = new Date(input.scheduledAt);
+          const cronExpression = `0 ${scheduledDate.getUTCMinutes()} ${scheduledDate.getUTCHours()} ${scheduledDate.getUTCDate()} ${scheduledDate.getUTCMonth() + 1} *`;
+          const job = await createHeartbeatJob({
+            name: `campaign-launch-${input.campaignId}`,
+            cron: cronExpression,
+            path: "/api/scheduled/launch-campaign",
+            payload: { campaignId: input.campaignId },
+            description: `Scheduled launch for campaign: ${campaign.name}`,
+          }, sessionToken);
+          await db.updateCampaign(input.campaignId, { scheduleCronTaskUid: job.taskUid } as any);
+        } catch (err: any) {
+          console.error("[campaigns.scheduleExisting] Failed to create heartbeat job:", err.message);
+        }
+        return { success: true };
+      }),
+
     update: protectedProcedure
       .input(z.object({
         id: z.number(),
@@ -2718,6 +2755,8 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           sentCount: (campaign.sentCount || 0) + sentCount,
         });
 
+        db.createPipelineEvent({ userId: ctx.user.id, eventType: "campaign_launched", campaignId, payload: { sentCount, remaining } }).catch(() => {});
+
         // If there are remaining leads and a daily limit is set, schedule a daily cron to continue sending
         if (remaining > 0 && dailyLimit) {
           try {
@@ -3057,6 +3096,33 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         }));
 
         return activityResults.filter((a): a is NonNullable<typeof a> => a !== null);
+      }),
+
+    // Scoped to what's mechanically checkable today (not the full spec's
+    // 20+ item list) -- see server/_core/preflightCheck.ts.
+    runPreflightCheck: protectedProcedure.input(z.number()).query(async ({ input: campaignId, ctx }) => {
+      const campaign = await db.getCampaignById(campaignId);
+      if (!campaign || campaign.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const { runPreflightCheck } = await import("./_core/preflightCheck");
+      const result = await runPreflightCheck(campaignId);
+      db.createPipelineEvent({
+        userId: ctx.user.id,
+        eventType: result.passed ? "preflight_passed" : "preflight_failed",
+        campaignId,
+        payload: { checks: result.checks },
+      }).catch(() => {});
+      return result;
+    }),
+  }),
+
+  // Lightweight audit log for the verify -> tag -> landing page -> emails ->
+  // pre-flight -> launch pipeline (server/_core/... call sites write to this
+  // via db.createPipelineEvent; this router is just the read surface).
+  pipelineEvents: router({
+    list: protectedProcedure
+      .input(z.object({ campaignId: z.number().optional(), limit: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        return db.listPipelineEvents(ctx.user.id, { campaignId: input?.campaignId, limit: input?.limit });
       }),
   }),
 
@@ -4786,6 +4852,7 @@ Respond in this exact JSON format:
 
         const landingPage = await db.getLandingPageById(landingPageId);
         const emails = await db.getLandingPageEmailsByLandingPageId(landingPageId);
+        db.createPipelineEvent({ userId: ctx.user.id, eventType: "landing_page_generated", landingPageId, payload: { name: input.name, industry: input.industry } }).catch(() => {});
         return { landingPageId, landingPage, emails };
       }),
 
@@ -4951,6 +5018,7 @@ Respond in this exact JSON format:
         }
         if (campaignId) {
           await db.updateLandingPage(input.landingPageId, { campaignId });
+          db.createPipelineEvent({ userId: ctx.user.id, eventType: "campaign_created_from_sequence", campaignId, landingPageId: input.landingPageId, payload: { leadCount: input.leadIds.length } }).catch(() => {});
         }
         return { campaignId };
       }),
@@ -5413,6 +5481,9 @@ Respond in this exact JSON format:
           }
         }
         await db.assignLeadsToSet(input.leadIds, input.leadSetId);
+        if (input.leadSetId !== null) {
+          db.createPipelineEvent({ userId: ctx.user.id, eventType: "tag_assigned", payload: { leadSetId: input.leadSetId, count: input.leadIds.length } }).catch(() => {});
+        }
         return { success: true, count: input.leadIds.length };
       }),
 
@@ -6574,6 +6645,138 @@ Use the website data to:
           },
           dashboardUrl: "https://app.usebouncer.com",
         };
+      }),
+
+    // Background verification job -- in-house by default (no API key
+    // needed), automatically cross-checked by Bouncer on top when the user
+    // has one configured (see server/_core/emailVerification.ts). Additive:
+    // the synchronous verifyEmails above is untouched and keeps working for
+    // existing callers (Leads.tsx, CampaignsList.tsx).
+    startJob: protectedProcedure
+      .input(z.object({
+        campaignId: z.string().optional(),
+        leadIds: z.array(z.string()).optional(),
+        emails: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Same three-branch resolution verifyEmails already uses.
+        let emailsToVerify: { email: string; leadId?: number }[] = [];
+        let sourceType: "campaign" | "leadIds" | "emails" = "emails";
+        if (input.emails && input.emails.length > 0) {
+          emailsToVerify = input.emails.map((e) => ({ email: e }));
+          sourceType = "emails";
+        } else if (input.campaignId) {
+          sourceType = "campaign";
+          const cls = await db.getCampaignLeads(Number(input.campaignId));
+          for (const cl of cls) {
+            const lead = await db.getLeadById(cl.leadId);
+            if (lead?.email) emailsToVerify.push({ email: lead.email, leadId: lead.id });
+          }
+        } else if (input.leadIds && input.leadIds.length > 0) {
+          sourceType = "leadIds";
+          for (const leadId of input.leadIds) {
+            const lead = await db.getLeadById(Number(leadId));
+            if (lead?.email) emailsToVerify.push({ email: lead.email, leadId: lead.id });
+          }
+        }
+
+        if (emailsToVerify.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No emails to verify" });
+        }
+
+        // Resumable dedup: skip emails already verified by a recent job
+        // (within 24h) so a retry after a failure doesn't re-verify or
+        // re-spend Bouncer credits.
+        const alreadyVerified = await db.getAlreadyVerifiedEmailSet(emailsToVerify.map((e) => e.email), 24);
+        const toVerify = emailsToVerify.filter((e) => !alreadyVerified.has(e.email));
+        if (toVerify.length === 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `All ${emailsToVerify.length} email(s) were already verified in the last 24 hours. Use "Re-verify Selected" to force a re-check.` });
+        }
+
+        const settings = await db.getUserSettings(ctx.user.id);
+        const bouncerApiKey = settings?.bouncerApiKey || null;
+
+        // Best-effort credit pre-check, same as verifyEmails -- only
+        // relevant when a Bouncer key is configured (in-house verification
+        // has no credit concept).
+        if (bouncerApiKey) {
+          try {
+            const { getCreditsBalance } = await import("./bouncer");
+            const credits = await getCreditsBalance(bouncerApiKey);
+            if (credits < toVerify.length) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: `Insufficient Bouncer credits for the deeper cross-check. Need up to ${toVerify.length}, have ${credits}. Verification will still run in-house only if you continue.` });
+            }
+          } catch (e: any) {
+            if (e.code === "BAD_REQUEST") throw e;
+          }
+        }
+
+        const jobId = `verify-${ctx.user.id}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+        await db.createEmailVerificationJob({
+          jobId,
+          userId: ctx.user.id,
+          status: "pending",
+          mode: bouncerApiKey ? "in_house+bouncer" : "in_house",
+          totalEmails: toVerify.length,
+          sourceType,
+          sourceCampaignId: input.campaignId ? Number(input.campaignId) : null,
+        });
+
+        await db.createPipelineEvent({ userId: ctx.user.id, eventType: "verification_started", payload: { jobId, total: toVerify.length, mode: bouncerApiKey ? "in_house+bouncer" : "in_house" } });
+
+        const { runVerificationJob } = await import("./_core/emailVerification");
+        runVerificationJob({
+          userId: ctx.user.id,
+          jobId,
+          emailsToVerify: toVerify,
+          sourceType,
+          sourceCampaignId: input.campaignId ? Number(input.campaignId) : undefined,
+          bouncerApiKey,
+        }).catch((error: any) => {
+          console.error(`[verification.startJob] Job ${jobId} crashed:`, error);
+        });
+
+        return { jobId, totalToVerify: toVerify.length, skippedAlreadyVerified: emailsToVerify.length - toVerify.length };
+      }),
+
+    getJobStatus: protectedProcedure.input(z.object({ jobId: z.string() })).query(async ({ ctx, input }) => {
+      const job = await db.getEmailVerificationJobByJobId(input.jobId);
+      if (!job || job.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      return job;
+    }),
+
+    listJobs: protectedProcedure.query(async ({ ctx }) => {
+      return db.listEmailVerificationJobsByUser(ctx.user.id);
+    }),
+
+    listResults: protectedProcedure
+      .input(z.object({ jobId: z.string().optional(), status: z.enum(["valid", "invalid", "catch_all", "role_based", "disposable", "unknown"]).optional(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return db.listEmailVerificationResults({ jobId: input.jobId, status: input.status, limit: input.limit });
+      }),
+
+    reverifySelected: protectedProcedure
+      .input(z.object({ leadIds: z.array(z.number()).min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const leadRows = await Promise.all(input.leadIds.map((id) => db.getLeadById(id)));
+        const emailsToVerify = leadRows.filter((l: any) => l?.email).map((l: any) => ({ email: l.email, leadId: l.id }));
+        if (emailsToVerify.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No valid leads to re-verify" });
+
+        const settings = await db.getUserSettings(ctx.user.id);
+        const bouncerApiKey = settings?.bouncerApiKey || null;
+        const jobId = `reverify-${ctx.user.id}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+        await db.createEmailVerificationJob({
+          jobId, userId: ctx.user.id, status: "pending", mode: bouncerApiKey ? "in_house+bouncer" : "in_house",
+          totalEmails: emailsToVerify.length, sourceType: "leadIds",
+        });
+
+        const { runVerificationJob } = await import("./_core/emailVerification");
+        // Explicit user override -- bypasses the 24h dedup skip intentionally.
+        runVerificationJob({ userId: ctx.user.id, jobId, emailsToVerify, sourceType: "leadIds", bouncerApiKey }).catch((error: any) => {
+          console.error(`[verification.reverifySelected] Job ${jobId} crashed:`, error);
+        });
+
+        return { jobId, totalToVerify: emailsToVerify.length };
       }),
   }),
 

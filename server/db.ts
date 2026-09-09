@@ -1427,6 +1427,179 @@ export async function updateLandingPageEmail(id: number, data: any) {
   return database.update(landingPageEmails).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(landingPageEmails.id, id));
 }
 
+// ============ Email Verification (in-house + optional Bouncer cross-check) ============
+// Background job row + append-only history, created lazily like landingPages
+// above -- no migration pipeline in this deployment.
+let emailVerificationTablesReady = false;
+async function ensureEmailVerificationTables(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (emailVerificationTablesReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS emailVerificationJobs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      jobId VARCHAR(255) NOT NULL,
+      userId INT NOT NULL,
+      status ENUM('pending','in_progress','completed','failed') NOT NULL DEFAULT 'pending',
+      mode VARCHAR(30) NOT NULL DEFAULT 'in_house',
+      totalEmails INT NOT NULL,
+      processedCount INT NOT NULL DEFAULT 0,
+      validCount INT NOT NULL DEFAULT 0,
+      invalidCount INT NOT NULL DEFAULT 0,
+      catchAllCount INT NOT NULL DEFAULT 0,
+      roleBasedCount INT NOT NULL DEFAULT 0,
+      disposableCount INT NOT NULL DEFAULT 0,
+      unknownCount INT NOT NULL DEFAULT 0,
+      sourceType ENUM('campaign','leadIds','emails') NOT NULL,
+      sourceCampaignId INT NULL,
+      errorMessage TEXT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+      completedAt TIMESTAMP NULL,
+      INDEX emailVerificationJobs_userId (userId),
+      UNIQUE INDEX emailVerificationJobs_jobId_unique (jobId)
+    )
+  `);
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS emailVerificationResults (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      jobId VARCHAR(255) NOT NULL,
+      leadId INT NULL,
+      email VARCHAR(320) NOT NULL,
+      provider VARCHAR(30) NOT NULL,
+      rawStatus VARCHAR(50) NOT NULL,
+      normalizedStatus ENUM('valid','invalid','catch_all','role_based','disposable','unknown') NOT NULL,
+      score INT NULL,
+      reason TEXT NULL,
+      shouldSend TINYINT NOT NULL DEFAULT 0,
+      verifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      INDEX emailVerificationResults_jobId (jobId),
+      INDEX emailVerificationResults_leadId (leadId),
+      INDEX emailVerificationResults_email (email)
+    )
+  `);
+  emailVerificationTablesReady = true;
+}
+
+export async function createEmailVerificationJob(data: any): Promise<number | null> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationJobs } = await import("../drizzle/schema");
+  const result: any = await database.insert(emailVerificationJobs).values(convertToDbFormat(data));
+  return Number(result?.[0]?.insertId ?? result?.insertId) || null;
+}
+
+export async function updateEmailVerificationJob(jobId: string, data: any) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationJobs } = await import("../drizzle/schema");
+  await database.update(emailVerificationJobs).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(emailVerificationJobs.jobId, jobId));
+}
+
+export async function getEmailVerificationJobByJobId(jobId: string): Promise<any> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationJobs } = await import("../drizzle/schema");
+  const rows = await database.select().from(emailVerificationJobs).where(eq(emailVerificationJobs.jobId, jobId)).limit(1);
+  return rows[0] || null;
+}
+
+export async function listEmailVerificationJobsByUser(userId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationJobs } = await import("../drizzle/schema");
+  return database.select().from(emailVerificationJobs).where(eq(emailVerificationJobs.userId, userId)).orderBy(desc(emailVerificationJobs.createdAt)).limit(50);
+}
+
+export async function insertEmailVerificationResult(data: any) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationResults } = await import("../drizzle/schema");
+  await database.insert(emailVerificationResults).values(convertToDbFormat(data));
+}
+
+export async function listEmailVerificationResults(params: { jobId?: string; leadIds?: number[]; status?: string; limit?: number; offset?: number }): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationResults } = await import("../drizzle/schema");
+  const conditions = [];
+  if (params.jobId) conditions.push(eq(emailVerificationResults.jobId, params.jobId));
+  if (params.leadIds?.length) conditions.push(inArray(emailVerificationResults.leadId, params.leadIds));
+  if (params.status) conditions.push(eq(emailVerificationResults.normalizedStatus, params.status as any));
+  let query = database.select().from(emailVerificationResults).where(conditions.length ? and(...conditions) : undefined) as any;
+  query = query.orderBy(desc(emailVerificationResults.verifiedAt)).limit(params.limit || 200);
+  if (params.offset) query = query.offset(params.offset);
+  return query;
+}
+
+// Dedup lookup for verification.startJob's "resumable" behavior -- returns
+// the set of emails that already have a terminal (non-error) result within
+// the given window, so a retry after a mid-job failure doesn't re-verify or
+// re-spend Bouncer credits on leads already verified by a recent job.
+export async function getAlreadyVerifiedEmailSet(emails: string[], sinceHoursAgo: number): Promise<Set<string>> {
+  const database = await getDb();
+  if (!database || emails.length === 0) return new Set();
+  await ensureEmailVerificationTables(database);
+  const { emailVerificationResults } = await import("../drizzle/schema");
+  const since = new Date(Date.now() - sinceHoursAgo * 60 * 60 * 1000).toISOString();
+  const rows = await database
+    .select({ email: emailVerificationResults.email })
+    .from(emailVerificationResults)
+    .where(and(inArray(emailVerificationResults.email, emails), gte(emailVerificationResults.verifiedAt, since)));
+  return new Set(rows.map((r: any) => r.email));
+}
+
+// ============ Pipeline audit log ============
+let pipelineEventsTableReady = false;
+async function ensurePipelineEventsTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (pipelineEventsTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS pipelineEvents (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      eventType ENUM(
+        'leads_generated','verification_started','verification_completed',
+        'tag_assigned','landing_page_generated','campaign_created_from_sequence',
+        'preflight_passed','preflight_failed','campaign_launched'
+      ) NOT NULL,
+      campaignId INT NULL,
+      landingPageId INT NULL,
+      payload JSON NULL,
+      errorMessage TEXT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      INDEX pipelineEvents_userId (userId),
+      INDEX pipelineEvents_campaignId (campaignId)
+    )
+  `);
+  pipelineEventsTableReady = true;
+}
+
+export async function createPipelineEvent(data: any) {
+  const database = await getDb();
+  if (!database) return;
+  try {
+    await ensurePipelineEventsTable(database);
+    const { pipelineEvents } = await import("../drizzle/schema");
+    await database.insert(pipelineEvents).values(convertToDbFormat(data));
+  } catch (error) {
+    console.error("[createPipelineEvent] Failed:", error);
+  }
+}
+
+export async function listPipelineEvents(userId: number, params: { campaignId?: number; limit?: number } = {}): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensurePipelineEventsTable(database);
+  const { pipelineEvents } = await import("../drizzle/schema");
+  const conditions = [eq(pipelineEvents.userId, userId)];
+  if (params.campaignId) conditions.push(eq(pipelineEvents.campaignId, params.campaignId));
+  return database.select().from(pipelineEvents).where(and(...conditions)).orderBy(desc(pipelineEvents.createdAt)).limit(params.limit || 100);
+}
+
 // Archive of hard-deleted leads, so "Delete List"/"Delete Tag" (below) can
 // actually remove leads (needed so Seamless dedup stops blocking them, see
 // archiveAndDeleteLeadsByTag/BySourceList) without the deletion being a true

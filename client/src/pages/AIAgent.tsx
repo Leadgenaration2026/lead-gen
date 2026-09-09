@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
+import { TagPicker } from "@/components/TagPicker";
 import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X } from "lucide-react";
 
 // Same fixed value lists the Leads page uses for these same selects (Leads.tsx
@@ -94,6 +95,14 @@ type Step =
   | "resumeConfirm"
   | "location" | "companySize" | "industry" | "jobTitles" | "otherCriteria" | "count" | "leadSetName"
   | "searchingLeads"
+  | "outreachMode"
+  // AI landing page + verified 8-email pipeline (the "MASTER IMPLEMENTATION
+  // INSTRUCTION" flow: verify -> tag gate -> auto-continue -> landing page +
+  // 8 emails -> pre-flight -> launch gate). Branches off after leads are
+  // saved, alongside the pre-existing "classic single email" steps below,
+  // which stay completely unchanged for that path.
+  | "verifyingEmails" | "verificationSummary" | "tagAssignment"
+  | "offerPrompt" | "buildingLandingPage" | "sequenceReview" | "preflightCheck"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
   | "followUpCount" | "generatingFollowUpPreview" | "followUpPreview" | "templateName" | "savingTemplate"
   | "scheduleChoice" | "scheduleDatetime" | "campaignName"
@@ -147,6 +156,13 @@ interface WizardData {
   scheduledAt: string; // datetime-local value
   campaignName: string;
   campaignId: number | null;
+  // AI landing page + verified 8-email pipeline fields
+  pipelineMode: "classic" | "landing_page" | null;
+  verificationJobId: string | null;
+  verifiedLeadIds: number[]; // leads whose normalizedStatus came back "valid"
+  verifiedLeadSetId: number | null; // the TAG assigned via the approval gate (distinct from leadSetId, the source list)
+  generatedLandingPageId: number | null;
+  preflightPassed: boolean;
 }
 
 const DEFAULTS: WizardData = {
@@ -154,6 +170,8 @@ const DEFAULTS: WizardData = {
   industries: [], jobTitles: [], otherCriteria: "", criteria: "", count: 25,
   leadSetName: "", resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0,
   usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
+  pipelineMode: null, verificationJobId: null, verifiedLeadIds: [], verifiedLeadSetId: null,
+  generatedLandingPageId: null, preflightPassed: false,
   sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
   emailPrompt: "", subject: "", body: "", followUpCount: 7, followUpPreviews: [], templateName: "", templateId: null,
   scheduleNow: true, scheduledAt: "", campaignName: "", campaignId: null,
@@ -197,6 +215,18 @@ export default function AIAgentPage() {
   );
   const createSeamlessSearchMutation = trpc.seamlessSearches.create.useMutation();
   const updateSeamlessSearchProgressMutation = trpc.seamlessSearches.updateProgress.useMutation();
+
+  // AI landing page + verified 8-email pipeline mutations
+  const startVerificationMutation = trpc.verification.startJob.useMutation();
+  const [pollingVerificationJobId, setPollingVerificationJobId] = useState<string | null>(null);
+  const verificationJobStatusQuery = trpc.verification.getJobStatus.useQuery(
+    { jobId: pollingVerificationJobId as string },
+    { enabled: !!pollingVerificationJobId, refetchInterval: (query) => (query.state.data?.status === "in_progress" || query.state.data?.status === "pending" ? 1500 : false) }
+  );
+  const generateLandingPageMutation = trpc.landingPages.generate.useMutation();
+  const createCampaignFromSequenceMutation = trpc.landingPages.createCampaignFromSequence.useMutation();
+  const scheduleExistingCampaignMutation = trpc.campaigns.scheduleExisting.useMutation();
+  const updateCampaignMutation = trpc.campaigns.update.useMutation();
 
   const nextId = () => ++idCounter.current;
   const addAgent = (text?: string, content?: ReactNode) => {
@@ -515,13 +545,189 @@ export default function AIAgentPage() {
           <p className="text-sm">{resolvedSummary || "Leads saved."} They're filed under a new list you can see on the Leads page.</p>
         </div>
       );
-      addAgent("Now let's write the email. What should it say -- your value proposition, what you're offering, or the angle you want to take?");
-      setStep("emailPrompt");
+      addAgent(
+        "How do you want to reach these leads?\n\n1. Build a full landing page + verified 8-email campaign (recommended) -- I'll verify every email address, ask which tag to file the verified ones under, then research the market, design a landing page, and write all 8 emails.\n2. Just write one email the classic way -- no landing page, no verification gate."
+      );
+      setStep("outreachMode");
     } catch (error: any) {
       setBusy(false);
       addAgent(`I ran into a problem finding leads: ${error?.message || "unknown error"}. Want to try again, or adjust the criteria?`);
       setStep("industry");
     }
+  };
+
+  // ---- Outreach mode branch: landing page + verified pipeline, or classic single email ----
+  const submitOutreachMode = (mode: "landing_page" | "classic") => {
+    setData((d) => ({ ...d, pipelineMode: mode }));
+    if (mode === "classic") {
+      addUser("Just write one email the classic way");
+      addAgent("Now let's write the email. What should it say -- your value proposition, what you're offering, or the angle you want to take?");
+      setStep("emailPrompt");
+      return;
+    }
+    addUser("Build a full landing page + verified 8-email campaign");
+    runVerification();
+  };
+
+  const runVerification = async () => {
+    setStep("verifyingEmails");
+    setBusy(true);
+    addAgent("Verifying email addresses (in-house checks, plus a Bouncer cross-check if you have one configured)...");
+    try {
+      const result = await startVerificationMutation.mutateAsync({ leadIds: data.leadIds.map(String) });
+      setData((d) => ({ ...d, verificationJobId: result.jobId }));
+      setPollingVerificationJobId(result.jobId);
+      setBusy(false);
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`I couldn't start verification: ${error?.message || "unknown error"}. Want to try again, or use the classic single-email flow instead?`);
+      setStep("outreachMode");
+    }
+  };
+
+  // Fires when the polled verification job (see verificationJobStatusQuery
+  // below) reaches a terminal state -- this can't be inline in
+  // runVerification() since the job runs server-side, fire-and-forget, and
+  // this component only learns about its progress via polling.
+  const handleVerificationSettled = async (job: any) => {
+    setPollingVerificationJobId(null);
+    if (job.status === "failed") {
+      addAgent(`Verification failed: ${job.errorMessage || "unknown error"}. Want to try again, or use the classic flow instead?`);
+      setStep("outreachMode");
+      return;
+    }
+    addAgent(
+      undefined,
+      <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
+        <div><strong>{job.validCount}</strong> Valid</div>
+        <div><strong>{job.invalidCount}</strong> Invalid</div>
+        <div><strong>{job.catchAllCount}</strong> Catch-All</div>
+        <div><strong>{job.roleBasedCount}</strong> Role-Based</div>
+        <div><strong>{job.disposableCount}</strong> Disposable</div>
+        <div><strong>{job.unknownCount}</strong> Unknown</div>
+      </div>
+    );
+    const results = await utils.verification.listResults.fetch({ jobId: job.jobId, status: "valid", limit: 1000 });
+    const validLeadIds = (results || []).map((r: any) => r.leadId).filter((id: any): id is number => typeof id === "number");
+    setData((d) => ({ ...d, verifiedLeadIds: validLeadIds }));
+    if (validLeadIds.length === 0) {
+      addAgent("None of these leads came back valid, so there's nothing to tag or build a campaign for yet. Want to try different criteria?");
+      setStep("outreachMode");
+      return;
+    }
+    addAgent(`${validLeadIds.length} valid lead(s) ready. Which tag should they go to?`);
+    setStep("tagAssignment");
+  };
+
+  // Fires once the polled verification job (verificationJobStatusQuery,
+  // driven by pollingVerificationJobId) reaches a terminal state.
+  useEffect(() => {
+    const job = verificationJobStatusQuery.data;
+    if (!job || !pollingVerificationJobId) return;
+    if (job.status === "completed" || job.status === "failed") {
+      handleVerificationSettled(job);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verificationJobStatusQuery.data]);
+
+  const handleTagConfirmed = (leadSetId: number, tagName: string) => {
+    addUser(`Assign to "${tagName}"`);
+    setData((d) => ({ ...d, verifiedLeadSetId: leadSetId }));
+    addAgent(`${data.verifiedLeadIds.length} lead(s) assigned to "${tagName}".\n\nNow, what's your offer -- your value proposition, what you're offering, or the angle you want to take?`);
+    setStep("offerPrompt");
+  };
+
+  const submitOfferPrompt = async (text: string) => {
+    if (!text.trim()) return;
+    setData((d) => ({ ...d, emailPrompt: text.trim() }));
+    addUser(text.trim());
+    setTextInput("");
+    await runLandingPageGeneration(text.trim());
+  };
+
+  const runLandingPageGeneration = async (offer: string) => {
+    setStep("buildingLandingPage");
+    setBusy(true);
+    addAgent("Researching the market, designing a landing page, and writing all 8 emails -- this takes a minute...");
+    try {
+      const industry = data.industries.join(", ") || data.otherCriteria || "general business";
+      const pageResult = await generateLandingPageMutation.mutateAsync({
+        name: `${data.leadSetName || data.criteria.slice(0, 40) || "AI Agent"} Landing Page`,
+        industry,
+        targetAudience: data.criteria || "business decision-makers",
+        offer,
+      });
+      const landingPageId = pageResult.landingPageId;
+      setData((d) => ({ ...d, generatedLandingPageId: landingPageId }));
+
+      const campaignResult = await createCampaignFromSequenceMutation.mutateAsync({
+        landingPageId,
+        campaignName: data.leadSetName || `${industry} Campaign`,
+        leadIds: data.verifiedLeadIds,
+      });
+      const campaignId = (campaignResult as any).campaignId;
+      if (!campaignId) throw new Error("Campaign creation did not return an id");
+      setData((d) => ({ ...d, campaignId }));
+
+      const emails = await utils.landingPageEmails.list.fetch(landingPageId);
+      setBusy(false);
+      addAgent(
+        undefined,
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{(pageResult.landingPage as any)?.name}</p>
+          {(pageResult.landingPage as any)?.researchNote && (
+            <p className="text-xs text-muted-foreground italic">{(pageResult.landingPage as any).researchNote}</p>
+          )}
+          <div className="space-y-1">
+            {(emails || []).map((e: any) => (
+              <p key={e.id} className="text-xs"><strong>Email {e.sequenceNumber}:</strong> {e.subject}</p>
+            ))}
+          </div>
+        </div>
+      );
+      addAgent("Here's the generated landing page and 8-email sequence. Continue to the pre-flight check, or edit it first from the Landing Pages page.");
+      setStep("sequenceReview");
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`I ran into a problem building the landing page/campaign: ${error?.message || "unknown error"}. Want to try again?`);
+      setStep("offerPrompt");
+    }
+  };
+
+  const continueFromSequenceReview = () => {
+    addUser("Looks good, continue");
+    runPreflightCheckStep();
+  };
+
+  const runPreflightCheckStep = async () => {
+    setStep("preflightCheck");
+    setBusy(true);
+    addAgent("Running a pre-flight check...");
+    try {
+      const result = await utils.campaigns.runPreflightCheck.fetch(data.campaignId as number);
+      setBusy(false);
+      addAgent(
+        undefined,
+        <div className="space-y-1">
+          {result.checks.map((c: any) => (
+            <p key={c.name} className={`text-xs ${c.status === "pass" ? "text-green-600" : "text-red-600"}`}>
+              {c.status === "pass" ? "✓" : "✗"} <strong>{c.name}:</strong> {c.message}
+            </p>
+          ))}
+        </div>
+      );
+      setData((d) => ({ ...d, preflightPassed: result.passed }));
+      addAgent(result.passed ? "Everything checks out. Approve to continue to scheduling?" : "Some checks failed -- fix the issues above (e.g. from the Landing Pages page or Settings), then come back and re-run the check.");
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`Pre-flight check failed to run: ${error?.message || "unknown error"}.`);
+    }
+  };
+
+  const approvePreflight = () => {
+    addUser("Approve & continue");
+    addAgent("Last step: when should this campaign send -- now, or later?");
+    setStep("scheduleChoice");
   };
 
   // ---- Step 6: email prompt ----
@@ -678,11 +884,17 @@ export default function AIAgentPage() {
   };
 
   // ---- Step 10: campaign name -> summary ----
-  const submitCampaignName = (text: string) => {
+  const submitCampaignName = async (text: string) => {
     const name = text.trim() || data.templateName || data.leadSetName || "AI Agent Campaign";
     setData((d) => ({ ...d, campaignName: name }));
     addUser(name);
     setTextInput("");
+    // The landing-page pipeline's campaign already exists (created during
+    // buildingLandingPage with a placeholder name) -- keep it in sync with
+    // whatever the user actually types here.
+    if (data.pipelineMode === "landing_page" && data.campaignId) {
+      updateCampaignMutation.mutateAsync({ id: data.campaignId, data: { name } }).catch(() => {});
+    }
     addAgent(
       undefined,
       <SummaryCard data={{ ...data, campaignName: name }} />
@@ -696,31 +908,44 @@ export default function AIAgentPage() {
     addUser("Confirm & launch");
     setStep("launching");
     setBusy(true);
-    addAgent("Creating the campaign...");
+    const isLandingPagePipeline = data.pipelineMode === "landing_page";
+    addAgent(isLandingPagePipeline ? "Finalizing the campaign..." : "Creating the campaign...");
     try {
-      const createResult = await createCampaignMutation.mutateAsync({
-        name: data.campaignName,
-        subject: data.subject,
-        emailTemplate: data.body,
-        leadIds: data.leadIds,
-        templateId: data.templateId || undefined,
-        scheduledAt: data.scheduleNow ? undefined : new Date(data.scheduledAt).toISOString(),
-      });
-      const campaignId = (createResult as any).campaignId;
-      setData((d) => ({ ...d, campaignId }));
+      let campaignId = data.campaignId;
+      if (isLandingPagePipeline && campaignId) {
+        // The campaign already exists -- created during buildingLandingPage
+        // via landingPages.createCampaignFromSequence, before the schedule
+        // choice was even asked. Just schedule it if needed; launch below
+        // is the same call either way.
+        if (!data.scheduleNow) {
+          await scheduleExistingCampaignMutation.mutateAsync({ campaignId, scheduledAt: new Date(data.scheduledAt).toISOString() });
+        }
+      } else {
+        const createResult = await createCampaignMutation.mutateAsync({
+          name: data.campaignName,
+          subject: data.subject,
+          emailTemplate: data.body,
+          leadIds: data.leadIds,
+          templateId: data.templateId || undefined,
+          scheduledAt: data.scheduleNow ? undefined : new Date(data.scheduledAt).toISOString(),
+        });
+        campaignId = (createResult as any).campaignId;
+        setData((d) => ({ ...d, campaignId }));
+      }
 
-      if (data.scheduleNow) {
+      const sentToCount = isLandingPagePipeline ? data.verifiedLeadIds.length : data.leadIds.length;
+      if (data.scheduleNow && campaignId) {
         await launchCampaignMutation.mutateAsync(campaignId);
         setBusy(false);
-        addAgent(`Done! The campaign is launched -- emails are going out to ${data.leadIds.length} lead(s) now, with ${data.followUpCount} follow-up(s) scheduled after that.`);
+        addAgent(`Done! The campaign is launched -- emails are going out to ${sentToCount} lead(s) now, with follow-ups scheduled after that.`);
       } else {
         setBusy(false);
-        addAgent(`Done! The campaign is scheduled to launch at ${new Date(data.scheduledAt).toLocaleString()}, sending to ${data.leadIds.length} lead(s) with ${data.followUpCount} follow-up(s) after that.`);
+        addAgent(`Done! The campaign is scheduled to launch at ${new Date(data.scheduledAt).toLocaleString()}, sending to ${sentToCount} lead(s).`);
       }
       setStep("done");
     } catch (error: any) {
       setBusy(false);
-      addAgent(`I couldn't create the campaign: ${error?.message || "unknown error"}. Want to try again?`);
+      addAgent(`I couldn't finalize the campaign: ${error?.message || "unknown error"}. Want to try again?`);
       setStep("summary");
     }
   };
@@ -731,6 +956,7 @@ export default function AIAgentPage() {
     setStep("location");
     setTextInput("");
     setFilterText("");
+    setPollingVerificationJobId(null);
     setBusy(false);
     idCounter.current = 0;
     setTimeout(() => addAgent("Let's set up another campaign. What location are you targeting?"), 0);
@@ -784,6 +1010,81 @@ export default function AIAgentPage() {
             >
               Start Fresh Instead
             </Button>
+          </div>
+        );
+
+      case "outreachMode":
+        return (
+          <div className="flex flex-wrap gap-2 p-4 border-t">
+            <Button size="sm" className="gap-1.5" onClick={() => submitOutreachMode("landing_page")}>
+              <Sparkles className="w-3.5 h-3.5" /> Landing Page + Verified 8-Email Campaign
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => submitOutreachMode("classic")}>
+              Just One Email (Classic)
+            </Button>
+          </div>
+        );
+
+      case "verifyingEmails": {
+        const job = verificationJobStatusQuery.data as any;
+        const processed = job?.processedCount || 0;
+        const total = job?.totalEmails || data.leadIds.length;
+        return (
+          <div className="p-4 border-t space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Verifying emails...</span>
+              <span>{processed} / {total}</span>
+            </div>
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-primary transition-all" style={{ width: `${total ? Math.min(100, (processed / total) * 100) : 0}%` }} />
+            </div>
+          </div>
+        );
+      }
+
+      case "verificationSummary":
+        return (
+          <div className="p-4 border-t">
+            <Button size="sm" onClick={() => { addUser("Continue"); setStep("tagAssignment"); }} className="gap-1.5">
+              Continue <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        );
+
+      case "tagAssignment":
+        return (
+          <div className="p-4 border-t">
+            <TagPicker leadIds={data.verifiedLeadIds} recommendedName={data.leadSetName || undefined} onConfirm={handleTagConfirmed} />
+          </div>
+        );
+
+      case "offerPrompt":
+        return renderTextInputArea(submitOfferPrompt, "Type your answer...");
+
+      case "sequenceReview":
+        return (
+          <div className="flex flex-wrap gap-2 p-4 border-t">
+            <Button size="sm" onClick={continueFromSequenceReview} className="gap-1.5">
+              <Check className="w-3.5 h-3.5" /> Looks good, continue
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => window.open(`/landing-pages/${data.generatedLandingPageId}`, "_blank")}>
+              Let Me Edit It First
+            </Button>
+          </div>
+        );
+
+      case "preflightCheck":
+        return (
+          <div className="p-4 border-t">
+            {data.preflightPassed ? (
+              <Button size="sm" onClick={approvePreflight} className="gap-1.5">
+                <Check className="w-3.5 h-3.5" /> Approve & Continue to Scheduling
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={runPreflightCheckStep} className="gap-1.5">
+                <RotateCcw className="w-3.5 h-3.5" /> Re-run Check
+              </Button>
+            )}
           </div>
         );
 
@@ -1094,13 +1395,26 @@ function FollowUpPreviewList({
 }
 
 function SummaryCard({ data }: { data: WizardData }) {
+  const isLandingPagePipeline = data.pipelineMode === "landing_page";
   return (
     <Card className="border-primary/30">
       <CardContent className="pt-4 space-y-1.5 text-sm">
         <p><strong>Campaign:</strong> {data.campaignName}</p>
-        <p><strong>Leads:</strong> {data.leadIds.length} ({data.usedSeamless ? "Seamless.AI" : "AI generated"})</p>
-        <p><strong>Template:</strong> {data.templateName}</p>
-        <p><strong>Follow-ups:</strong> {data.followUpCount}</p>
+        <p>
+          <strong>Leads:</strong> {isLandingPagePipeline ? data.verifiedLeadIds.length : data.leadIds.length}{" "}
+          ({isLandingPagePipeline ? "verified" : data.usedSeamless ? "Seamless.AI" : "AI generated"})
+        </p>
+        {isLandingPagePipeline ? (
+          <>
+            <p><strong>Landing page:</strong> Ready</p>
+            <p><strong>Emails:</strong> 8 (1 initial + 7 follow-ups)</p>
+          </>
+        ) : (
+          <>
+            <p><strong>Template:</strong> {data.templateName}</p>
+            <p><strong>Follow-ups:</strong> {data.followUpCount}</p>
+          </>
+        )}
         <p><strong>Launch:</strong> {data.scheduleNow ? "Immediately" : new Date(data.scheduledAt).toLocaleString()}</p>
         <Badge variant="outline" className="mt-1">Ready to go</Badge>
       </CardContent>

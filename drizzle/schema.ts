@@ -190,6 +190,81 @@ export const landingPageEmails = mysqlTable("landingPageEmails", {
 	index("landingPageEmails_lp_seq_unique").on(table.landingPageId, table.sequenceNumber),
 ]);
 
+// One row per bulk email-verification run (in-house engine, optionally
+// cross-checked by Bouncer when a key is configured -- see
+// server/_core/emailVerification.ts). Modeled on enrichmentJobs' shape.
+export const emailVerificationJobs = mysqlTable("emailVerificationJobs", {
+	id: int().autoincrement().notNull(),
+	jobId: varchar({ length: 255 }).notNull(),
+	userId: int().notNull(),
+	status: mysqlEnum(['pending','in_progress','completed','failed']).default('pending').notNull(),
+	// "in_house" or "in_house+bouncer", set at start based on whether a
+	// Bouncer key was configured -- informational, not a provider selector.
+	mode: varchar({ length: 30 }).default('in_house').notNull(),
+	totalEmails: int().notNull(),
+	processedCount: int().default(0).notNull(),
+	validCount: int().default(0).notNull(),
+	invalidCount: int().default(0).notNull(),
+	catchAllCount: int().default(0).notNull(),
+	roleBasedCount: int().default(0).notNull(),
+	disposableCount: int().default(0).notNull(),
+	unknownCount: int().default(0).notNull(),
+	sourceType: mysqlEnum(['campaign','leadIds','emails']).notNull(),
+	sourceCampaignId: int(),
+	errorMessage: text(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	completedAt: timestamp({ mode: 'string' }),
+},
+(table) => [
+	index("emailVerificationJobs_userId").on(table.userId),
+	index("emailVerificationJobs_jobId_unique").on(table.jobId),
+]);
+
+// Append-only verification history -- leads.emailVerificationStatus/Data only
+// ever hold the LATEST result and get overwritten on re-verify; this is the
+// audit trail across every attempt, per job.
+export const emailVerificationResults = mysqlTable("emailVerificationResults", {
+	id: int().autoincrement().notNull(),
+	jobId: varchar({ length: 255 }).notNull(),
+	leadId: int(), // nullable -- ad-hoc emails[] verification has no lead
+	email: varchar({ length: 320 }).notNull(),
+	provider: varchar({ length: 30 }).notNull(),
+	rawStatus: varchar({ length: 50 }).notNull(),
+	normalizedStatus: mysqlEnum(['valid','invalid','catch_all','role_based','disposable','unknown']).notNull(),
+	score: int(),
+	reason: text(),
+	shouldSend: tinyint().default(0).notNull(),
+	verifiedAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+},
+(table) => [
+	index("emailVerificationResults_jobId").on(table.jobId),
+	index("emailVerificationResults_leadId").on(table.leadId),
+	index("emailVerificationResults_email").on(table.email),
+]);
+
+// Lightweight audit log for the verify -> tag -> landing page -> emails ->
+// pre-flight -> launch pipeline. Shaped after webhookEvents (the closest
+// existing generic timestamped-event table).
+export const pipelineEvents = mysqlTable("pipelineEvents", {
+	id: int().autoincrement().notNull(),
+	userId: int().notNull(),
+	eventType: mysqlEnum([
+		'leads_generated','verification_started','verification_completed',
+		'tag_assigned','landing_page_generated','campaign_created_from_sequence',
+		'preflight_passed','preflight_failed','campaign_launched',
+	]).notNull(),
+	campaignId: int(),
+	landingPageId: int(),
+	payload: json(),
+	errorMessage: text(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+},
+(table) => [
+	index("pipelineEvents_userId").on(table.userId),
+	index("pipelineEvents_campaignId").on(table.campaignId),
+]);
+
 export const claudeApiUsage = mysqlTable("claudeApiUsage", {
 	id: int().autoincrement().notNull(),
 	userId: int().notNull(),
