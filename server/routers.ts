@@ -800,9 +800,12 @@ export const appRouter = router({
         else {
           const stateHint = input.state ? ` in ${input.state}` : "";
           const countryHint = input.country ? `\nIMPORTANT: All leads MUST be from ${input.country}${stateHint}. Use phone numbers, timezones, and domains appropriate for ${input.country}${stateHint}.` : "";
-          const prompt = `Generate ${input.count} realistic business leads based on this instruction: "${input.instruction}"${countryHint}
-        
-Return a JSON array with exactly ${input.count} leads. Each lead must have:
+          const industryHint = input.industryOverride ? `\nIMPORTANT: Every lead's industry MUST be "${input.industryOverride}".` : "";
+          const titlesHint = input.titlesOverride?.length ? `\nIMPORTANT: Every lead's jobTitle MUST be one of: ${input.titlesOverride.join(", ")}.` : "";
+
+          const buildPrompt = (n: number) => `Generate ${n} realistic business leads based on this instruction: "${input.instruction}"${countryHint}${industryHint}${titlesHint}
+
+Return a JSON array with exactly ${n} leads. Each lead must have:
 - companyName: string (company name only)
 - ownerName: string (person's actual name)
 - jobTitle: string (actual job title like CEO, Manager, Developer - NOT the search instruction)
@@ -820,51 +823,79 @@ IMPORTANT: Do NOT include the search instruction in any field. Generate realisti
 
 Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
-          const response = await invokeLLM({
-            messages: [
-              {
-                role: "system",
-                content: "You are a lead generation expert. Generate realistic business leads with accurate contact information. Always respond with raw JSON only - no markdown formatting, no code fences, no explanatory text.",
-              },
-              {
-                role: "user",
-                content: prompt,
-              },
-            ],
-            response_format: { type: "json_object" },
-          }) as any;
-
-          try {
-            let content = response.choices[0]?.message?.content;
+          // Parses one LLM response into a lead array, repairing the two failure
+          // modes actually seen in practice: stray text wrapped around the JSON
+          // (extract the outermost [...] / {...} and retry) and a trailing comma
+          // left before a closing bracket. Returns null rather than throwing --
+          // one bad batch shouldn't fail the whole request when other batches
+          // came back fine.
+          const parseLeadsFromContent = (rawContent: unknown): any[] | null => {
+            let content: any = rawContent;
             if (Array.isArray(content)) {
-              content = content.map((c: any) => typeof c === 'string' ? c : c.text || '').join('');
+              content = content.map((c: any) => (typeof c === "string" ? c : c.text || "")).join("");
             }
-            if (!content) throw new Error("No response from LLM");
-            content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-            const parsed = JSON.parse(content);
-            leadsData = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || Object.values(parsed)[0]);
-            
-            // Post-process to ensure all fields are properly populated
-            leadsData = leadsData.map((lead: any) => ({
-              ...lead,
-              companySize: lead.companySize && String(lead.companySize).trim() ? String(lead.companySize).trim() : "1-10",
-              jobTitle: lead.jobTitle && String(lead.jobTitle).trim() ? String(lead.jobTitle).trim() : undefined,
-              phoneNumber: lead.phoneNumber && String(lead.phoneNumber).trim() ? String(lead.phoneNumber).trim() : "",
-            }));
-          } catch (error: any) {
-            console.error("Lead generation parse error:", error.message);
+            if (!content) return null;
+            content = String(content).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+            const tryParse = (text: string) => {
+              try { return JSON.parse(text); } catch { return undefined; }
+            };
+            let parsed = tryParse(content);
+            if (parsed === undefined) {
+              const candidate = content.match(/\[[\s\S]*\]/)?.[0] || content.match(/\{[\s\S]*\}/)?.[0];
+              if (candidate) parsed = tryParse(candidate.replace(/,(\s*[\]}])/g, "$1"));
+            }
+            if (parsed === undefined) return null;
+            const arr = Array.isArray(parsed) ? parsed : (parsed.leads || parsed.data || Object.values(parsed)[0]);
+            return Array.isArray(arr) ? arr : null;
+          };
+
+          // Generated in batches rather than one call for the full count -- a
+          // single request for a large count risks the response getting cut off
+          // at the model's output token limit mid-object, which is unrecoverable
+          // (JSON.parse fails on truncated JSON no matter how the parsing is
+          // written). Each batch stays small enough to comfortably finish, and
+          // batches run concurrently so this isn't slower than one big call.
+          const BATCH_SIZE = 20;
+          const batchSizes: number[] = [];
+          for (let remaining = input.count; remaining > 0; remaining -= BATCH_SIZE) {
+            batchSizes.push(Math.min(BATCH_SIZE, remaining));
+          }
+
+          const batchResults = await Promise.all(batchSizes.map(async (n) => {
+            try {
+              const response = await invokeLLM({
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are a lead generation expert. Generate realistic business leads with accurate contact information. Always respond with raw JSON only - no markdown formatting, no code fences, no explanatory text.",
+                  },
+                  { role: "user", content: buildPrompt(n) },
+                ],
+                response_format: { type: "json_object" },
+              }) as any;
+              return parseLeadsFromContent(response?.choices?.[0]?.message?.content) || [];
+            } catch (error: any) {
+              console.error("[leads.generate] AI batch failed:", error.message);
+              return [];
+            }
+          }));
+
+          leadsData = batchResults.flat();
+
+          if (leadsData.length === 0) {
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: "Failed to parse AI-generated leads. Please try again.",
             });
           }
 
-          if (!Array.isArray(leadsData)) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "AI response was not an array of leads. Please try again.",
-            });
-          }
+          // Post-process to ensure all fields are properly populated
+          leadsData = leadsData.map((lead: any) => ({
+            ...lead,
+            companySize: lead.companySize && String(lead.companySize).trim() ? String(lead.companySize).trim() : "1-10",
+            jobTitle: lead.jobTitle && String(lead.jobTitle).trim() ? String(lead.jobTitle).trim() : undefined,
+            phoneNumber: lead.phoneNumber && String(lead.phoneNumber).trim() ? String(lead.phoneNumber).trim() : "",
+          }));
         }
 
         // ═══════════════════════════════════════════════

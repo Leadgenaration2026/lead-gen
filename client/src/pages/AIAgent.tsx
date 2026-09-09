@@ -33,8 +33,38 @@ const COMPANY_SIZES = [
   "501 - 1,000", "1,001 - 5,000", "5,001 - 10,000", "10,001+",
 ];
 
+// The exact top-level category names Seamless.AI accepts (mirrors
+// SEAMLESS_INDUSTRY_OPTIONS in server/seamlessAI.ts, kept as a client-side
+// literal since server modules can't be imported into the client bundle) --
+// picking from this list lets the request skip the free-text industry
+// parser entirely and go straight to a valid Seamless filter.
+const INDUSTRY_OPTIONS = [
+  "Aerospace & Defense", "Agriculture", "Apparel & Fashion", "Automotive",
+  "Chemicals & Materials", "Consumer Goods & Retail", "Education & Training",
+  "Electronics & Hardware", "Energy & Utilities", "Entertainment", "Environmental",
+  "Finance & Banking", "Food & Beverage", "Government & Public Policy",
+  "Health & Wellness", "Hospitality & Tourism", "Household, Personal, & Beauty",
+  "Insurance", "Internet & E-Commerce", "Manufacturing & Engineering",
+  "Marketing & Media", "Metals, Mining & Materials", "Non-Profit",
+  "Pharmaceuticals & Medical Devices", "Professional Services & Consulting",
+  "Real Estate & Construction", "Software & Information Technology",
+  "Telecommunications & Networking", "Transportation & Logistics", "Wholesale & Distribution",
+];
+
+// Common job titles covering the groups in TITLE_EXPANSION_MAP
+// (server/titleExpansionMap.ts) -- picking from this list is passed as
+// titlesOverride, so Seamless matches on these exact titles instead of
+// leaving title extraction to the free-text parser.
+const JOB_TITLE_OPTIONS = [
+  "Owner", "Founder", "CEO", "President", "COO", "CFO", "CTO", "CMO",
+  "VP of Sales", "Sales Manager", "VP of Marketing", "Marketing Manager",
+  "VP of Engineering", "Engineering Manager", "IT Director", "HR Director",
+  "Operations Manager", "General Manager", "Director", "Manager",
+  "Business Development Manager", "Account Executive",
+];
+
 type Step =
-  | "location" | "companySize" | "criteria" | "count" | "leadSetName"
+  | "location" | "companySize" | "industry" | "jobTitles" | "otherCriteria" | "count" | "leadSetName"
   | "searchingLeads"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
   | "followUpCount" | "generatingFollowUpPreview" | "followUpPreview" | "templateName" | "savingTemplate"
@@ -52,6 +82,12 @@ interface WizardData {
   country: string;
   state: string;
   companySize: string;
+  industries: string[];
+  jobTitles: string[];
+  otherCriteria: string;
+  // Combined, human-readable form of industries/jobTitles/otherCriteria --
+  // built once all three are collected, then used everywhere a free-text
+  // instruction is needed (search instruction, email context, template name).
   criteria: string;
   count: number;
   leadSetName: string;
@@ -79,7 +115,8 @@ interface WizardData {
 }
 
 const DEFAULTS: WizardData = {
-  country: "United States", state: "", companySize: "", criteria: "", count: 25,
+  country: "United States", state: "", companySize: "",
+  industries: [], jobTitles: [], otherCriteria: "", criteria: "", count: 25,
   leadSetName: "", usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
   sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
   emailPrompt: "", subject: "", body: "", followUpCount: 7, followUpPreviews: [], templateName: "", templateId: null,
@@ -139,20 +176,55 @@ export default function AIAgentPage() {
   const submitCompanySize = (size: string) => {
     setData((d) => ({ ...d, companySize: size }));
     addUser(size || "Any size");
-    addAgent(
-      "Now tell me who you're trying to reach -- industry, job titles, or any other criteria. For example: \"small business owners in the travel industry\" or \"VPs of Sales at SaaS companies\"."
-    );
-    setStep("criteria");
+    addAgent("Which industries should I target? Pick as many as fit, or skip for any industry.");
+    setStep("industry");
   };
 
-  // ---- Step 3: criteria (free text) ----
-  const submitCriteria = (text: string) => {
-    if (!text.trim()) return;
-    setData((d) => ({ ...d, criteria: text.trim() }));
-    addUser(text.trim());
+  // ---- Step 3: industry (multi-select) ----
+  const toggleIndustry = (name: string) => {
+    setData((d) => ({
+      ...d,
+      industries: d.industries.includes(name) ? d.industries.filter((i) => i !== name) : [...d.industries, name],
+    }));
+  };
+
+  const continueFromIndustry = () => {
+    addUser(data.industries.length ? data.industries.join(", ") : "Any industry");
+    addAgent("Good. Which job titles are you trying to reach? Pick as many as fit, or skip for any title.");
+    setStep("jobTitles");
+  };
+
+  // ---- Step 4: job titles (multi-select) ----
+  const toggleJobTitle = (name: string) => {
+    setData((d) => ({
+      ...d,
+      jobTitles: d.jobTitles.includes(name) ? d.jobTitles.filter((t) => t !== name) : [...d.jobTitles, name],
+    }));
+  };
+
+  const continueFromJobTitles = () => {
+    addUser(data.jobTitles.length ? data.jobTitles.join(", ") : "Any title");
+    addAgent("Anything else I should know -- keywords, company stage, etc.? Or just say \"skip\".");
+    setStep("otherCriteria");
+  };
+
+  // ---- Step 5: any other free-text criteria, then combine everything ----
+  const buildCriteriaText = (industries: string[], jobTitles: string[], other: string) => {
+    const parts: string[] = [];
+    if (jobTitles.length) parts.push(jobTitles.join(", "));
+    parts.push(industries.length ? `in the ${industries.join(", ")} industry` : "in any industry");
+    if (other.trim()) parts.push(other.trim());
+    return parts.join(" ").trim();
+  };
+
+  const submitOtherCriteria = (text: string) => {
+    const other = text.trim().toLowerCase() === "skip" ? "" : text.trim();
+    addUser(other || "(nothing else)");
+    setTextInput("");
+    const combined = buildCriteriaText(data.industries, data.jobTitles, other);
+    setData((d) => ({ ...d, otherCriteria: other, criteria: combined }));
     addAgent("How many leads should I find?");
     setStep("count");
-    setTextInput("");
   };
 
   // ---- Step 4: count ----
@@ -191,13 +263,19 @@ export default function AIAgentPage() {
           country: data.country || undefined,
           state: data.state || undefined,
           companySize: data.companySize || undefined,
+          // Only a single industry can override the parser's own multi-industry
+          // read (server/routers.ts replaces the whole filter, not merges) -- with
+          // more than one selected, the exact canonical names already embedded in
+          // `criteria` let the free-text parser pick them all up correctly.
+          industryOverride: data.industries.length === 1 ? data.industries[0] : undefined,
+          titlesOverride: data.jobTitles.length ? data.jobTitles.slice(0, 10) : undefined,
         });
         if (preview.candidates.length === 0) {
           setBusy(false);
           addAgent(
-            `I couldn't find any new candidates for that criteria (${preview.skippedAlreadyOwned} already in your system, ${preview.skippedExcluded} previously discarded). Want to try different criteria? Tell me what to search for instead.`
+            `I couldn't find any new candidates for that criteria (${preview.skippedAlreadyOwned} already in your system, ${preview.skippedExcluded} previously discarded). Want to try different criteria? Let's pick again.`
           );
-          setStep("criteria");
+          setStep("industry");
           return;
         }
         const enrichResult = await enrichMutation.mutateAsync({
@@ -219,7 +297,7 @@ export default function AIAgentPage() {
         if (enrichResult.count === 0) {
           setBusy(false);
           addAgent(`All ${enrichResult.duplicatesSkipped} matching contacts are already in your system. Want to try different criteria?`);
-          setStep("criteria");
+          setStep("industry");
           return;
         }
         resolvedLeadSetId = enrichResult.leadSetId ?? null;
@@ -234,11 +312,13 @@ export default function AIAgentPage() {
           source: "ai",
           country: data.country || undefined,
           state: data.state || undefined,
+          industryOverride: data.industries.length === 1 ? data.industries[0] : undefined,
+          titlesOverride: data.jobTitles.length ? data.jobTitles.slice(0, 10) : undefined,
         });
         if (result.count === 0) {
           setBusy(false);
           addAgent(`Everything AI found for that criteria is already in your system (${(result as any).duplicatesSkipped || 0} duplicate(s)). Want to try different criteria?`);
-          setStep("criteria");
+          setStep("industry");
           return;
         }
         resolvedLeadSetId = (result as any).leadSetId ?? null;
@@ -278,7 +358,7 @@ export default function AIAgentPage() {
     } catch (error: any) {
       setBusy(false);
       addAgent(`I ran into a problem finding leads: ${error?.message || "unknown error"}. Want to try again, or adjust the criteria?`);
-      setStep("criteria");
+      setStep("industry");
     }
   };
 
@@ -545,9 +625,17 @@ export default function AIAgentPage() {
           </div>
         );
 
-      case "criteria":
+      case "industry":
+        return renderMultiSelectArea(INDUSTRY_OPTIONS, data.industries, toggleIndustry, continueFromIndustry, "Skip -- any industry");
+
+      case "jobTitles":
+        return renderMultiSelectArea(JOB_TITLE_OPTIONS, data.jobTitles, toggleJobTitle, continueFromJobTitles, "Skip -- any title");
+
+      case "otherCriteria":
+        return renderTextInputArea(submitOtherCriteria, "Type anything else, or \"skip\"...");
+
       case "emailPrompt":
-        return renderTextInputArea(step === "criteria" ? submitCriteria : submitEmailPrompt, "Type your answer...");
+        return renderTextInputArea(submitEmailPrompt, "Type your answer...");
 
       case "count":
       case "followUpCount":
@@ -648,6 +736,41 @@ export default function AIAgentPage() {
         <Send className="w-4 h-4" />
       </Button>
     </form>
+  );
+
+  const renderMultiSelectArea = (
+    options: string[],
+    selected: string[],
+    onToggle: (name: string) => void,
+    onContinue: () => void,
+    skipLabel: string
+  ) => (
+    <div className="p-4 border-t space-y-3">
+      <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+        {options.map((opt) => {
+          const isSelected = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onToggle(opt)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                isSelected
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-foreground border-border hover:bg-muted"
+              }`}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onContinue} className="gap-1.5">
+          {selected.length > 0 ? `Continue (${selected.length} selected)` : skipLabel} <ArrowRight className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </div>
   );
 
   return (
