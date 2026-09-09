@@ -1193,7 +1193,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         }
 
         const { searchAndFilterSeamlessCandidates } = await import("./seamlessAI");
-        const { candidates, totalAvailable, estimatedSearchCredits, nextToken } = await searchAndFilterSeamlessCandidates(
+        const { candidates, totalAvailable, estimatedSearchCredits, nextToken, rawFetchedTotal, rejectedByCountry, rejectedByTitle, rejectedByIndustry } = await searchAndFilterSeamlessCandidates(
           settings.seamlessApiKey,
           input.instruction,
           input.count,
@@ -1209,7 +1209,14 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         );
 
         if (candidates.length === 0) {
-          return { candidates: [], skippedAlreadyOwned: 0, skippedExcluded: 0, totalAvailable, estimatedSearchCredits, nextToken };
+          return {
+            candidates: [], skippedAlreadyOwned: 0, skippedExcluded: 0, totalAvailable, estimatedSearchCredits, nextToken,
+            // Tells the caller WHY zero candidates came back when Seamless
+            // itself did return raw results -- e.g. "found 40, but the job
+            // title filter rejected all 40" is actionable (broaden/remove
+            // job titles); a bare zero with no context isn't.
+            rawFetchedTotal, rejectedByCountry, rejectedByTitle, rejectedByIndustry,
+          };
         }
 
         // Skip candidates already saved as leads — no point showing them again

@@ -1021,7 +1021,16 @@ export async function searchAndFilterSeamlessCandidates(
   // returns the same top-ranked candidates, which end up filtered out as
   // already-owned, leaving almost nothing new.
   startNextToken?: string
-): Promise<{ candidates: SeamlessCandidatePreview[]; totalAvailable?: number; estimatedSearchCredits: number; nextToken?: string }> {
+): Promise<{
+  candidates: SeamlessCandidatePreview[];
+  totalAvailable?: number;
+  estimatedSearchCredits: number;
+  nextToken?: string;
+  rawFetchedTotal: number;
+  rejectedByCountry: number;
+  rejectedByTitle: number;
+  rejectedByIndustry: number;
+}> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (industryOverride) {
     const canonical = mapToValidSeamlessIndustry(industryOverride);
@@ -1073,6 +1082,14 @@ export async function searchAndFilterSeamlessCandidates(
   let totalAvailable: number | undefined;
   let nextToken: string | undefined = startNextToken;
   let rawFetchedTotal = 0;
+  // How many raw results each client-side filter below actually rejected --
+  // surfaced up through the API so a "0 candidates" response can say WHY
+  // (e.g. "12 found, but all rejected by the job-title filter") instead of
+  // just reporting a bare zero with no way to tell which filter is too
+  // narrow.
+  let rejectedByCountry = 0;
+  let rejectedByTitle = 0;
+  let rejectedByIndustry = 0;
   const MAX_BACKFILL_ROUNDS = 5;
 
   for (let round = 0; round < MAX_BACKFILL_ROUNDS; round++) {
@@ -1100,6 +1117,7 @@ export async function searchAndFilterSeamlessCandidates(
         }
         return true;
       });
+      rejectedByCountry += before - batch.length;
       console.log(`[Seamless.AI] Preview round ${round + 1}: after country filter: ${batch.length} of ${before}`);
     }
 
@@ -1118,6 +1136,7 @@ export async function searchAndFilterSeamlessCandidates(
         if (!title) return false;
         return titleRegexes.some((re: RegExp) => re.test(title));
       });
+      rejectedByTitle += before - batch.length;
       console.log(`[Seamless.AI] Preview round ${round + 1}: after strict title filter: ${batch.length} of ${before}`);
     }
 
@@ -1147,6 +1166,7 @@ export async function searchAndFilterSeamlessCandidates(
         const canonical = mapToValidSeamlessIndustry(rawIndustry);
         return canonical ? targetIndustries.has(canonical) : true; // Unrecognized industry text -- can't disprove a match either
       });
+      rejectedByIndustry += before - batch.length;
       console.log(`[Seamless.AI] Preview round ${round + 1}: after industry filter: ${batch.length} of ${before}`);
     }
 
@@ -1190,7 +1210,7 @@ export async function searchAndFilterSeamlessCandidates(
       linkedinUrl: c.liUrl || c.linkedinUrl || undefined,
     }));
 
-  return { candidates: preview, totalAvailable, estimatedSearchCredits, nextToken };
+  return { candidates: preview, totalAvailable, estimatedSearchCredits, nextToken, rawFetchedTotal, rejectedByCountry, rejectedByTitle, rejectedByIndustry };
 }
 
 export interface SeamlessEnrichmentResult {

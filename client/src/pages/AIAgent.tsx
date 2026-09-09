@@ -375,8 +375,29 @@ export default function AIAgentPage() {
           const totalNote = totalAvailable !== null
             ? ` Seamless reports ${totalAvailable} total matching lead(s) for this criteria, but none of them are new right now.`
             : "";
+          // rawFetchedTotal/rejectedByX are only present on the empty-candidates
+          // response (see leads.searchSeamlessPreview) -- they say WHY Seamless
+          // results got filtered down to zero, so the message can point at the
+          // actual narrowing filter instead of a dead-end "0 candidates" with
+          // no next step.
+          const raw = (preview as any).rawFetchedTotal ?? 0;
+          const rejectedByTitle = (preview as any).rejectedByTitle ?? 0;
+          const rejectedByIndustry = (preview as any).rejectedByIndustry ?? 0;
+          const rejectedByCountry = (preview as any).rejectedByCountry ?? 0;
+          let causeNote = "";
+          if (raw > 0 && preview.skippedAlreadyOwned === 0 && preview.skippedExcluded === 0) {
+            if (rejectedByTitle >= raw) {
+              causeNote = ` Seamless found ${raw} raw match(es), but ALL were rejected because none had a job title that exactly matched what you picked -- try removing job titles or picking broader ones.`;
+            } else if (rejectedByIndustry >= raw) {
+              causeNote = ` Seamless found ${raw} raw match(es), but ALL were rejected by the industry filter -- try a broader/different industry, or Skip industry entirely.`;
+            } else if (rejectedByCountry >= raw) {
+              causeNote = ` Seamless found ${raw} raw match(es), but ALL were outside the selected location -- try a broader location.`;
+            } else if (rejectedByTitle + rejectedByIndustry + rejectedByCountry > 0) {
+              causeNote = ` Seamless found ${raw} raw match(es), but the combination of location/industry/job-title filters together narrowed it down to zero -- try removing one of them.`;
+            }
+          }
           addAgent(
-            `I couldn't find any new candidates for that criteria (${preview.skippedAlreadyOwned} already in your system, ${preview.skippedExcluded} previously discarded).${totalNote} Want to try different criteria? Let's pick again.`
+            `I couldn't find any new candidates for that criteria (${preview.skippedAlreadyOwned} already in your system, ${preview.skippedExcluded} previously discarded).${totalNote}${causeNote} Want to try different criteria? Let's pick again.`
           );
           setStep("industry");
           return;
