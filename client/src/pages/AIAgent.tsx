@@ -33,22 +33,49 @@ const COMPANY_SIZES = [
   "501 - 1,000", "1,001 - 5,000", "5,001 - 10,000", "10,001+",
 ];
 
-// The exact top-level category names Seamless.AI accepts (mirrors
-// SEAMLESS_INDUSTRY_OPTIONS in server/seamlessAI.ts, kept as a client-side
-// literal since server modules can't be imported into the client bundle) --
-// picking from this list lets the request skip the free-text industry
-// parser entirely and go straight to a valid Seamless filter.
+// The FULL list of industry values Seamless.AI accepts -- mirrors
+// SEAMLESS_INDUSTRY_OPTIONS in server/seamlessAI.ts exactly (kept as a
+// client-side literal since server modules can't be imported into the
+// client bundle). Picking from this list lets the request skip the
+// free-text industry parser entirely and go straight to a valid Seamless
+// filter. This used to be trimmed down to only the ~30 broad "umbrella"
+// entries (the first of each line below) -- but Seamless's own data is
+// mostly tagged with the SPECIFIC categories ("Law Practice", "Real
+// Estate", "Restaurants", "Computer Software"...), which weren't
+// selectable, forcing every search into the broad parent term instead
+// and often returning far fewer (sometimes zero) real matches than
+// picking the specific category would have.
 const INDUSTRY_OPTIONS = [
-  "Aerospace & Defense", "Agriculture", "Apparel & Fashion", "Automotive",
-  "Chemicals & Materials", "Consumer Goods & Retail", "Education & Training",
-  "Electronics & Hardware", "Energy & Utilities", "Entertainment", "Environmental",
-  "Finance & Banking", "Food & Beverage", "Government & Public Policy",
-  "Health & Wellness", "Hospitality & Tourism", "Household, Personal, & Beauty",
-  "Insurance", "Internet & E-Commerce", "Manufacturing & Engineering",
-  "Marketing & Media", "Metals, Mining & Materials", "Non-Profit",
-  "Pharmaceuticals & Medical Devices", "Professional Services & Consulting",
-  "Real Estate & Construction", "Software & Information Technology",
-  "Telecommunications & Networking", "Transportation & Logistics", "Wholesale & Distribution",
+  "Aerospace & Defense", "Airlines & Aviation", "Aviation & Aerospace", "Defense & Space", "Military",
+  "Agriculture", "Farming", "Horticulture", "Ranching", "Tobacco",
+  "Apparel & Fashion", "Textiles",
+  "Automotive",
+  "Chemicals & Materials", "Chemicals", "Plastics",
+  "Consumer Goods & Retail", "Consumer Goods", "Luxury Goods & Jewelry", "Retail", "Sporting Goods",
+  "Education & Training", "E-Learning", "Education Management", "Higher Education", "Libraries", "Primary/Secondary Education",
+  "Electronics & Hardware", "Computer Hardware", "Consumer Electronics", "Electrical & Electronic Manufacturing", "Semiconductors",
+  "Energy & Utilities", "Oil & Energy", "Utilities",
+  "Entertainment", "Animation", "Arts & Crafts", "Computer Games", "Fine Art", "Gambling & Casinos", "Mobile Games", "Motion Pictures & Film", "Music", "Performing Arts", "Photography", "Recreational Facilities & Services", "Sports",
+  "Environmental", "Environmental Services", "Renewables & Environment",
+  "Finance & Banking", "Banking", "Capital Markets", "Financial Services", "Investment Banking", "Investment Management", "Venture Capital & Private Equity",
+  "Food & Beverage", "Dairy", "Fishery", "Food & Beverages", "Food Production", "Restaurants", "Supermarkets", "Wine & Spirits",
+  "Government & Public Policy", "Executive Office", "Government Administration", "Government Relations", "Judiciary", "Law Enforcement", "Legislative Office", "Political Organization", "Public Policy", "Public Safety",
+  "Health & Wellness", "Alternative Medicine", "Health, Wellness and Fitness", "Hospital & Health Care", "Medical Practice", "Mental Health Care", "Veterinary",
+  "Hospitality & Tourism", "Events Services", "Hospitality", "Leisure, Travel & Tourism", "Museums & Institutions",
+  "Household, Personal, & Beauty", "Consumer Services", "Cosmetics", "Furniture", "Individual & Family Services",
+  "Insurance",
+  "Internet & E-Commerce", "Internet",
+  "Manufacturing & Engineering", "Civil Engineering", "Industrial Automation", "Machinery", "Mechanical or Industrial Engineering", "Railroad Manufacture", "Shipbuilding",
+  "Marketing & Media", "Broadcast Media", "Graphic Design", "Marketing & Advertising", "Media Production", "Newspapers", "Online Media", "Printing", "Public Relations & Communications", "Publishing", "Writing & Editing",
+  "Metals, Mining & Materials", "Building Materials", "Glass, Ceramics & Concrete", "Mining & Metals", "Paper & Forest Products",
+  "Non-Profit", "Fund-Raising", "Non-Profit Organization Management", "Philanthropy", "Religious Institutions",
+  "Pharmaceuticals & Medical Devices", "Biotechnology", "Medical Devices", "Nanotechnology", "Pharmaceuticals",
+  "Professional Services & Consulting", "Accounting", "Alternative Dispute Resolution", "Civic & Social Organization", "Design", "Human Resources", "International Affairs", "International Trade & Development", "Law Practice", "Legal Services", "Management Consulting", "Market Research", "Outsourcing/Offshoring", "Professional Training & Coaching", "Program Development", "Research", "Security & Investigations", "Staffing & Recruiting", "Think Tanks",
+  "Real Estate & Construction", "Architecture & Planning", "Commercial Real Estate", "Construction", "Facilities Services", "Real Estate",
+  "Software & Information Technology", "Computer & Network Security", "Computer Software", "Information Services", "Information Technology & Services", "Software Development",
+  "Telecommunications & Networking", "Computer Networking", "Telecommunications", "Wireless",
+  "Transportation & Logistics", "Logistics & Supply Chain", "Maritime", "Package/Freight Delivery", "Packaging & Containers", "Translation & Localization", "Transportation/Trucking/Railroad",
+  "Wholesale & Distribution", "Business Supplies & Equipment", "Import & Export", "Warehousing", "Wholesale",
 ];
 
 // Common job titles covering the groups in TITLE_EXPANSION_MAP
@@ -138,6 +165,9 @@ export default function AIAgentPage() {
   const [step, setStep] = useState<Step>("location");
   const [data, setData] = useState<WizardData>(DEFAULTS);
   const [textInput, setTextInput] = useState("");
+  // Search box for the industry/job-title multi-select steps -- industry
+  // alone has ~185 options, too many to just scroll through.
+  const [filterText, setFilterText] = useState("");
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
@@ -679,6 +709,7 @@ export default function AIAgentPage() {
     setMessages([]);
     setStep("location");
     setTextInput("");
+    setFilterText("");
     setBusy(false);
     idCounter.current = 0;
     setTimeout(() => addAgent("Let's set up another campaign. What location are you targeting?"), 0);
@@ -896,34 +927,52 @@ export default function AIAgentPage() {
     onToggle: (name: string) => void,
     onContinue: () => void,
     skipLabel: string
-  ) => (
-    <div className="p-4 border-t space-y-3">
-      <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-        {options.map((opt) => {
-          const isSelected = selected.includes(opt);
-          return (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => onToggle(opt)}
-              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                isSelected
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-foreground border-border hover:bg-muted"
-              }`}
-            >
-              {opt}
-            </button>
-          );
-        })}
+  ) => {
+    // Selected options always stay visible even while filtered out by search
+    // text, so toggling one off is never hidden mid-search.
+    const filtered = filterText.trim()
+      ? options.filter((opt) => opt.toLowerCase().includes(filterText.trim().toLowerCase()) || selected.includes(opt))
+      : options;
+    return (
+      <div className="p-4 border-t space-y-3">
+        {options.length > 30 && (
+          <Input
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder={`Search ${options.length} options...`}
+            className="h-8 text-sm"
+          />
+        )}
+        <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+          {filtered.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">No matches -- try a different search term, or Skip.</p>
+          )}
+          {filtered.map((opt) => {
+            const isSelected = selected.includes(opt);
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => onToggle(opt)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  isSelected
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-foreground border-border hover:bg-muted"
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => { setFilterText(""); onContinue(); }} className="gap-1.5">
+            {selected.length > 0 ? `Continue (${selected.length} selected)` : skipLabel} <ArrowRight className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
-      <div className="flex gap-2">
-        <Button size="sm" onClick={onContinue} className="gap-1.5">
-          {selected.length > 0 ? `Continue (${selected.length} selected)` : skipLabel} <ArrowRight className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
