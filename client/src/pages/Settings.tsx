@@ -1211,11 +1211,18 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Seamless.ai API Key</Label>
+                <Label className="flex items-center gap-2">
+                  Seamless.ai API Key
+                  {(settingsQuery.data as any)?.hasSeamlessApiKey && (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600 font-normal">
+                      <CheckCircle2 className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     type="password"
-                    placeholder="Enter your Seamless.ai API key"
+                    placeholder={(settingsQuery.data as any)?.hasSeamlessApiKey ? "••••••••  (leave blank to keep current)" : "Enter your Seamless.ai API key"}
                     value={formData.seamlessApiKey || ""}
                     onChange={(e) => setFormData({ ...formData, seamlessApiKey: e.target.value })}
                   />

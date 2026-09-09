@@ -249,7 +249,14 @@ export default function AIAgentPage() {
   const runLeadGeneration = async (leadSetName: string) => {
     setStep("searchingLeads");
     setBusy(true);
-    const useSeamless = !!(settingsQuery.data as any)?.seamlessApiKey;
+    // settings.get deliberately never returns the raw seamlessApiKey value
+    // (sensitive data isn't sent to the frontend) -- hasSeamlessApiKey is the
+    // boolean flag it returns instead, same pattern as hasRetellApiKey/
+    // hasClaudeApiKey. Checking the (always-absent) raw key here previously
+    // meant this was permanently false regardless of what was configured in
+    // Settings, silently forcing every generation through the AI-estimation
+    // fallback instead of Seamless.
+    const useSeamless = !!(settingsQuery.data as any)?.hasSeamlessApiKey;
     addAgent(useSeamless ? "Searching Seamless.AI for matching leads..." : "Generating leads with AI (Seamless.AI isn't configured in Settings, so I'm using AI estimation instead)...");
     // Local, not read back from `data` state after setData -- state updates
     // are async, so the closure below would still see the pre-update value.

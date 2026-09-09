@@ -869,6 +869,12 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             batchSizes.push(Math.min(BATCH_SIZE, remaining));
           }
 
+          // Each batch reports why it came back empty (a thrown error from
+          // invokeLLM itself -- e.g. a missing/invalid Forge API key or a
+          // network failure -- vs. a response that just didn't parse as
+          // JSON) so a real invocation failure isn't silently relabeled as
+          // "failed to parse" below with no way to tell the two apart.
+          let firstBatchError: string | null = null;
           const batchResults = await Promise.all(batchSizes.map(async (n) => {
             try {
               const response = await invokeLLM({
@@ -884,6 +890,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
               return parseLeadsFromContent(response?.choices?.[0]?.message?.content) || [];
             } catch (error: any) {
               console.error("[leads.generate] AI batch failed:", error.message);
+              if (!firstBatchError) firstBatchError = error.message;
               return [];
             }
           }));
@@ -893,7 +900,9 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
           if (leadsData.length === 0) {
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: "Failed to parse AI-generated leads. Please try again.",
+              message: firstBatchError
+                ? `AI lead generation failed: ${firstBatchError}`
+                : "Failed to parse AI-generated leads. Please try again.",
             });
           }
 
@@ -3063,6 +3072,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
           senderName: "",
           hasSmtpPassword: false,
           hasRetellApiKey: false,
+          hasSeamlessApiKey: false,
           hasCalcomWebhookSecret: false,
           ctaLink: "https://cal.com/nitin-virtualassistant-group.com/30min",
           hasRetellWebhookSecret: false,
@@ -3099,6 +3109,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         senderName: settings.senderName,
         hasSmtpPassword: !!settings.smtpPassword,
         hasRetellApiKey: !!settings.retellApiKey,
+        hasSeamlessApiKey: !!settings.seamlessApiKey,
         hasCalcomWebhookSecret: !!settings.calcomWebhookSecret,
         ctaLink: settings.ctaLink || 'https://cal.com/nitin-virtualassistant-group.com/30min',
         hasRetellWebhookSecret: !!settings.retellWebhookSecret,
