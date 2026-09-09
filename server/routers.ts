@@ -5175,6 +5175,83 @@ Respond in this exact JSON format:
 
         return { success: true, scheduled: input.count };
       }),
+
+    // Resolves a natural-language call request ("call John Smith now",
+    // "schedule 3 calls for Acme Corp") to a specific lead in this campaign
+    // -- the AI Agent's in-campaign call assistant (CampaignCallAgent.tsx)
+    // sends the free text here, gets back a proposed action + matched lead
+    // for the user to confirm, then the client calls callNow/scheduleCalls
+    // above itself (this procedure never places or schedules anything on
+    // its own). The LLM is only ever allowed to pick a campaignLeadId from
+    // the real list handed to it -- the match is verified against that list
+    // server-side before being trusted, so a hallucinated id can't slip
+    // through.
+    interpretRequest: protectedProcedure
+      .input(z.object({ campaignId: z.number(), message: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+        }
+        const campaignLeadsList = await db.getCampaignLeads(input.campaignId);
+        const candidates = (await Promise.all(campaignLeadsList.map(async (cl: any) => {
+          const lead = await db.getLeadById(cl.leadId);
+          return lead ? { campaignLeadId: cl.id, leadName: lead.ownerName, companyName: lead.companyName } : null;
+        }))).filter(Boolean) as Array<{ campaignLeadId: number; leadName: string; companyName: string }>;
+
+        if (candidates.length === 0) {
+          return { action: "none" as const };
+        }
+
+        const { invokeLLM } = await import("./_core/llm");
+        const leadListText = candidates.map((c, i) => `${i + 1}. ${c.leadName} (${c.companyName}) [campaignLeadId=${c.campaignLeadId}]`).join("\n");
+        let content: any;
+        try {
+          const response = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: `You are matching a user's call request to one specific lead from a campaign's lead list. Respond with ONLY a JSON object: {"action": "call_now"|"schedule"|"unclear", "campaignLeadId": number|null, "count": number|null}.
+- "action": "call_now" for an immediate single call request; "schedule" if they want future/multiple calls set up (put the requested number of calls in "count", default 1 if the action is "schedule" but no number was given); "unclear" if you can't confidently tell who they mean or what they want.
+- "campaignLeadId": the exact campaignLeadId from the list below for whoever they're referring to (by name or company), or null if there's no confident match.
+- Only ever return a campaignLeadId that appears in the list below. Never invent one.
+Lead list:
+${leadListText}
+No explanation, no markdown, just the JSON object.`,
+              },
+              { role: "user", content: input.message },
+            ],
+            response_format: { type: "json_object" },
+          }) as any;
+          content = response?.choices?.[0]?.message?.content;
+          if (Array.isArray(content)) content = content.map((c: any) => (typeof c === "string" ? c : c.text || "")).join("");
+        } catch (error) {
+          console.error("[calls.interpretRequest] LLM call failed:", error);
+          return { action: "unclear" as const };
+        }
+        if (!content) return { action: "unclear" as const };
+        content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(content);
+        } catch {
+          return { action: "unclear" as const };
+        }
+
+        const matched = parsed.campaignLeadId != null ? candidates.find((c) => c.campaignLeadId === parsed.campaignLeadId) : undefined;
+        if (!matched || (parsed.action !== "call_now" && parsed.action !== "schedule")) {
+          return { action: "unclear" as const, sampleLeads: candidates.slice(0, 5).map((c) => c.leadName) };
+        }
+
+        return {
+          action: parsed.action as "call_now" | "schedule",
+          campaignLeadId: matched.campaignLeadId,
+          leadName: matched.leadName,
+          companyName: matched.companyName,
+          count: parsed.action === "schedule" ? Math.min(10, Math.max(1, parseInt(parsed.count, 10) || 1)) : undefined,
+        };
+      }),
   }),
 
   // ============ Rotational Emails Router ============

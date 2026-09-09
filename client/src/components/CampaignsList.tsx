@@ -8,6 +8,7 @@ import { Loader2, Mail, Play, Pause, Trash2, ShieldCheck, Inbox, ArrowRight, Lin
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { CampaignFollowUpActivity } from "@/components/CampaignFollowUpActivity";
+import { CampaignCallAgent } from "@/components/CampaignCallAgent";
 import { EngagementPopups } from "@/components/EngagementPopups";
 
 interface CampaignsListProps {
@@ -287,6 +288,7 @@ export function CampaignsList({ limit, title = "Your Campaigns", description = "
                     <div className="mt-4 pt-4 border-t border-border space-y-4">
                       <ActivityFeed campaignId={campaign.id} />
                       <CampaignFollowUpActivity campaignId={campaign.id} />
+                      <CampaignCallAgent campaignId={campaign.id} />
                     </div>
                   )}
                 </div>
