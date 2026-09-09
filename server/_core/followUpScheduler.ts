@@ -27,8 +27,10 @@ const FOLLOW_UP_EMAIL_SCHEDULE = [
 // always being exactly 7. For the first 7, uses FOLLOW_UP_EMAIL_SCHEDULE
 // unchanged (so an existing 7-follow-up campaign schedules identically to
 // before); beyond 7, keeps the same "every 5 days" spacing and cycles
-// through the later email types.
-function buildFollowUpEmailSchedule(count: number) {
+// through the later email types. Exported so the AI Agent's follow-up
+// preview (server/routers.ts email.previewFollowUpSchedule) can build the
+// exact same schedule without duplicating this logic.
+export function buildFollowUpEmailSchedule(count: number) {
   const extraTypeCycle: Array<"value_prop" | "social_proof" | "urgency" | "custom"> = ["value_prop", "social_proof", "urgency", "custom"];
   const schedule: Array<{ sequenceNumber: number; dayOffset: number; emailType: "discovery" | "value_prop" | "social_proof" | "urgency" | "custom" }> = [];
   let lastDayOffset = 0;
@@ -154,6 +156,31 @@ export function normalizePhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// Builds the Claude prompt for one follow-up email. Extracted out of
+// scheduleFollowUpEmails (and exported) so the AI Agent's preview step uses
+// the exact same prompt construction as what a real campaign actually sends
+// -- previously this was inline in scheduleFollowUpEmails only, and always
+// said "#N of 7" regardless of the real follow-up count, which was wrong
+// for any campaign not using exactly 7.
+export function buildFollowUpEmailPrompt(
+  sequenceNumber: number,
+  totalCount: number,
+  ownerName: string,
+  companyName: string,
+  industry: string,
+  emailType: "discovery" | "value_prop" | "social_proof" | "urgency" | "custom",
+  focusWeakPoint: string
+): string {
+  const emailTypeDescriptions: Record<string, string> = {
+    discovery: `Write a follow-up discovery email (#${sequenceNumber} of ${totalCount}) to ${ownerName} at ${companyName} in the ${industry} industry. Focus on their challenge: "${focusWeakPoint}". Ask an insightful question. This is a follow-up, so reference that you reached out before.`,
+    value_prop: `Write a follow-up value proposition email (#${sequenceNumber} of ${totalCount}) to ${ownerName} at ${companyName} in the ${industry} industry. Focus on solving: "${focusWeakPoint}". Share specific benefits and ROI numbers. Reference your previous email.`,
+    social_proof: `Write a follow-up social proof email (#${sequenceNumber} of ${totalCount}) to ${ownerName} at ${companyName} in the ${industry} industry. Share a case study about solving "${focusWeakPoint}" for a similar company. Include specific metrics.`,
+    urgency: `Write a follow-up email (#${sequenceNumber} of ${totalCount}) to ${ownerName} at ${companyName} in the ${industry} industry. Create mild urgency about "${focusWeakPoint}" — mention limited availability or upcoming changes. Don't be pushy.`,
+    custom: `Write a final follow-up email (#${sequenceNumber} of ${totalCount}) to ${ownerName} at ${companyName} in the ${industry} industry. This is the last email in the sequence. Make it personal, reference previous attempts, and offer one last compelling reason to connect about "${focusWeakPoint}".`,
+  };
+  return emailTypeDescriptions[emailType] || emailTypeDescriptions["value_prop"];
+}
+
 /**
  * Schedule follow-up emails for a campaign lead using Claude for generation.
  * Schedule: 1st 3 emails every 2 days, remaining 4 emails every 5 days after the 3rd.
@@ -206,16 +233,8 @@ export async function scheduleFollowUpEmails(
       let emailBody: string;
 
       try {
-        const emailTypeDescriptions: Record<string, string> = {
-          discovery: `Write a follow-up discovery email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Focus on their challenge: "${focusWeakPoint}". Ask an insightful question. This is a follow-up, so reference that you reached out before.`,
-          value_prop: `Write a follow-up value proposition email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Focus on solving: "${focusWeakPoint}". Share specific benefits and ROI numbers. Reference your previous email.`,
-          social_proof: `Write a follow-up social proof email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Share a case study about solving "${focusWeakPoint}" for a similar company. Include specific metrics.`,
-          urgency: `Write a follow-up email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. Create mild urgency about "${focusWeakPoint}" — mention limited availability or upcoming changes. Don't be pushy.`,
-          custom: `Write a final follow-up email (#${schedule.sequenceNumber} of 7) to ${ownerName} at ${companyName} in the ${industry} industry. This is the last email in the sequence. Make it personal, reference previous attempts, and offer one last compelling reason to connect about "${focusWeakPoint}".`,
-        };
-
         const result = await generateEmailWithClaude({
-          prompt: emailTypeDescriptions[schedule.emailType] || emailTypeDescriptions["value_prop"],
+          prompt: buildFollowUpEmailPrompt(schedule.sequenceNumber, followUpCount, ownerName, companyName, industry, schedule.emailType, focusWeakPoint),
           emailType: schedule.emailType,
           leadContext: `Name: ${ownerName}, Company: ${companyName}, Industry: ${industry}, Email: ${leadEmail}`,
           includeVariables: false,

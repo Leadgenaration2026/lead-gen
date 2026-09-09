@@ -4414,6 +4414,58 @@ Respond in this exact JSON format:
           bodyWithoutSignature: result.body,
         };
       }),
+
+    // Generates a representative SAMPLE of each follow-up email in a
+    // sequence, for preview purposes only -- follow-up content is otherwise
+    // never generated until an initial campaign email actually sends
+    // (scheduleFollowUpEmails, server/_core/followUpScheduler.ts, called
+    // per real lead at that point), so there was previously no way to see
+    // what follow-ups would look like before launching. Uses the exact same
+    // schedule (buildFollowUpEmailSchedule) and prompt construction
+    // (buildFollowUpEmailPrompt) the real per-lead generation uses, against
+    // a representative name/company/industry (the first lead in a new
+    // batch, or generic placeholders) rather than a real lead -- so this is
+    // illustrative of the tone/pattern, not the literal content each lead
+    // will receive (each lead's real follow-ups are personalized to them
+    // individually at send time, same as today).
+    previewFollowUpSchedule: protectedProcedure
+      .input(z.object({
+        followUpCount: z.number().min(1).max(20),
+        ownerName: z.string().optional(),
+        companyName: z.string().optional(),
+        industry: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { buildFollowUpEmailSchedule, buildFollowUpEmailPrompt } = await import("./_core/followUpScheduler");
+        const { generateEmailWithClaude } = await import("./claude");
+        const ownerName = input.ownerName || "there";
+        const companyName = input.companyName || "your company";
+        const industry = input.industry || "your industry";
+        const schedule = buildFollowUpEmailSchedule(input.followUpCount);
+
+        // Independent slots -- fire concurrently rather than one-at-a-time,
+        // since sequentially generating up to 20 emails would make this
+        // preview step take far too long for something in the middle of a
+        // live chat wizard.
+        const previews = await Promise.all(schedule.map(async (s) => {
+          const prompt = buildFollowUpEmailPrompt(s.sequenceNumber, input.followUpCount, ownerName, companyName, industry, s.emailType, "business growth");
+          try {
+            const result = await generateEmailWithClaude({
+              prompt,
+              emailType: s.emailType,
+              leadContext: `Name: ${ownerName}, Company: ${companyName}, Industry: ${industry}`,
+              includeVariables: false,
+            });
+            return { sequenceNumber: s.sequenceNumber, dayOffset: s.dayOffset, emailType: s.emailType, subject: result.subject, body: result.body };
+          } catch (error) {
+            console.error(`[previewFollowUpSchedule] Failed to generate preview #${s.sequenceNumber}:`, error);
+            return { sequenceNumber: s.sequenceNumber, dayOffset: s.dayOffset, emailType: s.emailType, subject: `Follow-up #${s.sequenceNumber}`, body: "(Preview generation failed for this one -- the real email will still be generated normally when it's actually due to send.)" };
+          }
+        }));
+
+        previews.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+        return { previews };
+      }),
   }),
 
   // ============ Scheduled Emails Router ============

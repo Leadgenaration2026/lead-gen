@@ -37,7 +37,7 @@ type Step =
   | "location" | "companySize" | "criteria" | "count" | "leadSetName"
   | "searchingLeads"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
-  | "followUpCount" | "templateName" | "savingTemplate"
+  | "followUpCount" | "generatingFollowUpPreview" | "followUpPreview" | "templateName" | "savingTemplate"
   | "scheduleChoice" | "scheduleDatetime" | "campaignName"
   | "summary" | "launching" | "done";
 
@@ -59,10 +59,17 @@ interface WizardData {
   leadSetId: number | null;
   leadIds: number[];
   leadsSummary: string;
+  // First lead in the newly-saved batch, if any -- used as a representative
+  // example for the follow-up preview step, so the sample reads like a real
+  // email instead of "Hi there, at your company".
+  sampleLeadName: string;
+  sampleLeadCompany: string;
+  sampleLeadIndustry: string;
   emailPrompt: string;
   subject: string;
   body: string;
   followUpCount: number;
+  followUpPreviews: Array<{ sequenceNumber: number; dayOffset: number; emailType: string; subject: string; body: string }>;
   templateName: string;
   templateId: number | null;
   scheduleNow: boolean;
@@ -74,7 +81,8 @@ interface WizardData {
 const DEFAULTS: WizardData = {
   country: "United States", state: "", companySize: "", criteria: "", count: 25,
   leadSetName: "", usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
-  emailPrompt: "", subject: "", body: "", followUpCount: 7, templateName: "", templateId: null,
+  sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
+  emailPrompt: "", subject: "", body: "", followUpCount: 7, followUpPreviews: [], templateName: "", templateId: null,
   scheduleNow: true, scheduledAt: "", campaignName: "", campaignId: null,
 };
 
@@ -94,6 +102,7 @@ export default function AIAgentPage() {
   const enrichMutation = trpc.leads.enrichSeamlessSelection.useMutation();
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const generateEmailMutation = trpc.email.generateAITemplate.useMutation();
+  const previewFollowUpsMutation = trpc.email.previewFollowUpSchedule.useMutation();
   const createTemplateMutation = trpc.campaignTemplates.create.useMutation();
   const createCampaignMutation = trpc.campaigns.create.useMutation();
   const launchCampaignMutation = trpc.campaigns.launch.useMutation();
@@ -248,7 +257,14 @@ export default function AIAgentPage() {
         ? await utils.leads.listBySourceListOrTag.fetch({ sourceListId: resolvedLeadSetId })
         : [];
       const ids = (leadRows || []).map((l: any) => l.id);
-      setData((d) => ({ ...d, leadIds: ids }));
+      const firstLead: any = (leadRows || [])[0];
+      setData((d) => ({
+        ...d,
+        leadIds: ids,
+        sampleLeadName: firstLead?.ownerName || "",
+        sampleLeadCompany: firstLead?.companyName || "",
+        sampleLeadIndustry: firstLead?.industry || "",
+      }));
 
       setBusy(false);
       addAgent(
@@ -327,12 +343,46 @@ export default function AIAgentPage() {
   };
 
   // ---- Step 7: follow-up count ----
-  const submitFollowUpCount = (text: string) => {
+  const submitFollowUpCount = async (text: string) => {
     const n = Math.min(20, Math.max(0, parseInt(text, 10)));
     const count = isNaN(n) ? 7 : n;
     setData((d) => ({ ...d, followUpCount: count }));
     addUser(text.trim() || "7");
     setTextInput("");
+
+    if (count === 0) {
+      addAgent("No follow-ups, got it. What should I call this email template, so it's saved for reuse?");
+      setStep("templateName");
+      return;
+    }
+
+    setStep("generatingFollowUpPreview");
+    setBusy(true);
+    addAgent(`Writing a sample of each of the ${count} follow-up(s), so you can see the pattern before we save it...`);
+    try {
+      const result = await previewFollowUpsMutation.mutateAsync({
+        followUpCount: count,
+        ownerName: data.sampleLeadName || undefined,
+        companyName: data.sampleLeadCompany || undefined,
+        industry: data.sampleLeadIndustry || undefined,
+      });
+      setData((d) => ({ ...d, followUpPreviews: result.previews }));
+      setBusy(false);
+      addAgent(
+        undefined,
+        <FollowUpPreviewList previews={result.previews} sampleName={data.sampleLeadName} sampleCompany={data.sampleLeadCompany} />
+      );
+      addAgent("These are samples using one lead as an example -- each real lead gets their own personalized version generated the same way when it's actually due to send. Ready to continue?");
+      setStep("followUpPreview");
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`I couldn't generate the follow-up previews: ${error?.message || "unknown error"}. That's fine -- I'll still schedule ${count} follow-up(s) for real leads at send time. What should I call this email template?`);
+      setStep("templateName");
+    }
+  };
+
+  const continueFromFollowUpPreview = () => {
+    addUser("Looks good, continue");
     addAgent("What should I call this email template, so it's saved for reuse?");
     setStep("templateName");
   };
@@ -515,6 +565,13 @@ export default function AIAgentPage() {
           </div>
         );
 
+      case "followUpPreview":
+        return (
+          <div className="p-4 border-t">
+            <Button size="sm" onClick={continueFromFollowUpPreview} className="gap-1.5"><Check className="w-3.5 h-3.5" /> Looks good, continue</Button>
+          </div>
+        );
+
       case "editingEmail":
         return (
           <div className="p-4 border-t space-y-2">
@@ -640,6 +697,41 @@ function EmailReviewCard({ subject, body }: { subject: string; body: string }) {
         body={body}
         trigger={<Button size="sm" variant="outline" className="gap-1.5"><Eye className="w-3.5 h-3.5" /> Preview Full Email</Button>}
       />
+    </div>
+  );
+}
+
+function FollowUpPreviewList({
+  previews,
+  sampleName,
+  sampleCompany,
+}: {
+  previews: Array<{ sequenceNumber: number; dayOffset: number; emailType: string; subject: string; body: string }>;
+  sampleName: string;
+  sampleCompany: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Sample recipient: {sampleName || "there"}{sampleCompany ? ` at ${sampleCompany}` : ""}
+      </p>
+      <div className="space-y-1.5">
+        {previews.map((p) => (
+          <div key={p.sequenceNumber} className="flex items-center justify-between gap-2 bg-background/60 rounded px-2.5 py-1.5">
+            <div className="min-w-0">
+              <p className="text-xs font-medium truncate">#{p.sequenceNumber} · Day {p.dayOffset} · {p.emailType.replace("_", " ")}</p>
+              <p className="text-xs text-muted-foreground truncate">{p.subject}</p>
+            </div>
+            <EmailPreviewDialog
+              subject={p.subject}
+              body={p.body}
+              recipientName={sampleName || undefined}
+              recipientCompany={sampleCompany || undefined}
+              trigger={<Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0"><Eye className="w-3.5 h-3.5" /></Button>}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
