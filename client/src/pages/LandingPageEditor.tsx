@@ -76,9 +76,11 @@ export default function LandingPageEditor() {
   const unpublishMutation = trpc.landingPages.unpublish.useMutation();
   const duplicateMutation = trpc.landingPages.duplicate.useMutation();
   const uploadImageMutation = trpc.media.uploadImage.useMutation();
+  const applyAiEditMutation = trpc.landingPages.applyAiEdit.useMutation();
 
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [aiInstruction, setAiInstruction] = useState("");
   const [addType, setAddType] = useState<SectionType>("benefits");
   const [showCreateCampaign, setShowCreateCampaign] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +154,19 @@ export default function LandingPageEditor() {
       toast.success("Theme regenerated");
     } catch (error: any) {
       toast.error(error?.message || "Failed to regenerate theme");
+    }
+  };
+
+  const handleApplyAiEdit = async () => {
+    if (!aiInstruction.trim()) return;
+    try {
+      await applyAiEditMutation.mutateAsync({ id, instruction: aiInstruction.trim() });
+      setAiInstruction("");
+      utils.landingPages.get.invalidate(id);
+      refreshPreview();
+      toast.success("Applied");
+    } catch (error: any) {
+      toast.error(error?.message || "AI edit failed");
     }
   };
 
@@ -381,6 +396,18 @@ export default function LandingPageEditor() {
             </Button>
             <Button size="icon" variant={viewport === "mobile" ? "default" : "outline"} className="h-8 w-8" onClick={() => setViewport("mobile")}>
               <Smartphone className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={aiInstruction}
+              onChange={(e) => setAiInstruction(e.target.value)}
+              placeholder='AI edit, e.g. "make it more premium", "use a darker theme"'
+              className="flex-1"
+              onKeyDown={(e) => e.key === "Enter" && handleApplyAiEdit()}
+            />
+            <Button onClick={handleApplyAiEdit} disabled={!aiInstruction.trim() || applyAiEditMutation.isPending} className="gap-1.5">
+              {applyAiEditMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Apply
             </Button>
           </div>
           <div className="flex justify-center bg-muted/30 rounded-lg p-4 overflow-x-auto">

@@ -9,7 +9,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { TagPicker } from "@/components/TagPicker";
-import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X } from "lucide-react";
+import { LeadVerificationReviewDialog, type LeadReviewRow } from "@/components/LeadVerificationReviewDialog";
+import { EmailEditorDialog } from "@/components/EmailEditorDialog";
+import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X, Monitor, Smartphone, Upload } from "lucide-react";
+import { toast } from "sonner";
 
 // Same fixed value lists the Leads page uses for these same selects (Leads.tsx
 // ~2716-2819) -- kept identical since Seamless.AI only accepts these exact
@@ -102,7 +105,7 @@ type Step =
   // saved, alongside the pre-existing "classic single email" steps below,
   // which stay completely unchanged for that path.
   | "verifyingEmails" | "verificationSummary" | "tagAssignment"
-  | "offerPrompt" | "buildingLandingPage" | "sequenceReview" | "preflightCheck"
+  | "offerPrompt" | "logoPrompt" | "heroMediaPrompt" | "buildingLandingPage" | "sequenceReview" | "publishLandingPage" | "preflightCheck"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
   | "followUpCount" | "generatingFollowUpPreview" | "followUpPreview" | "templateName" | "savingTemplate"
   | "scheduleChoice" | "scheduleDatetime" | "campaignName"
@@ -159,9 +162,16 @@ interface WizardData {
   // AI landing page + verified 8-email pipeline fields
   pipelineMode: "classic" | "landing_page" | null;
   verificationJobId: string | null;
-  verifiedLeadIds: number[]; // leads whose normalizedStatus came back "valid"
+  verifiedLeadIds: number[]; // leads the user kept selected in the verification review dialog
   verifiedLeadSetId: number | null; // the TAG assigned via the approval gate (distinct from leadSetId, the source list)
+  // Lightweight lead info (not the full row) captured once right after
+  // generation, purely so the verification-review dialog can show a name/
+  // company next to each email without a second round-trip.
+  leadDetails: Array<{ id: number; ownerName: string; companyName: string }>;
+  logoUrl: string;
+  heroImageUrl: string;
   generatedLandingPageId: number | null;
+  publishedUrl: string | null;
   preflightPassed: boolean;
 }
 
@@ -171,11 +181,21 @@ const DEFAULTS: WizardData = {
   leadSetName: "", resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0,
   usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
   pipelineMode: null, verificationJobId: null, verifiedLeadIds: [], verifiedLeadSetId: null,
-  generatedLandingPageId: null, preflightPassed: false,
+  leadDetails: [], logoUrl: "", heroImageUrl: "",
+  generatedLandingPageId: null, publishedUrl: null, preflightPassed: false,
   sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
   emailPrompt: "", subject: "", body: "", followUpCount: 7, followUpPreviews: [], templateName: "", templateId: null,
   scheduleNow: true, scheduledAt: "", campaignName: "", campaignId: null,
 };
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function AIAgentPage() {
   const [, navigate] = useLocation();
@@ -189,6 +209,8 @@ export default function AIAgentPage() {
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const heroImageFileInputRef = useRef<HTMLInputElement>(null);
 
   // Read synchronously (not in a useEffect) so it's correct on the very
   // first render -- the "generic greeting" effect below checks this same
@@ -219,6 +241,8 @@ export default function AIAgentPage() {
   // AI landing page + verified 8-email pipeline mutations
   const startVerificationMutation = trpc.verification.startJob.useMutation();
   const [pollingVerificationJobId, setPollingVerificationJobId] = useState<string | null>(null);
+  const [showLeadReviewDialog, setShowLeadReviewDialog] = useState(false);
+  const [leadReviewRows, setLeadReviewRows] = useState<LeadReviewRow[]>([]);
   const verificationJobStatusQuery = trpc.verification.getJobStatus.useQuery(
     { jobId: pollingVerificationJobId as string },
     { enabled: !!pollingVerificationJobId, refetchInterval: (query) => (query.state.data?.status === "in_progress" || query.state.data?.status === "pending" ? 1500 : false) }
@@ -226,6 +250,10 @@ export default function AIAgentPage() {
   const generateLandingPageMutation = trpc.landingPages.generate.useMutation();
   const createCampaignFromSequenceMutation = trpc.landingPages.createCampaignFromSequence.useMutation();
   const scheduleExistingCampaignMutation = trpc.campaigns.scheduleExisting.useMutation();
+  const mediaUploadMutation = trpc.media.uploadImage.useMutation();
+  const updateLandingPageSectionsMutation = trpc.landingPages.updateSections.useMutation();
+  const publishLandingPageMutation = trpc.landingPages.publish.useMutation();
+  const applyLandingPageAiEditMutation = trpc.landingPages.applyAiEdit.useMutation();
   const updateCampaignMutation = trpc.campaigns.update.useMutation();
 
   const nextId = () => ++idCounter.current;
@@ -530,9 +558,11 @@ export default function AIAgentPage() {
         : [];
       const ids = (leadRows || []).map((l: any) => l.id);
       const firstLead: any = (leadRows || [])[0];
+      const details = (leadRows || []).map((l: any) => ({ id: l.id, ownerName: l.ownerName || "", companyName: l.companyName || "" }));
       setData((d) => ({
         ...d,
         leadIds: ids,
+        leadDetails: details,
         sampleLeadName: firstLead?.ownerName || "",
         sampleLeadCompany: firstLead?.companyName || "",
         sampleLeadIndustry: firstLead?.industry || "",
@@ -607,15 +637,40 @@ export default function AIAgentPage() {
         <div><strong>{job.unknownCount}</strong> Unknown</div>
       </div>
     );
-    const results = await utils.verification.listResults.fetch({ jobId: job.jobId, status: "valid", limit: 1000 });
-    const validLeadIds = (results || []).map((r: any) => r.leadId).filter((id: any): id is number => typeof id === "number");
-    setData((d) => ({ ...d, verifiedLeadIds: validLeadIds }));
-    if (validLeadIds.length === 0) {
-      addAgent("None of these leads came back valid, so there's nothing to tag or build a campaign for yet. Want to try different criteria?");
+    // Every result, not just "valid" -- the review dialog shows the full
+    // picture (verified AND not) so the user picks who actually proceeds,
+    // same as doing this by hand, instead of a silent valid-only filter.
+    const results = await utils.verification.listResults.fetch({ jobId: job.jobId, limit: 1000 });
+    const detailsById = new Map(data.leadDetails.map((d) => [d.id, d]));
+    const rows: LeadReviewRow[] = (results || [])
+      .filter((r: any) => typeof r.leadId === "number")
+      .map((r: any) => ({
+        leadId: r.leadId,
+        email: r.email,
+        normalizedStatus: r.normalizedStatus,
+        ownerName: detailsById.get(r.leadId)?.ownerName,
+        companyName: detailsById.get(r.leadId)?.companyName,
+      }));
+    if (rows.length === 0) {
+      addAgent("None of these leads came back with a usable result, so there's nothing to review yet. Want to try different criteria?");
       setStep("outreachMode");
       return;
     }
-    addAgent(`${validLeadIds.length} valid lead(s) ready. Which tag should they go to?`);
+    setLeadReviewRows(rows);
+    setShowLeadReviewDialog(true);
+    addAgent(`${rows.length} lead(s) verified. Review the list and pick which ones to proceed with.`);
+  };
+
+  const handleLeadReviewConfirm = (selectedLeadIds: number[]) => {
+    setShowLeadReviewDialog(false);
+    addUser(`Proceed with ${selectedLeadIds.length} lead(s)`);
+    setData((d) => ({ ...d, verifiedLeadIds: selectedLeadIds }));
+    if (selectedLeadIds.length === 0) {
+      addAgent("No leads selected, so there's nothing to tag or build a campaign for yet. Want to try different criteria?");
+      setStep("outreachMode");
+      return;
+    }
+    addAgent(`${selectedLeadIds.length} lead(s) selected. Which tag should they go to?`);
     setStep("tagAssignment");
   };
 
@@ -642,10 +697,64 @@ export default function AIAgentPage() {
     setData((d) => ({ ...d, emailPrompt: text.trim() }));
     addUser(text.trim());
     setTextInput("");
-    await runLandingPageGeneration(text.trim());
+    addAgent("Want to add your logo? Paste a URL, upload a file, or skip.");
+    setStep("logoPrompt");
   };
 
-  const runLandingPageGeneration = async (offer: string) => {
+  const submitLogoUrl = (url: string) => {
+    setData((d) => ({ ...d, logoUrl: url.trim() }));
+    addUser(url.trim());
+    setTextInput("");
+    addAgent("Want a hero image for the landing page? Paste a URL, upload a file, or skip.");
+    setStep("heroMediaPrompt");
+  };
+
+  const skipLogo = () => {
+    addUser("Skip");
+    addAgent("Want a hero image for the landing page? Paste a URL, upload a file, or skip.");
+    setStep("heroMediaPrompt");
+  };
+
+  const handleLogoFile = async (file: File) => {
+    setBusy(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const { url } = await mediaUploadMutation.mutateAsync({ dataUrl, filename: file.name });
+      setBusy(false);
+      submitLogoUrl(url);
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`Logo upload failed: ${error?.message || "unknown error"}. Want to try a URL instead, or skip?`);
+    }
+  };
+
+  const submitHeroImageUrl = async (url: string) => {
+    const trimmed = url.trim();
+    setData((d) => ({ ...d, heroImageUrl: trimmed }));
+    addUser(trimmed);
+    setTextInput("");
+    await runLandingPageGeneration(data.emailPrompt, trimmed);
+  };
+
+  const skipHeroMedia = async () => {
+    addUser("Skip");
+    await runLandingPageGeneration(data.emailPrompt, "");
+  };
+
+  const handleHeroImageFile = async (file: File) => {
+    setBusy(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const { url } = await mediaUploadMutation.mutateAsync({ dataUrl, filename: file.name });
+      setBusy(false);
+      await submitHeroImageUrl(url);
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`Image upload failed: ${error?.message || "unknown error"}. Want to try a URL instead, or skip?`);
+    }
+  };
+
+  const runLandingPageGeneration = async (offer: string, heroImageUrl: string) => {
     setStep("buildingLandingPage");
     setBusy(true);
     addAgent("Researching the market, designing a landing page, and writing all 8 emails -- this takes a minute...");
@@ -656,9 +765,23 @@ export default function AIAgentPage() {
         industry,
         targetAudience: data.criteria || "business decision-makers",
         offer,
+        logoUrl: data.logoUrl || undefined,
       });
       const landingPageId = pageResult.landingPageId;
       setData((d) => ({ ...d, generatedLandingPageId: landingPageId }));
+
+      // Drop the hero image straight into the generated hero section, if one
+      // was provided -- landingPages.generate itself has no image input, so
+      // this is a small additive patch via the existing updateSections
+      // mutation right after generation.
+      if (heroImageUrl && Array.isArray((pageResult.landingPage as any)?.sections)) {
+        const sections = [...(pageResult.landingPage as any).sections];
+        const heroIndex = sections.findIndex((s: any) => s.type === "hero");
+        if (heroIndex >= 0) {
+          sections[heroIndex] = { ...sections[heroIndex], imageUrl: heroImageUrl };
+          await updateLandingPageSectionsMutation.mutateAsync({ id: landingPageId, sections });
+        }
+      }
 
       const campaignResult = await createCampaignFromSequenceMutation.mutateAsync({
         landingPageId,
@@ -669,23 +792,12 @@ export default function AIAgentPage() {
       if (!campaignId) throw new Error("Campaign creation did not return an id");
       setData((d) => ({ ...d, campaignId }));
 
-      const emails = await utils.landingPageEmails.list.fetch(landingPageId);
       setBusy(false);
       addAgent(
         undefined,
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{(pageResult.landingPage as any)?.name}</p>
-          {(pageResult.landingPage as any)?.researchNote && (
-            <p className="text-xs text-muted-foreground italic">{(pageResult.landingPage as any).researchNote}</p>
-          )}
-          <div className="space-y-1">
-            {(emails || []).map((e: any) => (
-              <p key={e.id} className="text-xs"><strong>Email {e.sequenceNumber}:</strong> {e.subject}</p>
-            ))}
-          </div>
-        </div>
+        <SequenceReviewCard landingPageId={landingPageId} onEdited={() => addAgent("Updated -- let me know if you want anything else changed, or continue when it looks good.")} />
       );
-      addAgent("Here's the generated landing page and 8-email sequence. Continue to the pre-flight check, or edit it first from the Landing Pages page.");
+      addAgent("Here's the generated landing page and all 8 emails. Use the AI edit box if you want anything changed, preview each email, then continue to publish.");
       setStep("sequenceReview");
     } catch (error: any) {
       setBusy(false);
@@ -695,8 +807,24 @@ export default function AIAgentPage() {
   };
 
   const continueFromSequenceReview = () => {
-    addUser("Looks good, continue");
-    runPreflightCheckStep();
+    addUser("Looks good, publish it");
+    runPublishStep();
+  };
+
+  const runPublishStep = async () => {
+    setStep("publishLandingPage");
+    setBusy(true);
+    addAgent("Publishing the landing page...");
+    try {
+      const result = await publishLandingPageMutation.mutateAsync(data.generatedLandingPageId as number);
+      setData((d) => ({ ...d, publishedUrl: (result as any).url || null }));
+      setBusy(false);
+      addAgent(`Published${(result as any).url ? `: ${(result as any).url}` : "."}`);
+      runPreflightCheckStep();
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`I couldn't publish the landing page: ${error?.message || "unknown error"}. Want to try again?`);
+    }
   };
 
   const runPreflightCheckStep = async () => {
@@ -957,6 +1085,8 @@ export default function AIAgentPage() {
     setTextInput("");
     setFilterText("");
     setPollingVerificationJobId(null);
+    setShowLeadReviewDialog(false);
+    setLeadReviewRows([]);
     setBusy(false);
     idCounter.current = 0;
     setTimeout(() => addAgent("Let's set up another campaign. What location are you targeting?"), 0);
@@ -1061,15 +1191,60 @@ export default function AIAgentPage() {
       case "offerPrompt":
         return renderTextInputArea(submitOfferPrompt, "Type your answer...");
 
+      case "logoPrompt":
+        return (
+          <div className="p-4 border-t space-y-2">
+            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (textInput.trim()) submitLogoUrl(textInput); }}>
+              <Input value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste a logo URL..." className="flex-1" autoFocus />
+              <Button type="submit" size="sm" disabled={!textInput.trim()}>Use URL</Button>
+            </form>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => logoFileInputRef.current?.click()}>
+                <Upload className="w-3.5 h-3.5" /> Upload File
+              </Button>
+              <Button size="sm" variant="ghost" onClick={skipLogo}>Skip</Button>
+            </div>
+            <input ref={logoFileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleLogoFile(e.target.files[0])} />
+          </div>
+        );
+
+      case "heroMediaPrompt":
+        return (
+          <div className="p-4 border-t space-y-2">
+            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (textInput.trim()) submitHeroImageUrl(textInput); }}>
+              <Input value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste a hero image URL..." className="flex-1" autoFocus />
+              <Button type="submit" size="sm" disabled={!textInput.trim()}>Use URL</Button>
+            </form>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => heroImageFileInputRef.current?.click()}>
+                <Upload className="w-3.5 h-3.5" /> Upload File
+              </Button>
+              <Button size="sm" variant="ghost" onClick={skipHeroMedia}>Skip</Button>
+            </div>
+            <input ref={heroImageFileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleHeroImageFile(e.target.files[0])} />
+          </div>
+        );
+
       case "sequenceReview":
         return (
           <div className="flex flex-wrap gap-2 p-4 border-t">
             <Button size="sm" onClick={continueFromSequenceReview} className="gap-1.5">
-              <Check className="w-3.5 h-3.5" /> Looks good, continue
+              <Check className="w-3.5 h-3.5" /> Looks good, publish it
             </Button>
             <Button size="sm" variant="outline" onClick={() => window.open(`/landing-pages/${data.generatedLandingPageId}`, "_blank")}>
-              Let Me Edit It First
+              Open Full Editor
             </Button>
+          </div>
+        );
+
+      case "publishLandingPage":
+        return (
+          <div className="p-4 border-t">
+            {data.publishedUrl && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => window.open(data.publishedUrl as string, "_blank")}>
+                View Live Page
+              </Button>
+            )}
           </div>
         );
 
@@ -1340,6 +1515,75 @@ export default function AIAgentPage() {
           <div ref={bottomRef} />
         </div>
         {renderInputArea()}
+      </div>
+
+      <LeadVerificationReviewDialog open={showLeadReviewDialog} rows={leadReviewRows} onConfirm={handleLeadReviewConfirm} />
+    </div>
+  );
+}
+
+// The real "final preview" moment: an actual rendered visual preview of the
+// generated landing page (not a text summary), an AI-edit box for it, and
+// each of the 8 emails with a full preview/edit trigger -- not a bare
+// subject-line list. Self-contained (its own queries/mutations) so applying
+// an AI edit refreshes this same card in place rather than needing a new
+// chat message.
+function SequenceReviewCard({ landingPageId, onEdited }: { landingPageId: number; onEdited: () => void }) {
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
+  const [aiInstruction, setAiInstruction] = useState("");
+  const utils = trpc.useUtils();
+  const previewQuery = trpc.landingPages.previewHtml.useQuery(landingPageId);
+  const emailsQuery = trpc.landingPageEmails.list.useQuery(landingPageId);
+  const applyEditMutation = trpc.landingPages.applyAiEdit.useMutation();
+
+  const handleApplyEdit = async () => {
+    if (!aiInstruction.trim()) return;
+    try {
+      await applyEditMutation.mutateAsync({ id: landingPageId, instruction: aiInstruction.trim() });
+      setAiInstruction("");
+      utils.landingPages.previewHtml.invalidate(landingPageId);
+      onEdited();
+    } catch (error: any) {
+      toast.error(error?.message || "AI edit failed");
+    }
+  };
+
+  return (
+    <div className="space-y-3 max-w-md">
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" variant={viewport === "desktop" ? "default" : "outline"} className="h-7 w-7 p-0" onClick={() => setViewport("desktop")}>
+          <Monitor className="w-3.5 h-3.5" />
+        </Button>
+        <Button size="sm" variant={viewport === "mobile" ? "default" : "outline"} className="h-7 w-7 p-0" onClick={() => setViewport("mobile")}>
+          <Smartphone className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      <div className="border rounded-md overflow-hidden bg-white" style={{ width: viewport === "mobile" ? "260px" : "100%" }}>
+        {previewQuery.isLoading ? (
+          <div className="h-64 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <iframe title="Landing page preview" srcDoc={previewQuery.data?.html || ""} style={{ width: "100%", height: "400px", border: "none" }} />
+        )}
+      </div>
+      <div className="flex gap-1.5">
+        <Input
+          value={aiInstruction}
+          onChange={(e) => setAiInstruction(e.target.value)}
+          placeholder='AI edit, e.g. "make it more premium"'
+          className="flex-1 h-8 text-xs"
+          onKeyDown={(e) => e.key === "Enter" && handleApplyEdit()}
+        />
+        <Button size="sm" onClick={handleApplyEdit} disabled={!aiInstruction.trim() || applyEditMutation.isPending} className="gap-1.5 h-8">
+          {applyEditMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Apply
+        </Button>
+      </div>
+      <div className="space-y-1">
+        {(emailsQuery.data || []).map((e: any) => (
+          <div key={e.id} className="flex items-center justify-between gap-2 bg-background/60 rounded px-2.5 py-1.5">
+            <p className="text-xs truncate min-w-0"><strong>Email {e.sequenceNumber}:</strong> {e.subject}</p>
+            <EmailEditorDialog email={e} trigger={<Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0"><Eye className="w-3.5 h-3.5" /></Button>} />
+          </div>
+        ))}
       </div>
     </div>
   );

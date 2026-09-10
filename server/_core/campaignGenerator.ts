@@ -65,7 +65,7 @@ function defaultResearchNote(industry: string): string {
 // throughout this codebase (e.g. leads.generate's AI-estimation path,
 // calls.interpretRequest) since the model doesn't always return clean JSON
 // even when asked for response_format: json_object.
-function parseJsonContent(rawContent: unknown): any {
+export function parseJsonContent(rawContent: unknown): any {
   let content: any = rawContent;
   if (Array.isArray(content)) {
     content = content.map((c: any) => (typeof c === "string" ? c : c.text || "")).join("");
@@ -91,12 +91,36 @@ function isValidHexColor(value: unknown): value is string {
   return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value.trim());
 }
 
-function normalizeTheme(raw: any): Theme {
+export function normalizeTheme(raw: any): Theme {
   const theme = { ...DEFAULT_THEME };
   for (const key of Object.keys(DEFAULT_THEME) as Array<keyof Theme>) {
     if (isValidHexColor(raw?.[key])) theme[key] = raw[key].trim();
   }
   return theme;
+}
+
+// For AI-edit: merges validated changes ONTO the page's current theme,
+// rather than normalizeTheme's generic DEFAULT_THEME fallback -- an edit
+// instruction that only touches one color (or that the model returns
+// slightly malformed) must never silently reset every other color back to
+// a generic default; anything invalid/missing just keeps its current value.
+export function mergeTheme(current: Theme, raw: any): Theme {
+  const theme = { ...current };
+  for (const key of Object.keys(DEFAULT_THEME) as Array<keyof Theme>) {
+    if (isValidHexColor(raw?.[key])) theme[key] = raw[key].trim();
+  }
+  return theme;
+}
+
+// For AI-edit: validates an LLM-returned full sections array (not just a
+// type-only plan like sanitizeSectionPlan) -- keeps only entries with a
+// recognized `type`, drops anything else the model may have hallucinated.
+// Free-form fields (headline/body/bullets/etc.) are passed through as-is,
+// same as generateSectionContent's own output shape.
+export function sanitizeSectionsContent(raw: any, fallback: SectionContent[]): SectionContent[] {
+  if (!Array.isArray(raw) || raw.length === 0) return fallback;
+  const cleaned = raw.filter((s: any) => s && typeof s === "object" && SECTION_TYPES.includes(s.type));
+  return cleaned.length > 0 ? cleaned : fallback;
 }
 
 function sanitizeSectionPlan(raw: any, hasProofPoints: boolean): SectionType[] {
@@ -288,15 +312,60 @@ export function buildCampaignEmailPrompt(slot: CampaignEmailSlot, ctx: CampaignC
   return builder(ctx, landingPageUrl, proofNote);
 }
 
+const CAMPAIGN_EMAIL_SYSTEM_PROMPT = "You are a professional outreach copywriter. Write concise, human-sounding, benefit-focused, trustworthy emails -- avoid generic AI marketing language and hype. Never invent testimonials, customer counts, reviews, certifications, awards, case studies, or statistics. Respond with raw JSON only: {\"subject\":\"...\",\"body\":\"...\"} -- body as plain text using \\n for line breaks and blank lines between paragraphs, no HTML, no markdown headers, no signature/sign-off (one is appended automatically).";
+
+// Follow-up emails are drafted with Claude when a key is configured (the
+// same getClient() priority claude.ts's own generateEmailWithClaude uses:
+// explicit key -> the owner's saved Settings key -> ANTHROPIC_API_KEY env
+// fallback), NOT generateEmailWithClaude itself -- that function hardcodes a
+// different sender identity and explicitly instructs the model to invent a
+// fake case study every time, which conflicts with "never invent
+// testimonials" (confirmed earlier this session). This sends the exact same
+// buildCampaignEmailPrompt text, just through the Anthropic SDK directly.
+// Returns null (not a throw) on anything short of a clean {subject,body} --
+// the caller falls back to invokeLLM, never to the user.
+async function generateCampaignEmailWithClaude(prompt: string): Promise<{ subject: string; body: string } | null> {
+  const { getClient } = await import("../claude");
+  const client = await getClient(); // throws if no key is configured anywhere -- caller catches this as "not available"
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1200,
+    temperature: 0.8,
+    system: CAMPAIGN_EMAIL_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: prompt }],
+  });
+  const db = await import("../db");
+  db.trackClaudeApiUsage({
+    userId: 1,
+    purpose: "campaign_email",
+    model: "claude-sonnet-4-6",
+    inputTokens: response.usage?.input_tokens || 0,
+    outputTokens: response.usage?.output_tokens || 0,
+  }).catch(() => {});
+
+  const textBlock = response.content.find((b: any) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") return null;
+  const parsed = parseJsonContent(textBlock.text);
+  if (parsed?.subject && parsed?.body) {
+    return { subject: String(parsed.subject), body: String(parsed.body) };
+  }
+  return null;
+}
+
 export async function generateCampaignEmail(slot: CampaignEmailSlot, ctx: CampaignContext, landingPageUrl: string): Promise<{ subject: string; body: string }> {
   const prompt = buildCampaignEmailPrompt(slot, ctx, landingPageUrl);
+
+  try {
+    const claudeResult = await generateCampaignEmailWithClaude(prompt);
+    if (claudeResult) return claudeResult;
+  } catch (error) {
+    console.log(`[campaignGenerator] Claude not available for slot ${slot.sequenceNumber}, falling back to invokeLLM:`, (error as any)?.message);
+  }
+
   try {
     const response = await invokeLLM({
       messages: [
-        {
-          role: "system",
-          content: "You are a professional outreach copywriter. Write concise, human-sounding, benefit-focused, trustworthy emails -- avoid generic AI marketing language and hype. Never invent testimonials, customer counts, reviews, certifications, awards, case studies, or statistics. Respond with raw JSON only: {\"subject\":\"...\",\"body\":\"...\"} -- body as plain text using \\n for line breaks and blank lines between paragraphs, no HTML, no markdown headers, no signature/sign-off (one is appended automatically).",
-        },
+        { role: "system", content: CAMPAIGN_EMAIL_SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
       response_format: { type: "json_object" },

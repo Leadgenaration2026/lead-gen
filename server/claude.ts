@@ -6,7 +6,7 @@ import * as db from "./db";
  * Get Claude API client.
  * Priority: 1) Explicit apiKey param, 2) User's saved key in DB, 3) ENV fallback
  */
-const getClient = async (apiKey?: string) => {
+export const getClient = async (apiKey?: string) => {
   if (apiKey) {
     return new Anthropic({ apiKey });
   }

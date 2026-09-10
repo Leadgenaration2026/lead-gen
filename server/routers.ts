@@ -4928,6 +4928,48 @@ Respond in this exact JSON format:
       return { theme, researchNote };
     }),
 
+    // "AI Edit" box -- rather than a diff/patch engine, sends the LLM the
+    // ENTIRE current sections+theme plus the free-text instruction and asks
+    // for the entire updated content back, changing only what the
+    // instruction implies. Simpler and more reliable than true patching,
+    // and reuses the exact validators generation already has
+    // (sanitizeSectionsContent/mergeTheme in campaignGenerator.ts) so a
+    // malformed model response can never silently wipe the page.
+    applyAiEdit: protectedProcedure
+      .input(z.object({ id: z.number(), instruction: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const page = await db.getLandingPageById(input.id);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const { parseJsonContent, sanitizeSectionsContent, mergeTheme } = await import("./_core/campaignGenerator");
+        const currentSections = Array.isArray(page.sections) ? page.sections : [];
+        const currentTheme = page.theme as any;
+
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: "You edit landing-page content on request. You are given the CURRENT page as JSON (sections array + theme colors) and a user instruction. Return the FULL UPDATED page as JSON in the exact same shape, changing ONLY what the instruction asks for -- leave every other section/field byte-for-byte identical. Never invent testimonials, customer counts, reviews, certifications, awards, case studies, or statistics. Respond with raw JSON only: {\"sections\":[...],\"theme\":{...}} -- theme is optional, only include it if the instruction asks to change colors/theme.",
+            },
+            {
+              role: "user",
+              content: `Current page:\n${JSON.stringify({ sections: currentSections, theme: currentTheme })}\n\nInstruction: "${input.instruction}"`,
+            },
+          ],
+          response_format: { type: "json_object" },
+        }) as any;
+
+        const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
+        if (!parsed) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The AI edit didn't return a usable result. Try rephrasing the instruction." });
+        }
+
+        const newSections = sanitizeSectionsContent(parsed.sections, currentSections);
+        const newTheme = parsed.theme ? mergeTheme(currentTheme, parsed.theme) : currentTheme;
+        await db.updateLandingPage(input.id, { sections: newSections, theme: newTheme });
+        return { sections: newSections, theme: newTheme };
+      }),
+
     previewHtml: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
       const page = await db.getLandingPageById(id);
       if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -5092,6 +5134,57 @@ Respond in this exact JSON format:
       await db.updateLandingPageEmail(id, { subject, bodyPlainText: body, bodyHtml });
       return { subject, body, bodyHtml };
     }),
+
+    // Same "send the whole current content + instruction, get the whole
+    // updated content back" pattern as landingPages.applyAiEdit -- applies
+    // to one email at a time (Phase 2 non-goal: apply one instruction to
+    // all 8 at once).
+    applyAiEdit: protectedProcedure
+      .input(z.object({ id: z.number(), instruction: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const email = await db.getLandingPageEmailById(input.id);
+        if (!email) throw new TRPCError({ code: "NOT_FOUND" });
+        const page = await db.getLandingPageById(email.landingPageId);
+        if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const { parseJsonContent } = await import("./_core/campaignGenerator");
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: "You edit a single outreach email on request. You are given the CURRENT email (subject + body) as JSON and a user instruction. Return the FULL UPDATED email as JSON in the exact same shape, changing ONLY what the instruction asks for. Never invent testimonials, customer counts, reviews, certifications, awards, case studies, or statistics. Body stays plain text (use \\n for line breaks), no HTML. Respond with raw JSON only: {\"subject\":\"...\",\"body\":\"...\"}.",
+            },
+            {
+              role: "user",
+              content: `Current email:\n${JSON.stringify({ subject: email.subject, body: email.bodyPlainText })}\n\nInstruction: "${input.instruction}"`,
+            },
+          ],
+          response_format: { type: "json_object" },
+        }) as any;
+
+        const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
+        const subject = parsed?.subject ? String(parsed.subject) : email.subject;
+        const body = parsed?.body ? String(parsed.body) : email.bodyPlainText;
+        if (!parsed?.subject && !parsed?.body) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The AI edit didn't return a usable result. Try rephrasing the instruction." });
+        }
+
+        const { buildBrandedEmailBody } = await import("./_core/emailBrandShell");
+        const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
+        const theme = page.theme as any;
+        const ctaText = (page.sections as any[])?.find((s) => s.type === "hero")?.ctaText || "Learn More";
+        const bodyHtml = buildBrandedEmailBody({
+          bodyText: body,
+          logoUrl: page.logoUrl,
+          companyName: page.companyName,
+          primaryColor: theme.primary,
+          ctaColor: theme.cta,
+          ctaText,
+          ctaUrl: page.slug ? buildPublicLandingPageUrl(page.slug) : null,
+        });
+        await db.updateLandingPageEmail(input.id, { subject, bodyPlainText: body, bodyHtml });
+        return { subject, body, bodyHtml };
+      }),
 
     renderHtml: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
       const email = await db.getLandingPageEmailById(id);

@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, RotateCcw, Save, Check, Loader2 } from "lucide-react";
+import { Copy, RotateCcw, Save, Check, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export const SLOT_LABELS: Record<string, string> = {
@@ -37,11 +37,13 @@ export function EmailEditorDialog({ email, trigger }: { email: LandingPageEmail;
   const [tab, setTab] = useState("preview");
   const [subject, setSubject] = useState(email.subject);
   const [bodyPlainText, setBodyPlainText] = useState(email.bodyPlainText || "");
+  const [aiInstruction, setAiInstruction] = useState("");
 
   const utils = trpc.useUtils();
   const updateMutation = trpc.landingPageEmails.update.useMutation();
   const regenerateMutation = trpc.landingPageEmails.regenerate.useMutation();
   const saveTemplateMutation = trpc.landingPageEmails.saveAsTemplate.useMutation();
+  const applyAiEditMutation = trpc.landingPageEmails.applyAiEdit.useMutation();
   const htmlQuery = trpc.landingPageEmails.renderHtml.useQuery(email.id, { enabled: open && tab === "html" });
 
   useEffect(() => {
@@ -84,6 +86,21 @@ export function EmailEditorDialog({ email, trigger }: { email: LandingPageEmail;
     }
   };
 
+  const handleApplyAiEdit = async () => {
+    if (!aiInstruction.trim()) return;
+    try {
+      const result = await applyAiEditMutation.mutateAsync({ id: email.id, instruction: aiInstruction.trim() });
+      setSubject(result.subject);
+      setBodyPlainText(result.body);
+      setAiInstruction("");
+      toast.success("Applied");
+      utils.landingPageEmails.list.invalidate();
+      setTab("edit");
+    } catch (error: any) {
+      toast.error(error?.message || "AI edit failed");
+    }
+  };
+
   const handleCopyHtml = async () => {
     if (!htmlQuery.data?.html) return;
     try {
@@ -107,6 +124,7 @@ export function EmailEditorDialog({ email, trigger }: { email: LandingPageEmail;
           <TabsList className="mx-6 mt-3 w-fit">
             <TabsTrigger value="preview">Preview</TabsTrigger>
             <TabsTrigger value="edit">Edit</TabsTrigger>
+            <TabsTrigger value="aiEdit">AI Edit</TabsTrigger>
             <TabsTrigger value="html">HTML</TabsTrigger>
           </TabsList>
 
@@ -126,6 +144,21 @@ export function EmailEditorDialog({ email, trigger }: { email: LandingPageEmail;
             </div>
             <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending} className="gap-1.5">
               {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save Changes
+            </Button>
+          </TabsContent>
+
+          <TabsContent value="aiEdit" className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Type what you'd like changed -- e.g. "make it shorter", "make the tone more casual", "focus more on cost savings". The rest of the email stays as-is.
+            </p>
+            <Textarea
+              value={aiInstruction}
+              onChange={(e) => setAiInstruction(e.target.value)}
+              placeholder="Describe the change..."
+              rows={3}
+            />
+            <Button size="sm" onClick={handleApplyAiEdit} disabled={!aiInstruction.trim() || applyAiEditMutation.isPending} className="gap-1.5">
+              {applyAiEditMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Apply
             </Button>
           </TabsContent>
 
