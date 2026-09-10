@@ -13,6 +13,7 @@ import { LeadVerificationReviewDialog, type LeadReviewRow } from "@/components/L
 import { EmailEditorDialog } from "@/components/EmailEditorDialog";
 import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X, Monitor, Smartphone, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { WIZARD_STORAGE_KEY } from "@/lib/aiAgentStorage";
 
 // Same fixed value lists the Leads page uses for these same selects (Leads.tsx
 // ~2716-2819) -- kept identical since Seamless.AI only accepts these exact
@@ -105,7 +106,7 @@ type Step =
   // saved, alongside the pre-existing "classic single email" steps below,
   // which stay completely unchanged for that path.
   | "verifyingEmails" | "verificationSummary" | "tagAssignment"
-  | "offerPrompt" | "logoPrompt" | "heroMediaPrompt" | "buildingLandingPage" | "sequenceReview" | "publishLandingPage" | "preflightCheck"
+  | "offerPrompt" | "stylePrompt" | "logoPrompt" | "heroMediaPrompt" | "buildingLandingPage" | "sequenceReview" | "publishLandingPage" | "preflightCheck"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
   | "followUpCount" | "generatingFollowUpPreview" | "followUpPreview" | "templateName" | "savingTemplate"
   | "scheduleChoice" | "scheduleDatetime" | "campaignName"
@@ -170,6 +171,8 @@ interface WizardData {
   leadDetails: Array<{ id: number; ownerName: string; companyName: string }>;
   logoUrl: string;
   heroImageUrl: string;
+  heroVideoUrl: string;
+  stylePreference: string;
   generatedLandingPageId: number | null;
   publishedUrl: string | null;
   preflightPassed: boolean;
@@ -181,12 +184,17 @@ const DEFAULTS: WizardData = {
   leadSetName: "", resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0,
   usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
   pipelineMode: null, verificationJobId: null, verifiedLeadIds: [], verifiedLeadSetId: null,
-  leadDetails: [], logoUrl: "", heroImageUrl: "",
+  leadDetails: [], logoUrl: "", heroImageUrl: "", heroVideoUrl: "", stylePreference: "",
   generatedLandingPageId: null, publishedUrl: null, preflightPassed: false,
   sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
   emailPrompt: "", subject: "", body: "", followUpCount: 7, followUpPreviews: [], templateName: "", templateId: null,
   scheduleNow: true, scheduledAt: "", campaignName: "", campaignId: null,
 };
+
+// A pasted hero-media URL from a recognized video host routes into
+// heroVideoUrl (rendered as an embed) instead of heroImageUrl -- everything
+// else is treated as a plain image URL.
+const HERO_VIDEO_HOST_PATTERN = /(?:youtube\.com|youtu\.be|vimeo\.com)/i;
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -207,9 +215,11 @@ function fileToDataUrl(file: File): Promise<string> {
 // renderInputArea() drives the actual interactive UI off `step`/`data`
 // alone, not off message history, so those cards work correctly again the
 // moment a step re-renders; only their PAST occurrences in the transcript
-// are what's lost on resume.
-const WIZARD_STORAGE_KEY = "ai-agent-wizard-v1";
-
+// are what's lost on resume. WIZARD_STORAGE_KEY lives in a shared file
+// (not here) so DashboardLayout.tsx can check for a resumable conversation
+// too, and show a "Resume" indicator on the nav item itself -- the
+// literal "a link should be there" ask, visible from anywhere in the app,
+// not just after already navigating back to this page.
 type SerializableChatMessage = { id: number; role: "agent" | "user"; text?: string };
 interface PersistedWizardState {
   step: Step;
@@ -796,6 +806,13 @@ export default function AIAgentPage() {
     setData((d) => ({ ...d, emailPrompt: text.trim() }));
     addUser(text.trim());
     setTextInput("");
+    addAgent("What kind of look and feel do you want for the landing page?");
+    setStep("stylePrompt");
+  };
+
+  const submitStylePreference = (style: string, label: string) => {
+    setData((d) => ({ ...d, stylePreference: style }));
+    addUser(label);
     addAgent("Want to add your logo? Paste a URL, upload a file, or skip.");
     setStep("logoPrompt");
   };
@@ -804,13 +821,13 @@ export default function AIAgentPage() {
     setData((d) => ({ ...d, logoUrl: url.trim() }));
     addUser(url.trim());
     setTextInput("");
-    addAgent("Want a hero image for the landing page? Paste a URL, upload a file, or skip.");
+    addAgent("Want a hero image or video for the landing page? Paste an image URL, a YouTube/Vimeo link, upload an image, or skip.");
     setStep("heroMediaPrompt");
   };
 
   const skipLogo = () => {
     addUser("Skip");
-    addAgent("Want a hero image for the landing page? Paste a URL, upload a file, or skip.");
+    addAgent("Want a hero image or video for the landing page? Paste an image URL, a YouTube/Vimeo link, upload an image, or skip.");
     setStep("heroMediaPrompt");
   };
 
@@ -829,15 +846,16 @@ export default function AIAgentPage() {
 
   const submitHeroImageUrl = async (url: string) => {
     const trimmed = url.trim();
-    setData((d) => ({ ...d, heroImageUrl: trimmed }));
+    const isVideo = HERO_VIDEO_HOST_PATTERN.test(trimmed);
+    setData((d) => (isVideo ? { ...d, heroVideoUrl: trimmed } : { ...d, heroImageUrl: trimmed }));
     addUser(trimmed);
     setTextInput("");
-    await runLandingPageGeneration(data.emailPrompt, trimmed);
+    await runLandingPageGeneration(data.emailPrompt, isVideo ? "" : trimmed, isVideo ? trimmed : "");
   };
 
   const skipHeroMedia = async () => {
     addUser("Skip");
-    await runLandingPageGeneration(data.emailPrompt, "");
+    await runLandingPageGeneration(data.emailPrompt, "", "");
   };
 
   const handleHeroImageFile = async (file: File) => {
@@ -846,14 +864,16 @@ export default function AIAgentPage() {
       const dataUrl = await fileToDataUrl(file);
       const { url } = await mediaUploadMutation.mutateAsync({ dataUrl, filename: file.name });
       setBusy(false);
-      await submitHeroImageUrl(url);
+      setData((d) => ({ ...d, heroImageUrl: url }));
+      addUser(file.name);
+      await runLandingPageGeneration(data.emailPrompt, url, "");
     } catch (error: any) {
       setBusy(false);
       addAgent(`Image upload failed: ${error?.message || "unknown error"}. Want to try a URL instead, or skip?`);
     }
   };
 
-  const runLandingPageGeneration = async (offer: string, heroImageUrl: string) => {
+  const runLandingPageGeneration = async (offer: string, heroImageUrl: string, heroVideoUrl: string) => {
     setStep("buildingLandingPage");
     setBusy(true);
     addAgent("Researching the market, designing a landing page, and writing all 8 emails -- this takes a minute...");
@@ -865,19 +885,23 @@ export default function AIAgentPage() {
         targetAudience: data.criteria || "business decision-makers",
         offer,
         logoUrl: data.logoUrl || undefined,
+        stylePreference: data.stylePreference || undefined,
       });
       const landingPageId = pageResult.landingPageId;
       setData((d) => ({ ...d, generatedLandingPageId: landingPageId }));
 
-      // Drop the hero image straight into the generated hero section, if one
-      // was provided -- landingPages.generate itself has no image input, so
-      // this is a small additive patch via the existing updateSections
-      // mutation right after generation.
-      if (heroImageUrl && Array.isArray((pageResult.landingPage as any)?.sections)) {
+      // Drop the hero image/video straight into the generated hero section,
+      // if one was provided -- landingPages.generate itself has no media
+      // input, so this is a small additive patch via the existing
+      // updateSections mutation right after generation.
+      if ((heroImageUrl || heroVideoUrl) && Array.isArray((pageResult.landingPage as any)?.sections)) {
         const sections = [...(pageResult.landingPage as any).sections];
         const heroIndex = sections.findIndex((s: any) => s.type === "hero");
         if (heroIndex >= 0) {
-          sections[heroIndex] = { ...sections[heroIndex], imageUrl: heroImageUrl };
+          sections[heroIndex] = {
+            ...sections[heroIndex],
+            ...(heroVideoUrl ? { videoUrl: heroVideoUrl } : { imageUrl: heroImageUrl }),
+          };
           await updateLandingPageSectionsMutation.mutateAsync({ id: landingPageId, sections });
         }
       }
@@ -1291,6 +1315,44 @@ export default function AIAgentPage() {
       case "offerPrompt":
         return renderTextInputArea(submitOfferPrompt, "Type your answer...");
 
+      case "stylePrompt":
+        return (
+          <div className="p-4 border-t space-y-2">
+            <div className="grid gap-2">
+              <Button
+                variant="outline"
+                className="justify-start h-auto py-2.5 text-left"
+                onClick={() => submitStylePreference("clean_professional", "Clean & Professional")}
+              >
+                <div>
+                  <div className="font-medium text-sm">Clean & Professional</div>
+                  <div className="text-xs text-muted-foreground">Restrained palette, lots of white space, trustworthy tone</div>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start h-auto py-2.5 text-left"
+                onClick={() => submitStylePreference("premium_modern", "Premium & Modern")}
+              >
+                <div>
+                  <div className="font-medium text-sm">Premium & Modern</div>
+                  <div className="text-xs text-muted-foreground">Bolder palette, confident and polished tone</div>
+                </div>
+              </Button>
+              <Button
+                variant="outline"
+                className="justify-start h-auto py-2.5 text-left"
+                onClick={() => submitStylePreference("bold_conversion", "Bold & Conversion-Focused")}
+              >
+                <div>
+                  <div className="font-medium text-sm">Bold & Conversion-Focused</div>
+                  <div className="text-xs text-muted-foreground">High-contrast, punchy copy, unmissable CTA</div>
+                </div>
+              </Button>
+            </div>
+          </div>
+        );
+
       case "logoPrompt":
         return (
           <div className="p-4 border-t space-y-2">
@@ -1312,7 +1374,7 @@ export default function AIAgentPage() {
         return (
           <div className="p-4 border-t space-y-2">
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (textInput.trim()) submitHeroImageUrl(textInput); }}>
-              <Input value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste a hero image URL..." className="flex-1" autoFocus />
+              <Input value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste an image URL or YouTube/Vimeo link..." className="flex-1" autoFocus />
               <Button type="submit" size="sm" disabled={!textInput.trim()}>Use URL</Button>
             </form>
             <div className="flex gap-2">

@@ -4789,6 +4789,7 @@ Respond in this exact JSON format:
         offer: z.string().min(1),
         proofPoints: z.array(z.string()).optional(),
         logoUrl: z.string().optional(),
+        stylePreference: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const settings = await db.getUserSettings(ctx.user.id);
@@ -4809,6 +4810,7 @@ Respond in this exact JSON format:
           companyName,
           proofPoints: input.proofPoints,
           landingPageUrl,
+          stylePreference: input.stylePreference,
         });
 
         const landingPageId = await db.createLandingPage({

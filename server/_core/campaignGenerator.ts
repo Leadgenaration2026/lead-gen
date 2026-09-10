@@ -6,6 +6,11 @@ export interface CampaignContext {
   offer: string;
   companyName: string;
   proofPoints?: string[];
+  // User-picked design direction (e.g. "Clean & Professional", "Premium &
+  // Modern", "Bold & Conversion-Focused") -- the wizard's own "ask me
+  // questions and build accordingly" input, rather than the AI silently
+  // picking a look on its own every time.
+  stylePreference?: string;
 }
 
 export type SectionType =
@@ -36,6 +41,7 @@ export interface SectionContent {
   bullets?: string[];
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
+  videoUrl?: string; // YouTube/Vimeo link, rendered as an embed (see server/_core/publicPages.ts)
 }
 
 export interface CampaignEmailSlot {
@@ -52,6 +58,21 @@ const DEFAULT_THEME: Theme = {
   text: "#1a1a1a",
   accent: "#2563eb",
 };
+
+// Only used if the LLM call for a theme genuinely fails twice in a row
+// (see synthesizeThemeAndResearch's retry below) -- a small set of visually
+// distinct fallbacks, picked at random, so even a failed generation doesn't
+// produce the exact same navy-blue page every time.
+const FALLBACK_THEMES: Theme[] = [
+  DEFAULT_THEME,
+  { primary: "#0f172a", secondary: "#f8fafc", cta: "#059669", background: "#ffffff", text: "#0f172a", accent: "#059669" },
+  { primary: "#3f1d38", secondary: "#faf5fb", cta: "#c026d3", background: "#ffffff", text: "#1f1023", accent: "#c026d3" },
+  { primary: "#1c1917", secondary: "#fafaf9", cta: "#ea580c", background: "#ffffff", text: "#1c1917", accent: "#ea580c" },
+  { primary: "#052e2b", secondary: "#f0fdf9", cta: "#0d9488", background: "#ffffff", text: "#042f2e", accent: "#0d9488" },
+];
+function randomFallbackTheme(): Theme {
+  return FALLBACK_THEMES[Math.floor(Math.random() * FALLBACK_THEMES.length)];
+}
 
 const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer"];
 const DEFAULT_SECTION_PLAN: SectionType[] = ["hero", "problem", "solution", "benefits", "faq", "final-cta", "footer"];
@@ -134,46 +155,60 @@ function sanitizeSectionPlan(raw: any, hasProofPoints: boolean): SectionType[] {
   return plan;
 }
 
+const STYLE_DESCRIPTIONS: Record<string, string> = {
+  "clean_professional": "Clean & Professional -- restrained palette (2-3 colors max), generous white space, conservative trustworthy tone, subtle CTA color.",
+  "premium_modern": "Premium & Modern -- a bolder, richer palette (can be a dark primary with a vivid accent), confident and polished tone, a CTA color that pops against the rest of the page.",
+  "bold_conversion": "Bold & Conversion-Focused -- high-contrast, energetic palette, punchy short copy, an unmissable CTA color, urgency-oriented tone without being spammy.",
+};
+
 // One invokeLLM call (established response_format: json_object + defensive
 // parse pattern) that picks an industry-appropriate color theme, plans which
 // sections actually make sense for this campaign, and produces the honest
 // "this is closed-book synthesis, not a real competitor audit" disclosure --
 // there is no web-search tool or screenshot capability anywhere in this
 // codebase (confirmed), so this step never claims to have inspected a real
-// page.
+// page. Retries once on failure/unparseable output before falling back to a
+// randomized default theme -- previously a single failure silently produced
+// the exact same hardcoded navy-blue theme every time, which is a real part
+// of why generated pages could look "the same standard template" repeatedly.
 export async function synthesizeThemeAndResearch(ctx: CampaignContext): Promise<ThemeAndResearch> {
   const proofNote = ctx.proofPoints?.length
     ? `The user has supplied these real proof points, which may inform the plan: ${ctx.proofPoints.join("; ")}.`
     : `The user has supplied no real proof points (no testimonials, stats, case studies, or awards) -- the section plan must NOT include "testimonials", and must not plan any section that would need fabricated numbers or names.`;
+  const styleNote = ctx.stylePreference && STYLE_DESCRIPTIONS[ctx.stylePreference]
+    ? `Requested design direction: ${STYLE_DESCRIPTIONS[ctx.stylePreference]} Build the theme and section choices around this direction specifically.`
+    : "No specific style was requested -- pick a direction that best fits the industry and offer, and commit to it fully rather than defaulting to a generic corporate look.";
 
-  try {
-    const response = await invokeLLM({
-      messages: [
-        {
-          role: "system",
-          content: "You are a conversion-focused marketing design strategist. You work from general knowledge of common, proven landing-page design and copy patterns for a given industry -- you have not browsed any live websites and must never claim to have inspected a specific real competitor's page. Respond with raw JSON only, no markdown formatting, no explanatory text.",
-        },
-        {
-          role: "user",
-          content: `Industry: ${ctx.industry}\nTarget audience: ${ctx.targetAudience}\nOffer: ${ctx.offer}\nCompany: ${ctx.companyName}\n${proofNote}\n\nReturn a JSON object with exactly these fields:\n{"theme":{"primary":"#hex","secondary":"#hex","cta":"#hex","background":"#hex","text":"#hex","accent":"#hex"},"researchNote":"one or two honest sentences describing the common design patterns you drew on for this industry, explicitly noting this is general knowledge, not a live audit of a specific competitor","sectionPlan":["hero", ...]}\nColors must suit the industry and audience (e.g. finance/professional-services: trustworthy navy/blue/green; healthcare: calm/clean; technology: modern, can be darker). sectionPlan must be an ordered array using ONLY these values: hero, problem, solution, benefits, features, testimonials, pricing, faq, final-cta, footer -- start with hero, end with footer, and only include sections that genuinely help conversion for this specific campaign (don't include every type). Only include "testimonials" if real proof points were supplied above.`,
-        },
-      ],
-      response_format: { type: "json_object" },
-    }) as any;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: "You are a conversion-focused marketing design strategist who designs a DIFFERENT, distinctive theme for every brief -- never the same safe navy-and-white \"corporate default\" twice. You work from general knowledge of common, proven landing-page design and copy patterns for a given industry -- you have not browsed any live websites and must never claim to have inspected a specific real competitor's page. Respond with raw JSON only, no markdown formatting, no explanatory text.",
+          },
+          {
+            role: "user",
+            content: `Industry: ${ctx.industry}\nTarget audience: ${ctx.targetAudience}\nOffer: ${ctx.offer}\nCompany: ${ctx.companyName}\n${proofNote}\n${styleNote}\n\nReturn a JSON object with exactly these fields:\n{"theme":{"primary":"#hex","secondary":"#hex","cta":"#hex","background":"#hex","text":"#hex","accent":"#hex"},"researchNote":"one or two honest sentences describing the common design patterns you drew on for this industry, explicitly noting this is general knowledge, not a live audit of a specific competitor","sectionPlan":["hero", ...]}\nColors must be genuinely specific to THIS industry/offer/style, not a generic safe default -- vary saturation, consider a dark-primary/light-accent combo or a warmer palette where the industry and style support it, and make sure primary/cta/accent are visually distinct from each other (not three near-identical blues). sectionPlan must be an ordered array using ONLY these values: hero, problem, solution, benefits, features, testimonials, pricing, faq, final-cta, footer -- start with hero, end with footer, and only include sections that genuinely help conversion for this specific campaign (don't include every type). Only include "testimonials" if real proof points were supplied above.`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      }) as any;
 
-    const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
-    if (parsed) {
-      return {
-        theme: normalizeTheme(parsed.theme),
-        researchNote: typeof parsed.researchNote === "string" && parsed.researchNote.trim() ? parsed.researchNote.trim() : defaultResearchNote(ctx.industry),
-        sectionPlan: sanitizeSectionPlan(parsed.sectionPlan, !!ctx.proofPoints?.length),
-      };
+      const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
+      if (parsed) {
+        return {
+          theme: normalizeTheme(parsed.theme),
+          researchNote: typeof parsed.researchNote === "string" && parsed.researchNote.trim() ? parsed.researchNote.trim() : defaultResearchNote(ctx.industry),
+          sectionPlan: sanitizeSectionPlan(parsed.sectionPlan, !!ctx.proofPoints?.length),
+        };
+      }
+    } catch (error) {
+      console.error(`[campaignGenerator] synthesizeThemeAndResearch attempt ${attempt + 1} failed:`, error);
     }
-  } catch (error) {
-    console.error("[campaignGenerator] synthesizeThemeAndResearch failed:", error);
   }
 
-  return { theme: DEFAULT_THEME, researchNote: defaultResearchNote(ctx.industry), sectionPlan: sanitizeSectionPlan(null, !!ctx.proofPoints?.length) };
+  return { theme: randomFallbackTheme(), researchNote: defaultResearchNote(ctx.industry), sectionPlan: sanitizeSectionPlan(null, !!ctx.proofPoints?.length) };
 }
 
 const SECTION_INSTRUCTIONS: Record<SectionType, string> = {
@@ -202,29 +237,47 @@ const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
   footer: { body: "Your Company" },
 };
 
+// Phrases that show up constantly in generic AI-written marketing copy --
+// explicitly banned in the prompt below so the model reaches for something
+// actually specific to the offer instead of defaulting to these.
+const CLICHE_PHRASES = [
+  "take your business to the next level", "unlock your potential", "your trusted partner",
+  "we help you succeed", "seamless experience", "in today's fast-paced world",
+  "cutting-edge solutions", "one-stop shop", "revolutionize the way",
+];
+
 // Per-section-type prompt, called concurrently for every planned section
 // (mirrors the Promise.all-with-per-slot-fallback shape already used by
 // email.previewFollowUpSchedule) so one failed section doesn't fail the
-// whole generation.
+// whole generation. Retries once before falling back to the generic
+// PLACEHOLDER_SECTION text, for the same reason synthesizeThemeAndResearch
+// does -- a single transient failure shouldn't be the reason every page
+// shows the exact same "Your headline here" placeholder.
 export async function generateSectionContent(sectionType: SectionType, ctx: CampaignContext): Promise<SectionContent> {
-  try {
-    const response = await invokeLLM({
-      messages: [
-        {
-          role: "system",
-          content: "You write concise, professional, human-sounding, benefit-focused landing page copy. Avoid generic AI marketing language. Never invent testimonials, customer counts, reviews, certifications, awards, case studies, or statistics that weren't supplied to you -- omit them instead. Respond with raw JSON only, no markdown formatting, no explanatory text.",
-        },
-        {
-          role: "user",
-          content: `Industry: ${ctx.industry}\nTarget audience: ${ctx.targetAudience}\nOffer: ${ctx.offer}\nCompany: ${ctx.companyName}\n${ctx.proofPoints?.length ? `Real proof points you may use: ${ctx.proofPoints.join("; ")}` : "No real proof points were supplied -- do not invent any."}\n\n${SECTION_INSTRUCTIONS[sectionType]}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-    }) as any;
-    const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
-    if (parsed) return { type: sectionType, ...parsed };
-  } catch (error) {
-    console.error(`[campaignGenerator] generateSectionContent failed for ${sectionType}:`, error);
+  const styleNote = ctx.stylePreference && STYLE_DESCRIPTIONS[ctx.stylePreference]
+    ? `Match this design direction in tone: ${STYLE_DESCRIPTIONS[ctx.stylePreference]}`
+    : "";
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await invokeLLM({
+        messages: [
+          {
+            role: "system",
+            content: `You write concise, professional, human-sounding, benefit-focused landing page copy that is SPECIFIC to the exact offer and audience described -- not interchangeable with any other business in the same industry. Never invent testimonials, customer counts, reviews, certifications, awards, case studies, or statistics that weren't supplied to you -- omit them instead. Never use these overused phrases or anything that reads like them: ${CLICHE_PHRASES.map((p) => `"${p}"`).join(", ")}. Respond with raw JSON only, no markdown formatting, no explanatory text.`,
+          },
+          {
+            role: "user",
+            content: `Industry: ${ctx.industry}\nTarget audience: ${ctx.targetAudience}\nOffer (use these exact specifics, don't generalize them away): ${ctx.offer}\nCompany: ${ctx.companyName}\n${ctx.proofPoints?.length ? `Real proof points you may use: ${ctx.proofPoints.join("; ")}` : "No real proof points were supplied -- do not invent any."}\n${styleNote}\n\n${SECTION_INSTRUCTIONS[sectionType]}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      }) as any;
+      const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
+      if (parsed) return { type: sectionType, ...parsed };
+    } catch (error) {
+      console.error(`[campaignGenerator] generateSectionContent attempt ${attempt + 1} failed for ${sectionType}:`, error);
+    }
   }
   return { type: sectionType, ...PLACEHOLDER_SECTION[sectionType] };
 }
@@ -414,6 +467,7 @@ export async function generateFullCampaign(input: GenerateFullCampaignInput): Pr
     offer: input.offer,
     companyName: input.companyName,
     proofPoints: input.proofPoints,
+    stylePreference: input.stylePreference,
   };
 
   const { theme, researchNote, sectionPlan } = await synthesizeThemeAndResearch(ctx);

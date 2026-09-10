@@ -22,8 +22,8 @@ const SECTION_LABELS: Record<SectionType, string> = {
   testimonials: "Testimonials", pricing: "Pricing / Offer", faq: "FAQ", "final-cta": "Final CTA", footer: "Footer",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-const SECTION_FIELDS: Record<SectionType, Array<"headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl">> = {
-  hero: ["headline", "subheadline", "ctaText", "imageUrl"],
+const SECTION_FIELDS: Record<SectionType, Array<"headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl">> = {
+  hero: ["headline", "subheadline", "ctaText", "imageUrl", "videoUrl"],
   problem: ["headline", "body"],
   solution: ["headline", "body"],
   benefits: ["headline", "bullets"],
@@ -44,6 +44,7 @@ interface Section {
   bullets?: string[];
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
+  videoUrl?: string;
 }
 
 const VIEWPORT_WIDTH: Record<string, string> = { desktop: "100%", tablet: "768px", mobile: "375px" };
@@ -557,6 +558,7 @@ function SectionEditDialog({
   const [ctaText, setCtaText] = useState(section.ctaText || "");
   const [bulletsText, setBulletsText] = useState((section.bullets || []).join("\n"));
   const [imageUrl, setImageUrl] = useState(section.imageUrl || "");
+  const [videoUrl, setVideoUrl] = useState(section.videoUrl || "");
   const [faqs, setFaqs] = useState(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
 
   useEffect(() => {
@@ -566,6 +568,7 @@ function SectionEditDialog({
     setCtaText(section.ctaText || "");
     setBulletsText((section.bullets || []).join("\n"));
     setImageUrl(section.imageUrl || "");
+    setVideoUrl(section.videoUrl || "");
     setFaqs(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
@@ -577,6 +580,7 @@ function SectionEditDialog({
     if (fields.includes("body")) updated.body = body;
     if (fields.includes("ctaText")) updated.ctaText = ctaText;
     if (fields.includes("imageUrl")) updated.imageUrl = imageUrl;
+    if (fields.includes("videoUrl")) updated.videoUrl = videoUrl;
     if (fields.includes("bullets")) updated.bullets = bulletsText.split("\n").map((b) => b.trim()).filter(Boolean);
     if (fields.includes("faqs")) updated.faqs = faqs.filter((f) => f.question.trim() || f.answer.trim());
     onSave(updated);
@@ -600,6 +604,9 @@ function SectionEditDialog({
           )}
           {fields.includes("ctaText") && (
             <div><label className="text-xs text-muted-foreground">CTA button text</label><Input value={ctaText} onChange={(e) => setCtaText(e.target.value)} className="mt-1" /></div>
+          )}
+          {fields.includes("videoUrl") && (
+            <div><label className="text-xs text-muted-foreground">Video URL (YouTube/Vimeo -- takes priority over the image below)</label><Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." className="mt-1" /></div>
           )}
           {fields.includes("imageUrl") && (
             <div><label className="text-xs text-muted-foreground">Image URL</label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="mt-1" /></div>

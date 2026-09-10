@@ -25,6 +25,7 @@ import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, 
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
+import { hasResumableWizardChat } from "@/lib/aiAgentStorage";
 import { Button } from "./ui/button";
 
 const menuItems = [
@@ -129,6 +130,16 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
+
+  // Re-checked on every navigation (not just on mount) so leaving an
+  // in-progress AI Agent conversation and going elsewhere immediately shows
+  // a "Resume" indicator on the nav item -- a visible link back to it from
+  // anywhere in the app, not just something that appears after already
+  // returning to that page.
+  const [hasResumableChat, setHasResumableChat] = useState(false);
+  useEffect(() => {
+    setHasResumableChat(hasResumableWizardChat());
+  }, [location]);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -209,7 +220,14 @@ function DashboardLayoutContent({
                       <item.icon
                         className={`h-4 w-4 ${item.color}`}
                       />
-                      <span>{item.label}</span>
+                      <span className="flex items-center gap-1.5">
+                        {item.label}
+                        {item.path === "/ai-agent" && hasResumableChat && !isActive && (
+                          <span className="flex items-center gap-1 text-[10px] font-medium text-purple-600 bg-purple-50 dark:bg-purple-950/40 rounded-full px-1.5 py-0.5" title="You have an unfinished conversation">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Resume
+                          </span>
+                        )}
+                      </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );

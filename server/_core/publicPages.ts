@@ -14,6 +14,32 @@ function escapeHtml(text: string): string {
   return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// Converts a YouTube/Vimeo watch link (or an already-embeddable URL) into an
+// embed URL for an <iframe>. Returns null for anything else -- callers
+// should fall back to not rendering rather than embedding an arbitrary URL.
+function toEmbedUrl(videoUrl: string): string | null {
+  try {
+    const url = new URL(videoUrl);
+    if (url.hostname.includes("youtube.com")) {
+      const id = url.searchParams.get("v");
+      if (id) return `https://www.youtube.com/embed/${id}`;
+      if (url.pathname.startsWith("/embed/")) return videoUrl;
+    }
+    if (url.hostname === "youtu.be") {
+      const id = url.pathname.slice(1);
+      if (id) return `https://www.youtube.com/embed/${id}`;
+    }
+    if (url.hostname.includes("vimeo.com")) {
+      if (url.pathname.startsWith("/video/")) return `https://player.vimeo.com${url.pathname}`;
+      const id = url.pathname.replace(/^\//, "");
+      if (/^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function renderSection(section: SectionContent, theme: Theme): string {
   const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${theme.text};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
   const subheadline = section.subheadline ? `<p style="font-size:18px;color:${theme.text};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
@@ -27,7 +53,13 @@ function renderSection(section: SectionContent, theme: Theme): string {
   const cta = section.ctaText
     ? `<a href="#contact" style="display:inline-block;margin-top:20px;padding:14px 32px;background:${theme.cta};color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:16px;">${escapeHtml(section.ctaText)}</a>`
     : "";
-  const image = section.imageUrl ? `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:20px;" />` : "";
+  const embedUrl = section.videoUrl ? toEmbedUrl(section.videoUrl) : null;
+  const video = embedUrl
+    ? `<div style="position:relative;padding-top:56.25%;max-width:720px;margin-top:20px;border-radius:12px;overflow:hidden;"><iframe src="${escapeHtml(embedUrl)}" title="Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe></div>`
+    : "";
+  // A video takes priority over a static image in the same section -- both
+  // filled in would mean the image is stale from before a video was added.
+  const image = !video && section.imageUrl ? `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:20px;" />` : "";
 
   const isHero = section.type === "hero";
   const isFooter = section.type === "footer";
@@ -41,7 +73,7 @@ function renderSection(section: SectionContent, theme: Theme): string {
     ? `<p style="font-size:19px;color:#fff;opacity:0.9;margin:0 0 24px;max-width:640px;">${escapeHtml(section.subheadline)}</p>`
     : subheadline;
 
-  return `<section style="background:${background};padding:${padding};"><div style="max-width:960px;margin:0 auto;">${innerHeadline}${innerSub}${body}${bullets}${faqs}${image}${cta}</div></section>`;
+  return `<section style="background:${background};padding:${padding};"><div style="max-width:960px;margin:0 auto;">${innerHeadline}${innerSub}${body}${bullets}${faqs}${video}${image}${cta}</div></section>`;
 }
 
 // Server-renders a landingPages row's sections+theme JSON into a complete,
