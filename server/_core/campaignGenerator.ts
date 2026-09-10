@@ -419,14 +419,21 @@ async function generateCampaignEmailWithClaude(prompt: string): Promise<{ subjec
   return null;
 }
 
-export async function generateCampaignEmail(slot: CampaignEmailSlot, ctx: CampaignContext, landingPageUrl: string): Promise<{ subject: string; body: string }> {
+// usedClaude/claudeUnavailableReason let callers (landingPageEmails.regenerate)
+// tell the user what actually happened -- previously a Claude failure was
+// swallowed silently and the caller had no way to know whether "Regenerate"
+// used Claude or quietly fell back to the Gemini-based invokeLLM path.
+export async function generateCampaignEmail(slot: CampaignEmailSlot, ctx: CampaignContext, landingPageUrl: string): Promise<{ subject: string; body: string; usedClaude: boolean; claudeUnavailableReason?: string }> {
   const prompt = buildCampaignEmailPrompt(slot, ctx, landingPageUrl);
 
+  let claudeUnavailableReason: string | undefined;
   try {
     const claudeResult = await generateCampaignEmailWithClaude(prompt);
-    if (claudeResult) return claudeResult;
+    if (claudeResult) return { ...claudeResult, usedClaude: true };
+    claudeUnavailableReason = "Claude returned an unusable response";
   } catch (error) {
-    console.log(`[campaignGenerator] Claude not available for slot ${slot.sequenceNumber}, falling back to invokeLLM:`, (error as any)?.message);
+    claudeUnavailableReason = (error as any)?.message || "Claude is not available";
+    console.log(`[campaignGenerator] Claude not available for slot ${slot.sequenceNumber}, falling back to invokeLLM:`, claudeUnavailableReason);
   }
 
   try {
@@ -439,7 +446,7 @@ export async function generateCampaignEmail(slot: CampaignEmailSlot, ctx: Campai
     }) as any;
     const parsed = parseJsonContent(response?.choices?.[0]?.message?.content);
     if (parsed?.subject && parsed?.body) {
-      return { subject: String(parsed.subject), body: String(parsed.body) };
+      return { subject: String(parsed.subject), body: String(parsed.body), usedClaude: false, claudeUnavailableReason };
     }
   } catch (error) {
     console.error(`[campaignGenerator] generateCampaignEmail failed for slot ${slot.sequenceNumber} (${slot.slotPurpose}):`, error);
@@ -447,6 +454,8 @@ export async function generateCampaignEmail(slot: CampaignEmailSlot, ctx: Campai
   return {
     subject: FALLBACK_SUBJECTS[slot.slotPurpose] || "following up",
     body: `Hi {{ownerName}},\n\nWanted to follow up about ${ctx.offer || "how we can help"}.\n\nYou can learn more here: ${landingPageUrl}\n\n(This is a fallback message -- use Regenerate to try again.)`,
+    usedClaude: false,
+    claudeUnavailableReason,
   };
 }
 

@@ -70,7 +70,11 @@ export function EmailEditorDialog({ email, trigger }: { email: LandingPageEmail;
       const result = await regenerateMutation.mutateAsync(email.id);
       setSubject(result.subject);
       setBodyPlainText(result.body);
-      toast.success("Regenerated");
+      toast.success(
+        result.usedClaude
+          ? "Regenerated with Claude"
+          : `Regenerated (Claude unavailable -- used the fallback writer${result.claudeUnavailableReason ? `: ${result.claudeUnavailableReason}` : ""})`
+      );
       utils.landingPageEmails.list.invalidate();
     } catch (error: any) {
       toast.error(error?.message || "Failed to regenerate");

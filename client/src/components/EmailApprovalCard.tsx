@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check, Pencil, ArrowRight } from "lucide-react";
+import { Loader2, Check, Pencil, ArrowRight, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/components/EmailEditorDialog";
 
 // Self-contained review card, same shape as TagPicker/SequenceReviewCard --
@@ -13,7 +14,9 @@ import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/compone
 // a single "looks good" covering the whole batch.
 export function EmailApprovalCard({ landingPageId, onAllApproved }: { landingPageId: number; onAllApproved: () => void }) {
   const [index, setIndex] = useState(0);
+  const utils = trpc.useUtils();
   const emailsQuery = trpc.landingPageEmails.list.useQuery(landingPageId);
+  const regenerateMutation = trpc.landingPageEmails.regenerate.useMutation();
 
   if (emailsQuery.isLoading) {
     return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading emails...</div>;
@@ -35,6 +38,25 @@ export function EmailApprovalCard({ landingPageId, onAllApproved }: { landingPag
     }
   };
 
+  // Regenerates just this email (in place, same slot) with Claude first --
+  // generateCampaignEmail (server/_core/campaignGenerator.ts) already tries
+  // Claude and only falls back to the Gemini-based writer if Claude isn't
+  // configured/available, and now reports which one actually ran so this
+  // doesn't silently claim "Claude" when it wasn't.
+  const handleRegenerate = async () => {
+    try {
+      const result = await regenerateMutation.mutateAsync(email.id);
+      toast.success(
+        result.usedClaude
+          ? "Regenerated with Claude"
+          : `Regenerated (Claude unavailable -- used the fallback writer${result.claudeUnavailableReason ? `: ${result.claudeUnavailableReason}` : ""})`
+      );
+      utils.landingPageEmails.list.invalidate(landingPageId);
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to regenerate");
+    }
+  };
+
   return (
     <div className="space-y-3 max-w-md">
       <div className="flex items-center justify-between">
@@ -53,7 +75,10 @@ export function EmailApprovalCard({ landingPageId, onAllApproved }: { landingPag
         </div>
         <div className="p-3 text-sm max-h-72 overflow-y-auto" dangerouslySetInnerHTML={{ __html: email.bodyHtml }} />
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="gap-1.5" onClick={handleRegenerate} disabled={regenerateMutation.isPending}>
+          {regenerateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Regenerate with Claude
+        </Button>
         <EmailEditorDialog
           email={email}
           trigger={

@@ -5109,7 +5109,7 @@ Respond in this exact JSON format:
       const { generateCampaignEmail } = await import("./_core/campaignGenerator");
       const { buildPublicLandingPageUrl } = await import("./_core/publicPages");
       const landingPageUrl = page.slug ? buildPublicLandingPageUrl(page.slug) : "";
-      const { subject, body } = await generateCampaignEmail(
+      const { subject, body, usedClaude, claudeUnavailableReason } = await generateCampaignEmail(
         { sequenceNumber: email.sequenceNumber, slotPurpose: email.slotPurpose, dayOffset: email.dayOffset },
         {
           industry: page.industry || "",
@@ -5134,7 +5134,7 @@ Respond in this exact JSON format:
         ctaUrl: landingPageUrl,
       });
       await db.updateLandingPageEmail(id, { subject, bodyPlainText: body, bodyHtml });
-      return { subject, body, bodyHtml };
+      return { subject, body, bodyHtml, usedClaude, claudeUnavailableReason };
     }),
 
     // Same "send the whole current content + instruction, get the whole
