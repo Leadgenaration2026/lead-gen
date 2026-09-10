@@ -2087,6 +2087,20 @@ export async function markLeadUnsubscribedGlobally(leadId: number) {
   await cancelAllPendingFollowUpsForLead(leadId);
 }
 
+// Email-address entry point for the same global unsubscribe, used by the
+// public landing page's footer form (server/_core/publicPages.ts) -- unlike
+// a sent email, a shared static landing page has no per-visitor token to
+// resolve, so the visitor types the email address they want stopped
+// instead. Scoped to this page owner's own leads only.
+export async function markLeadsUnsubscribedByEmail(userId: number, email: string) {
+  const database = await getDb();
+  if (!database) return;
+  const matches = await database.select({ id: leads.id }).from(leads).where(and(eq(leads.userId, userId), eq(leads.email, email)));
+  for (const match of matches) {
+    await markLeadUnsubscribedGlobally(match.id);
+  }
+}
+
 export async function markLeadUnsubscribed(campaignLeadId: number) {
   const database = await getDb();
   if (!database) return;

@@ -11,6 +11,7 @@ import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { TagPicker } from "@/components/TagPicker";
 import { LeadVerificationReviewDialog, type LeadReviewRow } from "@/components/LeadVerificationReviewDialog";
 import { EmailEditorDialog } from "@/components/EmailEditorDialog";
+import { EmailApprovalCard } from "@/components/EmailApprovalCard";
 import { MediaPickerDialog } from "@/components/MediaPickerDialog";
 import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X, Monitor, Smartphone } from "lucide-react";
 import { toast } from "sonner";
@@ -107,7 +108,8 @@ type Step =
   // saved, alongside the pre-existing "classic single email" steps below,
   // which stay completely unchanged for that path.
   | "verifyingEmails" | "verificationSummary" | "tagAssignment"
-  | "offerPrompt" | "stylePrompt" | "logoPrompt" | "heroMediaPrompt" | "buildingLandingPage" | "sequenceReview" | "publishLandingPage" | "preflightCheck"
+  | "landingPageChoice" | "existingLandingPagePicker"
+  | "offerPrompt" | "stylePrompt" | "logoPrompt" | "heroMediaPrompt" | "buildingLandingPage" | "sequenceReview" | "reviewSequenceEmails" | "publishLandingPage" | "preflightCheck"
   | "emailPrompt" | "generatingEmail" | "emailReview" | "editingEmail"
   | "followUpCount" | "generatingFollowUpPreview" | "followUpPreview" | "templateName" | "savingTemplate"
   | "scheduleChoice" | "scheduleDatetime" | "campaignName"
@@ -289,6 +291,7 @@ export default function AIAgentPage() {
     { enabled: !!pollingVerificationJobId, refetchInterval: (query) => (query.state.data?.status === "in_progress" || query.state.data?.status === "pending" ? 1500 : false) }
   );
   const generateLandingPageMutation = trpc.landingPages.generate.useMutation();
+  const existingLandingPagesQuery = trpc.landingPages.list.useQuery(undefined, { enabled: step === "existingLandingPagePicker" });
   const createCampaignFromSequenceMutation = trpc.landingPages.createCampaignFromSequence.useMutation();
   const scheduleExistingCampaignMutation = trpc.campaigns.scheduleExisting.useMutation();
   const updateLandingPageSectionsMutation = trpc.landingPages.updateSections.useMutation();
@@ -786,8 +789,50 @@ export default function AIAgentPage() {
   const handleTagConfirmed = (leadSetId: number, tagName: string) => {
     addUser(`Assign to "${tagName}"`);
     setData((d) => ({ ...d, verifiedLeadSetId: leadSetId }));
-    addAgent(`${data.verifiedLeadIds.length} lead(s) assigned to "${tagName}".\n\nNow, what's your offer -- your value proposition, what you're offering, or the angle you want to take?`);
+    addAgent(`${data.verifiedLeadIds.length} lead(s) assigned to "${tagName}".\n\nWould you like me to build a brand new landing page, or reuse one you already have?`);
+    setStep("landingPageChoice");
+  };
+
+  const chooseNewLandingPage = () => {
+    addUser("Create a new one");
+    addAgent("Great -- what's your offer? Your value proposition, what you're offering, or the angle you want to take.");
     setStep("offerPrompt");
+  };
+
+  const chooseExistingLandingPage = () => {
+    addUser("Use an existing one");
+    setStep("existingLandingPagePicker");
+  };
+
+  const useExistingLandingPage = async (landingPageId: number, name: string) => {
+    addUser(`Use "${name}"`);
+    setStep("buildingLandingPage");
+    setBusy(true);
+    addAgent("Setting up your campaign with that landing page...");
+    try {
+      setData((d) => ({ ...d, generatedLandingPageId: landingPageId }));
+      const industry = data.industries.join(", ") || data.otherCriteria || "general business";
+      const campaignResult = await createCampaignFromSequenceMutation.mutateAsync({
+        landingPageId,
+        campaignName: data.leadSetName || `${industry} Campaign`,
+        leadIds: data.verifiedLeadIds,
+      });
+      const campaignId = (campaignResult as any).campaignId;
+      if (!campaignId) throw new Error("Campaign creation did not return an id");
+      setData((d) => ({ ...d, campaignId }));
+
+      setBusy(false);
+      addAgent(
+        undefined,
+        <SequenceReviewCard landingPageId={landingPageId} onEdited={() => addAgent("Updated -- let me know if you want anything else changed, or continue when it looks good.")} />
+      );
+      addAgent("Here's that landing page and its emails. Use the AI edit box if you want anything changed, then continue when it looks good.");
+      setStep("sequenceReview");
+    } catch (error: any) {
+      setBusy(false);
+      addAgent(`I ran into a problem setting up the campaign: ${error?.message || "unknown error"}. Want to try again?`);
+      setStep("existingLandingPagePicker");
+    }
   };
 
   const submitOfferPrompt = async (text: string) => {
@@ -891,7 +936,18 @@ export default function AIAgentPage() {
   };
 
   const continueFromSequenceReview = () => {
-    addUser("Looks good, publish it");
+    addUser("Looks good, review the emails");
+    const landingPageId = data.generatedLandingPageId as number;
+    addAgent(
+      undefined,
+      <EmailApprovalCard landingPageId={landingPageId} onAllApproved={handleAllEmailsApproved} />
+    );
+    addAgent("Here are the 8 emails -- step through and approve each one, or edit it first.");
+    setStep("reviewSequenceEmails");
+  };
+
+  const handleAllEmailsApproved = () => {
+    addUser("All emails approved");
     runPublishStep();
   };
 
@@ -1273,6 +1329,49 @@ export default function AIAgentPage() {
           </div>
         );
 
+      case "landingPageChoice":
+        return (
+          <div className="p-4 border-t flex flex-wrap gap-2">
+            <Button size="sm" onClick={chooseNewLandingPage} className="gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> Create a new one
+            </Button>
+            <Button size="sm" variant="outline" onClick={chooseExistingLandingPage}>
+              Use an existing one
+            </Button>
+          </div>
+        );
+
+      case "existingLandingPagePicker":
+        return (
+          <div className="p-4 border-t space-y-2 max-h-72 overflow-y-auto">
+            {existingLandingPagesQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Loading your landing pages...</div>
+            ) : !existingLandingPagesQuery.data?.length ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">You don't have any saved landing pages yet.</p>
+                <Button size="sm" onClick={chooseNewLandingPage} className="gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> Create one now
+                </Button>
+              </div>
+            ) : (
+              existingLandingPagesQuery.data.map((page: any) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  className="w-full text-left border rounded-md px-3 py-2 hover:border-primary hover:bg-muted/40 transition-colors"
+                  onClick={() => useExistingLandingPage(page.id, page.name)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium truncate">{page.name}</p>
+                    <Badge variant={page.status === "published" ? "default" : "outline"} className="shrink-0 text-[10px]">{page.status}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{page.industry || "No industry set"}</p>
+                </button>
+              ))
+            )}
+          </div>
+        );
+
       case "offerPrompt":
         return renderTextInputArea(submitOfferPrompt, "Type your answer...");
 
@@ -1358,11 +1457,18 @@ export default function AIAgentPage() {
         return (
           <div className="flex flex-wrap gap-2 p-4 border-t">
             <Button size="sm" onClick={continueFromSequenceReview} className="gap-1.5">
-              <Check className="w-3.5 h-3.5" /> Looks good, publish it
+              <Check className="w-3.5 h-3.5" /> Looks good, review the emails
             </Button>
             <Button size="sm" variant="outline" onClick={() => window.open(`/landing-pages/${data.generatedLandingPageId}`, "_blank")}>
               Open Full Editor
             </Button>
+          </div>
+        );
+
+      case "reviewSequenceEmails":
+        return (
+          <div className="p-4 border-t">
+            <p className="text-xs text-muted-foreground">Review each email above, then approve it to move to the next one.</p>
           </div>
         );
 
@@ -1688,7 +1794,6 @@ function SequenceReviewCard({ landingPageId, onEdited }: { landingPageId: number
   const [aiInstruction, setAiInstruction] = useState("");
   const utils = trpc.useUtils();
   const previewQuery = trpc.landingPages.previewHtml.useQuery(landingPageId);
-  const emailsQuery = trpc.landingPageEmails.list.useQuery(landingPageId);
   const applyEditMutation = trpc.landingPages.applyAiEdit.useMutation();
 
   const handleApplyEdit = async () => {
@@ -1731,14 +1836,6 @@ function SequenceReviewCard({ landingPageId, onEdited }: { landingPageId: number
         <Button size="sm" onClick={handleApplyEdit} disabled={!aiInstruction.trim() || applyEditMutation.isPending} className="gap-1.5 h-8">
           {applyEditMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Apply
         </Button>
-      </div>
-      <div className="space-y-1">
-        {(emailsQuery.data || []).map((e: any) => (
-          <div key={e.id} className="flex items-center justify-between gap-2 bg-background/60 rounded px-2.5 py-1.5">
-            <p className="text-xs truncate min-w-0"><strong>Email {e.sequenceNumber}:</strong> {e.subject}</p>
-            <EmailEditorDialog email={e} trigger={<Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0"><Eye className="w-3.5 h-3.5" /></Button>} />
-          </div>
-        ))}
       </div>
     </div>
   );

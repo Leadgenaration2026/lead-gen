@@ -204,8 +204,20 @@ export function renderLandingPageHtml(page: any): string {
 <body>
 <header style="padding:20px 24px;border-bottom:1px solid rgba(0,0,0,0.06);">${logo}</header>
 ${sections.map((s) => renderSection(s, theme)).join("")}
+<div style="text-align:center;padding:16px;font-size:12px;opacity:0.6;">
+  <a href="/p/${escapeHtml(page.slug || "")}/unsubscribe" style="color:${theme.text};text-decoration:underline;">Unsubscribe from future emails</a>
+</div>
 </body>
 </html>`;
+}
+
+function renderUnsubscribeFormHtml(page: any): string {
+  const theme: Theme = page.theme;
+  return `<!DOCTYPE html><html><head><title>Unsubscribe</title><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;}div{text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;width:90%;}h1{color:#111;font-size:22px;margin:0 0 8px;}p{color:#666;font-size:14px;margin:0 0 20px;}input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:12px;}button{width:100%;padding:10px 12px;border:none;border-radius:8px;font-size:14px;font-weight:600;color:#fff;cursor:pointer;background:${theme.cta};}</style></head><body><div><h1>Unsubscribe</h1><p>Enter your email to stop receiving future emails from ${escapeHtml(page.companyName || page.name)}.</p><form method="POST" action="/p/${escapeHtml(page.slug || "")}/unsubscribe"><input type="email" name="email" placeholder="you@example.com" required /><button type="submit">Unsubscribe</button></form></div></body></html>`;
+}
+
+function renderUnsubscribeConfirmedHtml(): string {
+  return `<!DOCTYPE html><html><head><title>Unsubscribed</title><meta charset="utf-8" /></head><body style="font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;"><div style="text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;"><h1 style="color:#111;font-size:24px;">&#9989; Unsubscribed</h1><p style="color:#666;font-size:16px;">You have been successfully unsubscribed from future emails. We're sorry to see you go.</p></div></body></html>`;
 }
 
 function renderNotFoundHtml(): string {
@@ -231,6 +243,43 @@ export function registerPublicPageRoutes(app: Express) {
       console.error("[publicPages] Failed to render landing page:", error);
       res.status(500).setHeader("Content-Type", "text/html");
       res.send(renderNotFoundHtml());
+    }
+  });
+
+  // A shared static page has no per-visitor token the way a sent email
+  // does, so the footer's unsubscribe link (renderLandingPageHtml above)
+  // leads here instead of straight to /api/track/unsubscribe/:token --
+  // the visitor types the email address they want stopped, scoped to this
+  // page's own owner (db.markLeadsUnsubscribedByEmail).
+  app.get("/p/:slug/unsubscribe", async (req: Request, res: Response) => {
+    try {
+      const page = await db.getLandingPageBySlug(req.params.slug);
+      res.setHeader("Content-Type", "text/html");
+      if (!page) {
+        res.status(404).send(renderNotFoundHtml());
+        return;
+      }
+      res.send(renderUnsubscribeFormHtml(page));
+    } catch (error) {
+      console.error("[publicPages] Failed to render unsubscribe form:", error);
+      res.status(500).setHeader("Content-Type", "text/html");
+      res.send(renderNotFoundHtml());
+    }
+  });
+
+  app.post("/p/:slug/unsubscribe", async (req: Request, res: Response) => {
+    try {
+      const page = await db.getLandingPageBySlug(req.params.slug);
+      res.setHeader("Content-Type", "text/html");
+      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      if (page && email) {
+        await db.markLeadsUnsubscribedByEmail(page.userId, email);
+      }
+      res.send(renderUnsubscribeConfirmedHtml());
+    } catch (error) {
+      console.error("[publicPages] Failed to process unsubscribe:", error);
+      res.setHeader("Content-Type", "text/html");
+      res.send(renderUnsubscribeConfirmedHtml());
     }
   });
 }
