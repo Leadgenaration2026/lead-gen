@@ -131,11 +131,27 @@ export async function verifyEmailsHybrid(
   if (bouncerApiKey) {
     const needsDeeperCheck = inHouseResults.filter((r) => r.status === "valid" || r.status === "role_based" || r.status === "unknown").map((r) => r.email);
     if (needsDeeperCheck.length > 0) {
-      const bouncer = new BouncerVerificationProvider(bouncerApiKey);
-      const bouncerResults = await bouncer.verifyBatch(needsDeeperCheck, (done, total) => {
-        if (onProgress) onProgress(Math.ceil(emails.length / 2) + Math.ceil((done / total) * (emails.length / 2)), emails.length);
-      });
-      for (const r of bouncerResults) byEmail.set(r.email, r);
+      // bouncer.ts's validateEmails THROWS outright (not a per-email
+      // rejection) on BOUNCER_NO_CREDITS/BOUNCER_INVALID_API_KEY -- e.g. the
+      // account running out of credits partway through this exact batch.
+      // Without this try/catch, that one failure used to propagate all the
+      // way up through runVerificationJob and fail the ENTIRE job, discarding
+      // every result computed so far -- including the free in-house results
+      // for emails that had already been conclusively resolved before
+      // Bouncer was even called. A Bouncer failure now degrades gracefully:
+      // those emails just keep their in-house-only result instead of losing
+      // everything (this is the exact bug behind "87 extracted, only 47
+      // verified, what happened to the rest" -- the job silently failed
+      // partway and nothing after that point ever got saved).
+      try {
+        const bouncer = new BouncerVerificationProvider(bouncerApiKey);
+        const bouncerResults = await bouncer.verifyBatch(needsDeeperCheck, (done, total) => {
+          if (onProgress) onProgress(Math.ceil(emails.length / 2) + Math.ceil((done / total) * (emails.length / 2)), emails.length);
+        });
+        for (const r of bouncerResults) byEmail.set(r.email, r);
+      } catch (error: any) {
+        console.error("[emailVerification] Bouncer cross-check failed, keeping in-house results for the affected emails:", error?.message);
+      }
     }
   }
 
@@ -175,43 +191,51 @@ export async function runVerificationJob(input: StartVerificationJobInput): Prom
       }
     );
 
+    // Per-result try/catch -- one bad insert (or a transient DB hiccup)
+    // shouldn't lose every other result already computed in memory for this
+    // batch. Each result is independent, so failures here are logged and
+    // skipped rather than aborting the rest of the loop.
     for (const result of results) {
-      const leadId = emailToLeadId.get(result.email);
-      const countKey = `${result.status === "catch_all" ? "catchAll" : result.status === "role_based" ? "roleBased" : result.status}Count` as keyof typeof counts;
-      if (countKey in counts) counts[countKey]++;
+      try {
+        const leadId = emailToLeadId.get(result.email);
+        const countKey = `${result.status === "catch_all" ? "catchAll" : result.status === "role_based" ? "roleBased" : result.status}Count` as keyof typeof counts;
+        if (countKey in counts) counts[countKey]++;
 
-      await db.insertEmailVerificationResult({
-        jobId,
-        leadId: leadId ?? null,
-        email: result.email,
-        provider: result.provider,
-        rawStatus: result.raw?.status || result.status,
-        normalizedStatus: result.status,
-        score: result.score ?? null,
-        reason: result.reason,
-        shouldSend: result.shouldSend,
-      });
+        await db.insertEmailVerificationResult({
+          jobId,
+          leadId: leadId ?? null,
+          email: result.email,
+          provider: result.provider,
+          rawStatus: result.raw?.status || result.status,
+          normalizedStatus: result.status,
+          score: result.score ?? null,
+          reason: result.reason,
+          shouldSend: result.shouldSend,
+        });
 
-      if (leadId) {
-        // Same status vocabulary/shape leads.emailVerificationStatus already
-        // used (deliverable/undeliverable/risky/unknown/pending) -- mapped
-        // from the richer normalized status so campaigns.launch's existing
-        // undeliverable-skip check keeps working completely unchanged.
-        const legacyStatus = result.status === "valid" ? "deliverable"
-          : result.status === "invalid" || result.status === "disposable" ? "undeliverable"
-          : result.status === "catch_all" || result.status === "role_based" ? "risky"
-          : "unknown";
-        await db.updateLead(leadId, {
-          emailVerificationStatus: legacyStatus as any,
-          emailVerificationData: {
-            normalizedStatus: result.status,
-            provider: result.provider,
-            score: result.score,
-            reason: result.reason,
-            shouldSend: result.shouldSend,
-            verifiedAt: new Date().toISOString(),
-          },
-        }).catch((error: any) => console.warn(`[emailVerification] Failed to update lead ${leadId}:`, error.message));
+        if (leadId) {
+          // Same status vocabulary/shape leads.emailVerificationStatus already
+          // used (deliverable/undeliverable/risky/unknown/pending) -- mapped
+          // from the richer normalized status so campaigns.launch's existing
+          // undeliverable-skip check keeps working completely unchanged.
+          const legacyStatus = result.status === "valid" ? "deliverable"
+            : result.status === "invalid" || result.status === "disposable" ? "undeliverable"
+            : result.status === "catch_all" || result.status === "role_based" ? "risky"
+            : "unknown";
+          await db.updateLead(leadId, {
+            emailVerificationStatus: legacyStatus as any,
+            emailVerificationData: {
+              normalizedStatus: result.status,
+              provider: result.provider,
+              score: result.score,
+              reason: result.reason,
+              shouldSend: result.shouldSend,
+              verifiedAt: new Date().toISOString(),
+            },
+          }).catch((error: any) => console.warn(`[emailVerification] Failed to update lead ${leadId}:`, error.message));
+        }
+      } catch (error: any) {
+        console.error(`[emailVerification] Failed to persist result for ${result.email}:`, error?.message);
       }
     }
 
