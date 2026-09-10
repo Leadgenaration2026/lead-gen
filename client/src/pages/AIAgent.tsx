@@ -197,6 +197,41 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+// Persists the wizard so navigating to another page and back (or an
+// accidental tab close) doesn't lose an in-progress conversation --
+// previously this was purely in-memory React state, lost the instant the
+// component unmounted. localStorage (not sessionStorage) so it survives a
+// closed tab too, not just SPA navigation. Only step+data+messages are
+// saved; ChatMessage.content (rich cards like TagPicker/SequenceReviewCard)
+// is a ReactNode and can't be serialized, so it's intentionally dropped --
+// renderInputArea() drives the actual interactive UI off `step`/`data`
+// alone, not off message history, so those cards work correctly again the
+// moment a step re-renders; only their PAST occurrences in the transcript
+// are what's lost on resume.
+const WIZARD_STORAGE_KEY = "ai-agent-wizard-v1";
+
+type SerializableChatMessage = { id: number; role: "agent" | "user"; text?: string };
+interface PersistedWizardState {
+  step: Step;
+  data: WizardData;
+  messages: SerializableChatMessage[];
+  savedAt: number;
+}
+
+function loadPersistedWizardState(): PersistedWizardState | null {
+  try {
+    const raw = localStorage.getItem(WIZARD_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedWizardState;
+    // Nothing worth offering to resume if it never got past the opening
+    // question, or if it already finished.
+    if (!parsed || parsed.step === "location" || parsed.step === "done" || (parsed.messages?.length || 0) <= 1) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export default function AIAgentPage() {
   const [, navigate] = useLocation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -220,6 +255,12 @@ export default function AIAgentPage() {
     const id = new URLSearchParams(window.location.search).get("resumeSearchId");
     return id ? parseInt(id, 10) : null;
   });
+
+  // Held (not applied) until the user explicitly chooses to continue or
+  // delete -- a saved conversation is never silently auto-resumed. Ignored
+  // entirely when arriving via resumeSearchId (that flow has its own,
+  // unrelated resume prompt and takes priority).
+  const [pendingResume, setPendingResume] = useState<PersistedWizardState | null>(() => (resumeSearchId !== null ? null : loadPersistedWizardState()));
 
   const utils = trpc.useUtils();
   const settingsQuery = trpc.settings.get.useQuery();
@@ -269,14 +310,59 @@ export default function AIAgentPage() {
   }, [messages, busy]);
 
   // Opening question -- runs once, unless we're resuming a saved search (that
-  // flow shows its own greeting once the search record loads, below).
+  // flow shows its own greeting once the search record loads, below) or
+  // there's a saved conversation still awaiting a continue/delete decision
+  // (handleResumeChatContinue/Delete take it from there instead).
   useEffect(() => {
-    if (resumeSearchId !== null) return;
+    if (resumeSearchId !== null || pendingResume !== null) return;
     addAgent(
       "Hi! I'm your AI Agent. I'll find leads matching your criteria, write an email to reach out to them, set up follow-ups, and schedule the campaign -- all in one go.\n\nLet's start: what location are you targeting?"
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Saves the conversation on every meaningful change so navigating away and
+  // back (or an accidental tab close) can offer to resume it. Skipped while
+  // a save/delete decision is still pending (don't overwrite what the user
+  // hasn't chosen yet), for a not-yet-started conversation, and once done
+  // (a finished campaign has nothing left to resume).
+  useEffect(() => {
+    if (pendingResume) return;
+    if (step === "location" && messages.length <= 1) {
+      localStorage.removeItem(WIZARD_STORAGE_KEY);
+      return;
+    }
+    if (step === "done") {
+      localStorage.removeItem(WIZARD_STORAGE_KEY);
+      return;
+    }
+    try {
+      const serializableMessages: SerializableChatMessage[] = messages.map((m) => ({ id: m.id, role: m.role, text: m.text }));
+      localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({ step, data, messages: serializableMessages, savedAt: Date.now() }));
+    } catch {
+      // localStorage can throw (quota, private browsing) -- losing the
+      // ability to resume isn't worth surfacing an error over.
+    }
+  }, [step, data, messages, pendingResume]);
+
+  const handleResumeChatContinue = () => {
+    if (!pendingResume) return;
+    setData(pendingResume.data);
+    // Rich-content-only messages (a card with no accompanying text) can't be
+    // restored -- their content was never serializable -- so they're dropped
+    // rather than rendered as an empty bubble. renderInputArea() drives the
+    // actual next action off `step`, not message history, so nothing
+    // functional is lost, only some of the past transcript.
+    setMessages(pendingResume.messages.filter((m) => !!m.text).map((m) => ({ id: m.id, role: m.role, text: m.text })));
+    setStep(pendingResume.step);
+    idCounter.current = pendingResume.messages.reduce((max, m) => Math.max(max, m.id), 0);
+    setPendingResume(null);
+  };
+
+  const handleResumeChatDelete = () => {
+    localStorage.removeItem(WIZARD_STORAGE_KEY);
+    setPendingResume(null);
+  };
 
   // "Continue with AI Agent" from Seamless Leads > Search History -- hydrates
   // the wizard from the saved search (criteria, saved pagination cursor, and
@@ -1079,6 +1165,7 @@ export default function AIAgentPage() {
   };
 
   const restart = () => {
+    localStorage.removeItem(WIZARD_STORAGE_KEY);
     setData(DEFAULTS);
     setMessages([]);
     setStep("location");
@@ -1470,6 +1557,32 @@ export default function AIAgentPage() {
       </div>
     );
   };
+
+  if (pendingResume) {
+    return (
+      <div className="max-w-lg mx-auto mt-16">
+        <Card>
+          <CardContent className="pt-6 text-center space-y-4">
+            <Sparkles className="w-8 h-8 text-primary mx-auto" />
+            <div>
+              <p className="text-lg font-medium">Welcome back!</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                You have an unfinished AI Agent conversation from {new Date(pendingResume.savedAt).toLocaleString()}. Continue where you left off, or delete it and start fresh?
+              </p>
+            </div>
+            <div className="flex justify-center gap-2">
+              <Button onClick={handleResumeChatContinue} className="gap-1.5">
+                <ArrowRight className="w-4 h-4" /> Continue Conversation
+              </Button>
+              <Button variant="outline" onClick={handleResumeChatDelete} className="gap-1.5">
+                <X className="w-4 h-4" /> Delete & Start Fresh
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
