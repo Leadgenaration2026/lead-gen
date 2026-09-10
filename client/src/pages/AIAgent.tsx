@@ -562,16 +562,29 @@ export default function AIAgentPage() {
             linkedinUrl: c.linkedinUrl,
           })),
         });
+        // Enrichment drops any candidate missing a complete phone number,
+        // email, AND owner name -- a real, separate narrowing step after the
+        // preview/search stage above, and previously never explained here.
+        // A user searching a small state + narrow title/employee-size
+        // combo (e.g. Delaware, "Owner", 2-10 employees) can easily see
+        // Seamless preview 30-40 raw candidates, then watch more than half
+        // of them get dropped here for incomplete contact data -- with no
+        // message, that reads as "the extraction undercounted" when it's
+        // actually this completeness filter doing its job.
+        const droppedForMissingContact = (enrichResult as any).droppedForMissingContact || 0;
+        const missingContactNote = droppedForMissingContact > 0
+          ? ` ${droppedForMissingContact} of the ${preview.candidates.length} candidate(s) found were dropped for missing a complete phone number, email, or name.`
+          : "";
         if (enrichResult.count === 0) {
           setBusy(false);
-          addAgent(`All ${enrichResult.duplicatesSkipped} matching contacts are already in your system. Want to try different criteria?`);
+          addAgent(`All ${enrichResult.duplicatesSkipped} matching contacts are already in your system.${missingContactNote} Want to try different criteria?`);
           setStep("industry");
           return;
         }
         resolvedLeadSetId = enrichResult.leadSetId ?? null;
         const totalExtracted = (data.resumeExtractedSoFar || 0) + enrichResult.count;
         const remaining = totalAvailable !== null ? Math.max(0, totalAvailable - totalExtracted) : null;
-        resolvedSummary = `${enrichResult.count} lead(s) extracted from Seamless.AI (${enrichResult.enrichmentCreditsUsed} credit(s) used)${enrichResult.duplicatesSkipped ? `, ${enrichResult.duplicatesSkipped} duplicate(s) skipped` : ""}.` +
+        resolvedSummary = `${enrichResult.count} lead(s) extracted from Seamless.AI (${enrichResult.enrichmentCreditsUsed} credit(s) used)${enrichResult.duplicatesSkipped ? `, ${enrichResult.duplicatesSkipped} duplicate(s) skipped` : ""}.${missingContactNote}` +
           (remaining !== null && remaining > 0
             ? ` ~${remaining} more may still be available for this criteria -- find it later under Seamless Leads > Search History to extract more.`
             : "");
