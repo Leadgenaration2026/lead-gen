@@ -15,7 +15,11 @@ export interface CampaignContext {
 
 export type SectionType =
   | "hero" | "problem" | "solution" | "benefits" | "features"
-  | "testimonials" | "pricing" | "faq" | "final-cta" | "footer";
+  | "testimonials" | "pricing" | "faq" | "final-cta" | "footer"
+  // Manual-add-only block types (see SECTION_TYPES below) -- not part of the
+  // AI's own first-pass section plan, only addable via "Add section" in the
+  // editor or an explicit "AI Edit" instruction.
+  | "two-column" | "single-box" | "image-block" | "video-block";
 
 export interface Theme {
   primary: string;
@@ -43,6 +47,7 @@ export interface SectionContent {
   imageUrl?: string;
   videoUrl?: string; // YouTube/Vimeo link, rendered as an embed (see server/_core/publicPages.ts)
   backgroundImageUrl?: string; // full-bleed section background (see server/_core/publicPages.ts)
+  columns?: Array<{ headline?: string; body?: string; imageUrl?: string }>; // "two-column" type only, exactly 2 entries
 }
 
 export interface CampaignEmailSlot {
@@ -75,7 +80,7 @@ function randomFallbackTheme(): Theme {
   return FALLBACK_THEMES[Math.floor(Math.random() * FALLBACK_THEMES.length)];
 }
 
-const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer"];
+const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer", "two-column", "single-box", "image-block", "video-block"];
 const DEFAULT_SECTION_PLAN: SectionType[] = ["hero", "problem", "solution", "benefits", "faq", "final-cta", "footer"];
 
 function defaultResearchNote(industry: string): string {
@@ -223,6 +228,10 @@ const SECTION_INSTRUCTIONS: Record<SectionType, string> = {
   faq: `Return {"headline":"Frequently Asked Questions","faqs":[{"question":"...","answer":"..."}]} -- 3-5 realistic Q&A pairs relevant to this offer/industry, answers grounded only in the offer described, no invented guarantees or certifications.`,
   "final-cta": `Return {"headline":"...","subheadline":"...","ctaText":"..."} -- a final, direct call to action restating the core offer.`,
   footer: `Return {"body":"..."} -- a short one-line footer (e.g. company name), no invented legal/certification claims.`,
+  "two-column": `Return {"headline":"...","columns":[{"headline":"...","body":"..."},{"headline":"...","body":"..."}]} -- headline introduces the pairing (e.g. "Before vs After", "Problem vs Solution", two complementary benefits); each column gets a short headline and 1-2 sentences of body, no invented statistics.`,
+  "single-box": `Return {"headline":"...","body":"...","bullets":["...","..."],"ctaText":"..."} -- a single highlighted call-out (e.g. a guarantee, a limited offer, a key differentiator); body is 1-2 sentences, bullets are optional short supporting points (omit if not needed), ctaText is optional.`,
+  "image-block": `Return {"headline":"..."} -- a short caption (under 10 words) for a full-width image; the image itself is added separately by the user, not generated here.`,
+  "video-block": `Return {"headline":"..."} -- a short caption (under 10 words) for a full-width video; the video itself is added separately by the user, not generated here.`,
 };
 
 const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
@@ -236,6 +245,10 @@ const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
   faq: { headline: "Frequently Asked Questions", faqs: [{ question: "Edit this question", answer: "Edit this answer" }] },
   "final-cta": { headline: "Ready to get started?", ctaText: "Get Started" },
   footer: { body: "Your Company" },
+  "two-column": { headline: "Compare", columns: [{ headline: "Column 1", body: "Click Edit to describe this column." }, { headline: "Column 2", body: "Click Edit to describe this column." }] },
+  "single-box": { headline: "Highlighted offer", body: "Click Edit to describe this call-out." },
+  "image-block": { headline: "Click Edit to choose an image" },
+  "video-block": { headline: "Click Edit to choose a video" },
 };
 
 // Phrases that show up constantly in generic AI-written marketing copy --

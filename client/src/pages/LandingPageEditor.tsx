@@ -15,15 +15,21 @@ import {
 import { toast } from "sonner";
 import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/components/EmailEditorDialog";
 import { MediaPickerDialog } from "@/components/MediaPickerDialog";
+import { RichTextField } from "@/components/RichTextField";
 
-type SectionType = "hero" | "problem" | "solution" | "benefits" | "features" | "testimonials" | "pricing" | "faq" | "final-cta" | "footer";
+type SectionType =
+  | "hero" | "problem" | "solution" | "benefits" | "features" | "testimonials" | "pricing" | "faq" | "final-cta" | "footer"
+  // Manual-add-only block types -- not part of the AI's first-pass section
+  // plan, only addable via "Add section" below or an "AI Edit" instruction.
+  | "two-column" | "single-box" | "image-block" | "video-block";
 
 const SECTION_LABELS: Record<SectionType, string> = {
   hero: "Hero", problem: "Problem", solution: "Solution", benefits: "Benefits", features: "Features",
   testimonials: "Testimonials", pricing: "Pricing / Offer", faq: "FAQ", "final-cta": "Final CTA", footer: "Footer",
+  "two-column": "Two Columns", "single-box": "Highlighted Box", "image-block": "Image", "video-block": "Video",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl";
+type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "columns";
 
 // Every section type gets image/video/background media fields -- previously
 // only "hero" did, so a user wanting a photo or background on any other
@@ -40,6 +46,10 @@ const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   faq: ["headline", "faqs", ...MEDIA_FIELDS],
   "final-cta": ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
   footer: ["body", ...MEDIA_FIELDS],
+  "two-column": ["headline", "columns", ...MEDIA_FIELDS],
+  "single-box": ["headline", "body", "bullets", "ctaText", ...MEDIA_FIELDS],
+  "image-block": ["headline", "imageUrl"],
+  "video-block": ["headline", "videoUrl"],
 };
 
 interface Section {
@@ -53,6 +63,7 @@ interface Section {
   imageUrl?: string;
   videoUrl?: string;
   backgroundImageUrl?: string;
+  columns?: Array<{ headline?: string; body?: string; imageUrl?: string }>;
 }
 
 const VIEWPORT_WIDTH: Record<string, string> = { desktop: "100%", tablet: "768px", mobile: "375px" };
@@ -556,6 +567,9 @@ function SectionEditDialog({
   const [videoUrl, setVideoUrl] = useState(section.videoUrl || "");
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(section.backgroundImageUrl || "");
   const [faqs, setFaqs] = useState(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
+  const [columns, setColumns] = useState(
+    section.columns && section.columns.length === 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]
+  );
 
   useEffect(() => {
     setHeadline(section.headline || "");
@@ -567,6 +581,7 @@ function SectionEditDialog({
     setVideoUrl(section.videoUrl || "");
     setBackgroundImageUrl(section.backgroundImageUrl || "");
     setFaqs(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
+    setColumns(section.columns && section.columns.length === 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
 
@@ -581,6 +596,7 @@ function SectionEditDialog({
     if (fields.includes("backgroundImageUrl")) updated.backgroundImageUrl = backgroundImageUrl;
     if (fields.includes("bullets")) updated.bullets = bulletsText.split("\n").map((b) => b.trim()).filter(Boolean);
     if (fields.includes("faqs")) updated.faqs = faqs.filter((f) => f.question.trim() || f.answer.trim());
+    if (fields.includes("columns")) updated.columns = columns;
     onSave(updated);
   };
 
@@ -598,7 +614,41 @@ function SectionEditDialog({
             <div><label className="text-xs text-muted-foreground">Subheadline</label><Input value={subheadline} onChange={(e) => setSubheadline(e.target.value)} className="mt-1" /></div>
           )}
           {fields.includes("body") && (
-            <div><label className="text-xs text-muted-foreground">Body</label><Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className="mt-1" /></div>
+            <div>
+              <label className="text-xs text-muted-foreground">Body</label>
+              <div className="mt-1">
+                <RichTextField value={body} onChange={setBody} rows={4} />
+              </div>
+            </div>
+          )}
+          {fields.includes("columns") && (
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Columns</label>
+              <div className="grid grid-cols-2 gap-2">
+                {columns.map((col, i) => (
+                  <div key={i} className="border rounded-md p-2 space-y-1.5">
+                    <Input
+                      value={col.headline || ""}
+                      placeholder={`Column ${i + 1} headline`}
+                      onChange={(e) => setColumns((prev) => prev.map((c, j) => j === i ? { ...c, headline: e.target.value } : c))}
+                    />
+                    <Textarea
+                      value={col.body || ""}
+                      placeholder="Body"
+                      rows={3}
+                      onChange={(e) => setColumns((prev) => prev.map((c, j) => j === i ? { ...c, body: e.target.value } : c))}
+                    />
+                    <MediaPickerDialog
+                      value={col.imageUrl || undefined}
+                      onSelect={(url) => setColumns((prev) => prev.map((c, j) => j === i ? { ...c, imageUrl: url } : c))}
+                      recommendedSize="Recommended: 800x600px (4:3)"
+                      aspect={4 / 3}
+                      triggerLabel="Choose image"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
           {fields.includes("ctaText") && (
             <div><label className="text-xs text-muted-foreground">CTA button text</label><Input value={ctaText} onChange={(e) => setCtaText(e.target.value)} className="mt-1" /></div>

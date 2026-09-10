@@ -40,22 +40,109 @@ function toEmbedUrl(videoUrl: string): string | null {
   }
 }
 
+// Applies the narrow **bold**/*italic* markdown-lite subset to an ALREADY
+// escapeHtml()'d line -- order matters: escaping first guarantees the only
+// tags this ever inserts are our own hardcoded <strong>/<em>, never anything
+// derived from unescaped user/LLM text, so this can never smuggle in raw
+// HTML even though the source text came from an LLM and (for manually
+// edited sections) directly from a user, on a page served publicly.
+function applyInlineRichText(escapedLine: string): string {
+  return escapedLine
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>");
+}
+
 // Renders free-text as one <p> per blank-line-separated paragraph (and a
 // <br> for a single newline within a paragraph) instead of the naive single
 // <p> that used to collapse every line break into a space -- source of the
 // "wall of text" bug reported live: a body string with one sentence per
-// pain point read back as one unbroken paragraph.
-function renderParagraphs(text: string, style: string): string {
-  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  return paragraphs
-    .map((p) => `<p style="${style}">${p.split("\n").map((line) => escapeHtml(line)).join("<br>")}</p>`)
+// pain point read back as one unbroken paragraph. Superset of the old
+// renderParagraphs: a line starting with "## " becomes a heading, a
+// contiguous run of "- " lines becomes a proper bulleted list (same
+// checkmark style the bullets field already uses), and **bold**/*italic*
+// work inline -- the small markdown-lite subset RichTextField's toolbar
+// (client/src/components/RichTextField.tsx) writes into the body textarea.
+function renderRichText(text: string, paragraphStyle: string, theme: Theme): string {
+  const blocks = text.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  return blocks
+    .map((block) => {
+      const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (lines.length > 0 && lines.every((l) => l.startsWith("- "))) {
+        return `<ul style="list-style:none;padding:0;margin:0 0 12px;display:grid;gap:10px;">${lines
+          .map((l) => `<li style="${paragraphStyle}padding-left:24px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${applyInlineRichText(escapeHtml(l.slice(2)))}</li>`)
+          .join("")}</ul>`;
+      }
+      if (lines.length === 1 && lines[0].startsWith("## ")) {
+        return `<h3 style="font-size:20px;font-weight:700;color:${theme.text};margin:0 0 8px;">${applyInlineRichText(escapeHtml(lines[0].slice(3)))}</h3>`;
+      }
+      return `<p style="${paragraphStyle}">${lines.map((l) => applyInlineRichText(escapeHtml(l))).join("<br>")}</p>`;
+    })
     .join("");
+}
+
+// Shared final composition step (background/background-image/padding/
+// content-wrapping) -- extracted so the generic field-driven path and the
+// new block-type branches below don't each duplicate this logic.
+function wrapSection(section: SectionContent, theme: Theme, inner: string, opts?: { cardWrap?: boolean }): string {
+  const isHero = section.type === "hero";
+  const isFooter = section.type === "footer";
+  const hasBackgroundImage = !!section.backgroundImageUrl;
+  const background = hasBackgroundImage ? "transparent" : isHero ? theme.primary : "transparent";
+  const padding = isFooter ? "32px 24px" : "64px 24px";
+
+  const cardStyle = opts?.cardWrap
+    ? `border:1px solid rgba(0,0,0,0.08);border-radius:16px;padding:40px;box-shadow:0 2px 12px rgba(0,0,0,0.06);background:${theme.background};`
+    : "";
+  const content = hasBackgroundImage
+    // A background image needs to work regardless of section type or theme
+    // -- rather than branching light/dark text per type, the content sits
+    // in a translucent card over the full-bleed image so it stays legible
+    // either way.
+    ? `<div style="background:${theme.background};opacity:0.94;border-radius:16px;padding:32px;max-width:960px;margin:0 auto;">${inner}</div>`
+    : cardStyle
+      ? `<div style="max-width:960px;margin:0 auto;"><div style="${cardStyle}">${inner}</div></div>`
+      : `<div style="max-width:960px;margin:0 auto;">${inner}</div>`;
+
+  const sectionStyle = hasBackgroundImage
+    ? `background-image:url('${escapeHtml(section.backgroundImageUrl!).replace(/'/g, "%27")}');background-size:cover;background-position:center;padding:${padding};`
+    : `background:${background};padding:${padding};`;
+
+  return `<section style="${sectionStyle}">${content}</section>`;
 }
 
 function renderSection(section: SectionContent, theme: Theme): string {
   const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${theme.text};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
   const subheadline = section.subheadline ? `<p style="font-size:18px;color:${theme.text};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
-  const body = section.body ? renderParagraphs(section.body, `font-size:16px;line-height:1.6;color:${theme.text};max-width:720px;margin:0 0 12px;`) : "";
+
+  if (section.type === "two-column" && section.columns?.length) {
+    const cols = section.columns
+      .map((c) => {
+        const colHeadline = c.headline ? `<h3 style="font-size:20px;font-weight:700;color:${theme.text};margin:0 0 8px;">${escapeHtml(c.headline)}</h3>` : "";
+        const colBody = c.body ? renderRichText(c.body, `font-size:15px;line-height:1.6;color:${theme.text};margin:0 0 8px;`, theme) : "";
+        const colImage = c.imageUrl ? `<img src="${escapeHtml(c.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:8px;" />` : "";
+        return `<div style="flex:1 1 280px;">${colHeadline}${colBody}${colImage}</div>`;
+      })
+      .join("");
+    const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:32px;">${cols}</div>`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "image-block" && section.imageUrl) {
+    const caption = section.headline ? `<p style="text-align:center;font-size:14px;color:${theme.text};opacity:0.7;margin-top:10px;">${escapeHtml(section.headline)}</p>` : "";
+    const inner = `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;display:block;margin:0 auto;" />${caption}`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "video-block" && section.videoUrl) {
+    const embedUrl = toEmbedUrl(section.videoUrl);
+    if (embedUrl) {
+      const caption = section.headline ? `<p style="text-align:center;font-size:14px;color:${theme.text};opacity:0.7;margin-top:10px;">${escapeHtml(section.headline)}</p>` : "";
+      const inner = `<div style="position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;"><iframe src="${escapeHtml(embedUrl)}" title="Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe></div>${caption}`;
+      return wrapSection(section, theme, inner);
+    }
+  }
+
+  const body = section.body ? renderRichText(section.body, `font-size:16px;line-height:1.6;color:${theme.text};max-width:720px;margin:0 0 12px;`, theme) : "";
   const bullets = section.bullets?.length
     ? `<ul style="list-style:none;padding:0;margin:20px 0;display:grid;gap:14px;">${section.bullets.map((b) => `<li style="font-size:16px;color:${theme.text};padding-left:28px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(b)}</li>`).join("")}</ul>`
     : "";
@@ -74,11 +161,6 @@ function renderSection(section: SectionContent, theme: Theme): string {
   const image = !video && section.imageUrl ? `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:20px;" />` : "";
 
   const isHero = section.type === "hero";
-  const isFooter = section.type === "footer";
-  const hasBackgroundImage = !!section.backgroundImageUrl;
-  const background = hasBackgroundImage ? "transparent" : isHero ? theme.primary : "transparent";
-  const padding = isFooter ? "32px 24px" : "64px 24px";
-
   const innerHeadline = isHero && section.headline
     ? `<h1 style="font-size:40px;font-weight:800;color:#fff;margin:0 0 12px;max-width:800px;">${escapeHtml(section.headline)}</h1>`
     : headline;
@@ -88,18 +170,7 @@ function renderSection(section: SectionContent, theme: Theme): string {
 
   const inner = `${innerHeadline}${innerSub}${body}${bullets}${faqs}${video}${image}${cta}`;
 
-  // A background image needs to work regardless of section type or theme --
-  // rather than branching light/dark text per type, the content sits in a
-  // translucent card over the full-bleed image so it stays legible either way.
-  const content = hasBackgroundImage
-    ? `<div style="background:${theme.background};opacity:0.94;border-radius:16px;padding:32px;max-width:960px;margin:0 auto;">${inner}</div>`
-    : `<div style="max-width:960px;margin:0 auto;">${inner}</div>`;
-
-  const sectionStyle = hasBackgroundImage
-    ? `background-image:url('${escapeHtml(section.backgroundImageUrl!).replace(/'/g, "%27")}');background-size:cover;background-position:center;padding:${padding};`
-    : `background:${background};padding:${padding};`;
-
-  return `<section style="${sectionStyle}">${content}</section>`;
+  return wrapSection(section, theme, inner, { cardWrap: section.type === "single-box" });
 }
 
 // Server-renders a landingPages row's sections+theme JSON into a complete,
