@@ -11,7 +11,8 @@ import { EmailPreviewDialog } from "@/components/EmailPreviewDialog";
 import { TagPicker } from "@/components/TagPicker";
 import { LeadVerificationReviewDialog, type LeadReviewRow } from "@/components/LeadVerificationReviewDialog";
 import { EmailEditorDialog } from "@/components/EmailEditorDialog";
-import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X, Monitor, Smartphone, Upload } from "lucide-react";
+import { MediaPickerDialog } from "@/components/MediaPickerDialog";
+import { Sparkles, User, Loader2, Send, Eye, RotateCcw, Pencil, Check, ArrowRight, X, Monitor, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { WIZARD_STORAGE_KEY } from "@/lib/aiAgentStorage";
 
@@ -196,15 +197,6 @@ const DEFAULTS: WizardData = {
 // else is treated as a plain image URL.
 const HERO_VIDEO_HOST_PATTERN = /(?:youtube\.com|youtu\.be|vimeo\.com)/i;
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 // Persists the wizard so navigating to another page and back (or an
 // accidental tab close) doesn't lose an in-progress conversation --
 // previously this was purely in-memory React state, lost the instant the
@@ -254,8 +246,6 @@ export default function AIAgentPage() {
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
-  const logoFileInputRef = useRef<HTMLInputElement>(null);
-  const heroImageFileInputRef = useRef<HTMLInputElement>(null);
 
   // Read synchronously (not in a useEffect) so it's correct on the very
   // first render -- the "generic greeting" effect below checks this same
@@ -301,7 +291,6 @@ export default function AIAgentPage() {
   const generateLandingPageMutation = trpc.landingPages.generate.useMutation();
   const createCampaignFromSequenceMutation = trpc.landingPages.createCampaignFromSequence.useMutation();
   const scheduleExistingCampaignMutation = trpc.campaigns.scheduleExisting.useMutation();
-  const mediaUploadMutation = trpc.media.uploadImage.useMutation();
   const updateLandingPageSectionsMutation = trpc.landingPages.updateSections.useMutation();
   const publishLandingPageMutation = trpc.landingPages.publish.useMutation();
   const applyLandingPageAiEditMutation = trpc.landingPages.applyAiEdit.useMutation();
@@ -831,19 +820,6 @@ export default function AIAgentPage() {
     setStep("heroMediaPrompt");
   };
 
-  const handleLogoFile = async (file: File) => {
-    setBusy(true);
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      const { url } = await mediaUploadMutation.mutateAsync({ dataUrl, filename: file.name });
-      setBusy(false);
-      submitLogoUrl(url);
-    } catch (error: any) {
-      setBusy(false);
-      addAgent(`Logo upload failed: ${error?.message || "unknown error"}. Want to try a URL instead, or skip?`);
-    }
-  };
-
   const submitHeroImageUrl = async (url: string) => {
     const trimmed = url.trim();
     const isVideo = HERO_VIDEO_HOST_PATTERN.test(trimmed);
@@ -856,21 +832,6 @@ export default function AIAgentPage() {
   const skipHeroMedia = async () => {
     addUser("Skip");
     await runLandingPageGeneration(data.emailPrompt, "", "");
-  };
-
-  const handleHeroImageFile = async (file: File) => {
-    setBusy(true);
-    try {
-      const dataUrl = await fileToDataUrl(file);
-      const { url } = await mediaUploadMutation.mutateAsync({ dataUrl, filename: file.name });
-      setBusy(false);
-      setData((d) => ({ ...d, heroImageUrl: url }));
-      addUser(file.name);
-      await runLandingPageGeneration(data.emailPrompt, url, "");
-    } catch (error: any) {
-      setBusy(false);
-      addAgent(`Image upload failed: ${error?.message || "unknown error"}. Want to try a URL instead, or skip?`);
-    }
   };
 
   const runLandingPageGeneration = async (offer: string, heroImageUrl: string, heroVideoUrl: string) => {
@@ -1360,13 +1321,16 @@ export default function AIAgentPage() {
               <Input value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste a logo URL..." className="flex-1" autoFocus />
               <Button type="submit" size="sm" disabled={!textInput.trim()}>Use URL</Button>
             </form>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => logoFileInputRef.current?.click()}>
-                <Upload className="w-3.5 h-3.5" /> Upload File
-              </Button>
+            <div className="flex items-center gap-2">
+              <MediaPickerDialog
+                value={data.logoUrl || undefined}
+                onSelect={submitLogoUrl}
+                recommendedSize="Recommended: ~400x120px PNG, transparent background works best"
+                aspect={null}
+                triggerLabel="Upload or choose from gallery"
+              />
               <Button size="sm" variant="ghost" onClick={skipLogo}>Skip</Button>
             </div>
-            <input ref={logoFileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleLogoFile(e.target.files[0])} />
           </div>
         );
 
@@ -1377,13 +1341,16 @@ export default function AIAgentPage() {
               <Input value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Paste an image URL or YouTube/Vimeo link..." className="flex-1" autoFocus />
               <Button type="submit" size="sm" disabled={!textInput.trim()}>Use URL</Button>
             </form>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => heroImageFileInputRef.current?.click()}>
-                <Upload className="w-3.5 h-3.5" /> Upload File
-              </Button>
+            <div className="flex items-center gap-2">
+              <MediaPickerDialog
+                value={data.heroImageUrl || undefined}
+                onSelect={submitHeroImageUrl}
+                recommendedSize="Recommended: 1600x900px (16:9), landscape"
+                aspect={16 / 9}
+                triggerLabel="Upload or choose from gallery"
+              />
               <Button size="sm" variant="ghost" onClick={skipHeroMedia}>Skip</Button>
             </div>
-            <input ref={heroImageFileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleHeroImageFile(e.target.files[0])} />
           </div>
         );
 

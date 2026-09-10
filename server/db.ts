@@ -1427,6 +1427,55 @@ export async function updateLandingPageEmail(id: number, data: any) {
   return database.update(landingPageEmails).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(landingPageEmails.id, id));
 }
 
+// ============ Media Library ============
+// Every media.uploadImage call records a row here so it can be reused later
+// via the Gallery tab of MediaPickerDialog -- previously an upload just
+// returned a URL and was gone the moment you navigated away.
+let mediaAssetsTableReady = false;
+async function ensureMediaAssetsTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (mediaAssetsTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS mediaAssets (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      url VARCHAR(2048) NOT NULL,
+      storageKey VARCHAR(1024) NOT NULL,
+      filename VARCHAR(255) NOT NULL,
+      mimeType VARCHAR(100) NOT NULL,
+      width INT NULL,
+      height INT NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      INDEX mediaAssets_userId (userId)
+    )
+  `);
+  mediaAssetsTableReady = true;
+}
+
+export async function createMediaAsset(data: any): Promise<number | null> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureMediaAssetsTable(database);
+  const { mediaAssets } = await import("../drizzle/schema");
+  const result: any = await database.insert(mediaAssets).values(convertToDbFormat(data));
+  return Number(result?.[0]?.insertId ?? result?.insertId) || null;
+}
+
+export async function getMediaAssetsByUserId(userId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureMediaAssetsTable(database);
+  const { mediaAssets } = await import("../drizzle/schema");
+  return database.select().from(mediaAssets).where(eq(mediaAssets.userId, userId)).orderBy(desc(mediaAssets.createdAt));
+}
+
+export async function deleteMediaAsset(id: number, userId: number) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureMediaAssetsTable(database);
+  const { mediaAssets } = await import("../drizzle/schema");
+  await database.delete(mediaAssets).where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)));
+}
+
 // ============ Email Verification (in-house + optional Bouncer cross-check) ============
 // Background job row + append-only history, created lazily like landingPages
 // above -- no migration pipeline in this deployment.

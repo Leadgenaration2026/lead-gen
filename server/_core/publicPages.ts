@@ -40,10 +40,22 @@ function toEmbedUrl(videoUrl: string): string | null {
   }
 }
 
+// Renders free-text as one <p> per blank-line-separated paragraph (and a
+// <br> for a single newline within a paragraph) instead of the naive single
+// <p> that used to collapse every line break into a space -- source of the
+// "wall of text" bug reported live: a body string with one sentence per
+// pain point read back as one unbroken paragraph.
+function renderParagraphs(text: string, style: string): string {
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  return paragraphs
+    .map((p) => `<p style="${style}">${p.split("\n").map((line) => escapeHtml(line)).join("<br>")}</p>`)
+    .join("");
+}
+
 function renderSection(section: SectionContent, theme: Theme): string {
   const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${theme.text};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
   const subheadline = section.subheadline ? `<p style="font-size:18px;color:${theme.text};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
-  const body = section.body ? `<p style="font-size:16px;line-height:1.6;color:${theme.text};max-width:720px;">${escapeHtml(section.body)}</p>` : "";
+  const body = section.body ? renderParagraphs(section.body, `font-size:16px;line-height:1.6;color:${theme.text};max-width:720px;margin:0 0 12px;`) : "";
   const bullets = section.bullets?.length
     ? `<ul style="list-style:none;padding:0;margin:20px 0;display:grid;gap:14px;">${section.bullets.map((b) => `<li style="font-size:16px;color:${theme.text};padding-left:28px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(b)}</li>`).join("")}</ul>`
     : "";
@@ -63,7 +75,8 @@ function renderSection(section: SectionContent, theme: Theme): string {
 
   const isHero = section.type === "hero";
   const isFooter = section.type === "footer";
-  const background = isHero ? theme.primary : "transparent";
+  const hasBackgroundImage = !!section.backgroundImageUrl;
+  const background = hasBackgroundImage ? "transparent" : isHero ? theme.primary : "transparent";
   const padding = isFooter ? "32px 24px" : "64px 24px";
 
   const innerHeadline = isHero && section.headline
@@ -73,7 +86,20 @@ function renderSection(section: SectionContent, theme: Theme): string {
     ? `<p style="font-size:19px;color:#fff;opacity:0.9;margin:0 0 24px;max-width:640px;">${escapeHtml(section.subheadline)}</p>`
     : subheadline;
 
-  return `<section style="background:${background};padding:${padding};"><div style="max-width:960px;margin:0 auto;">${innerHeadline}${innerSub}${body}${bullets}${faqs}${video}${image}${cta}</div></section>`;
+  const inner = `${innerHeadline}${innerSub}${body}${bullets}${faqs}${video}${image}${cta}`;
+
+  // A background image needs to work regardless of section type or theme --
+  // rather than branching light/dark text per type, the content sits in a
+  // translucent card over the full-bleed image so it stays legible either way.
+  const content = hasBackgroundImage
+    ? `<div style="background:${theme.background};opacity:0.94;border-radius:16px;padding:32px;max-width:960px;margin:0 auto;">${inner}</div>`
+    : `<div style="max-width:960px;margin:0 auto;">${inner}</div>`;
+
+  const sectionStyle = hasBackgroundImage
+    ? `background-image:url('${escapeHtml(section.backgroundImageUrl!).replace(/'/g, "%27")}');background-size:cover;background-position:center;padding:${padding};`
+    : `background:${background};padding:${padding};`;
+
+  return `<section style="${sectionStyle}">${content}</section>`;
 }
 
 // Server-renders a landingPages row's sections+theme JSON into a complete,
@@ -85,7 +111,7 @@ export function renderLandingPageHtml(page: any): string {
   const theme: Theme = page.theme;
   const sections: SectionContent[] = Array.isArray(page.sections) ? page.sections : [];
   const logo = page.logoUrl
-    ? `<img src="${escapeHtml(page.logoUrl)}" alt="${escapeHtml(page.companyName || page.name)}" style="max-height:36px;" />`
+    ? `<img src="${escapeHtml(page.logoUrl)}" alt="${escapeHtml(page.companyName || page.name)}" style="max-height:48px;max-width:220px;width:auto;height:auto;object-fit:contain;display:block;" />`
     : `<span style="font-weight:700;font-size:18px;color:${theme.primary};">${escapeHtml(page.companyName || page.name)}</span>`;
 
   return `<!DOCTYPE html>

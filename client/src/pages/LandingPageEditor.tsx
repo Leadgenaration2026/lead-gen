@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Loader2, ArrowUp, ArrowDown, Trash2, Copy, Pencil, Plus, Monitor, Tablet, Smartphone,
-  Globe, RotateCcw, Check, Upload, Palette, ExternalLink, Mail, Sparkles, Megaphone,
+  Globe, RotateCcw, Check, Palette, ExternalLink, Mail, Sparkles, Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/components/EmailEditorDialog";
+import { MediaPickerDialog } from "@/components/MediaPickerDialog";
 
 type SectionType = "hero" | "problem" | "solution" | "benefits" | "features" | "testimonials" | "pricing" | "faq" | "final-cta" | "footer";
 
@@ -22,17 +23,23 @@ const SECTION_LABELS: Record<SectionType, string> = {
   testimonials: "Testimonials", pricing: "Pricing / Offer", faq: "FAQ", "final-cta": "Final CTA", footer: "Footer",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-const SECTION_FIELDS: Record<SectionType, Array<"headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl">> = {
-  hero: ["headline", "subheadline", "ctaText", "imageUrl", "videoUrl"],
-  problem: ["headline", "body"],
-  solution: ["headline", "body"],
-  benefits: ["headline", "bullets"],
-  features: ["headline", "bullets"],
-  testimonials: ["headline", "body"],
-  pricing: ["headline", "body"],
-  faq: ["headline", "faqs"],
-  "final-cta": ["headline", "subheadline", "ctaText"],
-  footer: ["body"],
+type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl";
+
+// Every section type gets image/video/background media fields -- previously
+// only "hero" did, so a user wanting a photo or background on any other
+// section had no way to add one at all.
+const MEDIA_FIELDS: SectionField[] = ["imageUrl", "videoUrl", "backgroundImageUrl"];
+const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
+  hero: ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
+  problem: ["headline", "body", "bullets", ...MEDIA_FIELDS],
+  solution: ["headline", "body", ...MEDIA_FIELDS],
+  benefits: ["headline", "bullets", ...MEDIA_FIELDS],
+  features: ["headline", "bullets", ...MEDIA_FIELDS],
+  testimonials: ["headline", "body", ...MEDIA_FIELDS],
+  pricing: ["headline", "body", ...MEDIA_FIELDS],
+  faq: ["headline", "faqs", ...MEDIA_FIELDS],
+  "final-cta": ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
+  footer: ["body", ...MEDIA_FIELDS],
 };
 
 interface Section {
@@ -45,18 +52,10 @@ interface Section {
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
   videoUrl?: string;
+  backgroundImageUrl?: string;
 }
 
 const VIEWPORT_WIDTH: Record<string, string> = { desktop: "100%", tablet: "768px", mobile: "375px" };
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function LandingPageEditor() {
   const params = useParams<{ id: string }>();
@@ -76,7 +75,6 @@ export default function LandingPageEditor() {
   const publishMutation = trpc.landingPages.publish.useMutation();
   const unpublishMutation = trpc.landingPages.unpublish.useMutation();
   const duplicateMutation = trpc.landingPages.duplicate.useMutation();
-  const uploadImageMutation = trpc.media.uploadImage.useMutation();
   const applyAiEditMutation = trpc.landingPages.applyAiEdit.useMutation();
 
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
@@ -84,7 +82,6 @@ export default function LandingPageEditor() {
   const [aiInstruction, setAiInstruction] = useState("");
   const [addType, setAddType] = useState<SectionType>("benefits");
   const [showCreateCampaign, setShowCreateCampaign] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const page = pageQuery.data;
   const sections: Section[] = Array.isArray(page?.sections) ? (page!.sections as Section[]) : [];
@@ -183,16 +180,14 @@ export default function LandingPageEditor() {
     }
   };
 
-  const handleLogoFile = async (file: File) => {
+  const handleLogoSelect = async (url: string) => {
     try {
-      const dataUrl = await fileToDataUrl(file);
-      const { url } = await uploadImageMutation.mutateAsync({ dataUrl, filename: file.name });
       await updateMetaMutation.mutateAsync({ id, logoUrl: url });
       utils.landingPages.get.invalidate(id);
       refreshPreview();
-      toast.success("Logo uploaded");
+      toast.success(url ? "Logo updated" : "Logo removed");
     } catch (error: any) {
-      toast.error(error?.message || "Failed to upload logo");
+      toast.error(error?.message || "Failed to update logo");
     }
   };
 
@@ -347,13 +342,13 @@ export default function LandingPageEditor() {
               </div>
               <div className="pt-1 border-t">
                 <p className="text-xs text-muted-foreground mb-1.5">Logo</p>
-                <div className="flex items-center gap-2">
-                  {page.logoUrl && <img src={page.logoUrl} alt="Logo" className="h-8 max-w-[100px] object-contain" />}
-                  <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => logoInputRef.current?.click()} disabled={uploadImageMutation.isPending}>
-                    {uploadImageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Upload
-                  </Button>
-                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleLogoFile(e.target.files[0])} />
-                </div>
+                <MediaPickerDialog
+                  value={page.logoUrl || undefined}
+                  onSelect={handleLogoSelect}
+                  recommendedSize="Recommended: ~400x120px PNG, transparent background works best"
+                  aspect={null}
+                  triggerLabel="Choose logo"
+                />
               </div>
             </CardContent>
           </Card>
@@ -559,6 +554,7 @@ function SectionEditDialog({
   const [bulletsText, setBulletsText] = useState((section.bullets || []).join("\n"));
   const [imageUrl, setImageUrl] = useState(section.imageUrl || "");
   const [videoUrl, setVideoUrl] = useState(section.videoUrl || "");
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState(section.backgroundImageUrl || "");
   const [faqs, setFaqs] = useState(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
 
   useEffect(() => {
@@ -569,6 +565,7 @@ function SectionEditDialog({
     setBulletsText((section.bullets || []).join("\n"));
     setImageUrl(section.imageUrl || "");
     setVideoUrl(section.videoUrl || "");
+    setBackgroundImageUrl(section.backgroundImageUrl || "");
     setFaqs(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
@@ -581,6 +578,7 @@ function SectionEditDialog({
     if (fields.includes("ctaText")) updated.ctaText = ctaText;
     if (fields.includes("imageUrl")) updated.imageUrl = imageUrl;
     if (fields.includes("videoUrl")) updated.videoUrl = videoUrl;
+    if (fields.includes("backgroundImageUrl")) updated.backgroundImageUrl = backgroundImageUrl;
     if (fields.includes("bullets")) updated.bullets = bulletsText.split("\n").map((b) => b.trim()).filter(Boolean);
     if (fields.includes("faqs")) updated.faqs = faqs.filter((f) => f.question.trim() || f.answer.trim());
     onSave(updated);
@@ -609,7 +607,32 @@ function SectionEditDialog({
             <div><label className="text-xs text-muted-foreground">Video URL (YouTube/Vimeo -- takes priority over the image below)</label><Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." className="mt-1" /></div>
           )}
           {fields.includes("imageUrl") && (
-            <div><label className="text-xs text-muted-foreground">Image URL</label><Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="mt-1" /></div>
+            <div>
+              <label className="text-xs text-muted-foreground">Image</label>
+              <div className="mt-1">
+                <MediaPickerDialog
+                  value={imageUrl || undefined}
+                  onSelect={setImageUrl}
+                  recommendedSize="Recommended: 1200x800px (3:2)"
+                  aspect={3 / 2}
+                  triggerLabel="Choose image"
+                />
+              </div>
+            </div>
+          )}
+          {fields.includes("backgroundImageUrl") && (
+            <div>
+              <label className="text-xs text-muted-foreground">Section background image</label>
+              <div className="mt-1">
+                <MediaPickerDialog
+                  value={backgroundImageUrl || undefined}
+                  onSelect={setBackgroundImageUrl}
+                  recommendedSize="Recommended: 1920x1080px (16:9), will be cropped to cover the whole section"
+                  aspect={16 / 9}
+                  triggerLabel="Choose background"
+                />
+              </div>
+            </div>
           )}
           {fields.includes("bullets") && (
             <div>

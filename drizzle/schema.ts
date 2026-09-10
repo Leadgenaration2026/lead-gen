@@ -169,6 +169,29 @@ export const landingPages = mysqlTable("landingPages", {
 	index("landingPages_slug_unique").on(table.slug),
 ]);
 
+// Every image ever uploaded through media.uploadImage (logos, hero/section
+// images, backgrounds) -- previously each upload just returned a URL and was
+// never recorded anywhere, so there was no way to reuse an image uploaded
+// earlier from a different landing page or wizard run. This is what backs
+// the "Gallery" tab of MediaPickerDialog.
+export const mediaAssets = mysqlTable("mediaAssets", {
+	id: int().autoincrement().notNull(),
+	userId: int().notNull(),
+	url: varchar({ length: 2048 }).notNull(),
+	// The raw storage key (server/storage.ts's storagePut result) -- kept for
+	// a future storage-level delete; today `media.delete` only removes this
+	// row, not the underlying S3 object (server/storage.ts has no delete API).
+	storageKey: varchar({ length: 1024 }).notNull(),
+	filename: varchar({ length: 255 }).notNull(),
+	mimeType: varchar({ length: 100 }).notNull(),
+	width: int(),
+	height: int(),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+},
+(table) => [
+	index("mediaAssets_userId").on(table.userId),
+]);
+
 export const landingPageEmails = mysqlTable("landingPageEmails", {
 	id: int().autoincrement().notNull(),
 	landingPageId: int().notNull(),

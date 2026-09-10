@@ -5220,15 +5220,39 @@ Respond in this exact JSON format:
 
   media: router({
     uploadImage: protectedProcedure
-      .input(z.object({ dataUrl: z.string().min(1), filename: z.string().min(1) }))
-      .mutation(async ({ input }) => {
+      .input(z.object({ dataUrl: z.string().min(1), filename: z.string().min(1), width: z.number().optional(), height: z.number().optional() }))
+      .mutation(async ({ input, ctx }) => {
         const match = input.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
         if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "Expected a base64 data URL" });
         const [, mimeType, base64] = match;
         const buffer = Buffer.from(base64, "base64");
         const { storagePut } = await import("./storage");
-        const { url } = await storagePut(`landing-pages/${input.filename}`, buffer, mimeType);
-        return { url };
+        const { key, url } = await storagePut(`landing-pages/${input.filename}`, buffer, mimeType);
+        const id = await db.createMediaAsset({
+          userId: ctx.user.id,
+          url,
+          storageKey: key,
+          filename: input.filename,
+          mimeType,
+          width: input.width,
+          height: input.height,
+        });
+        return { url, id };
+      }),
+
+    // Everything the current user has ever uploaded -- backs the Gallery tab
+    // of MediaPickerDialog so an image uploaded for one landing page (or
+    // during the AI Agent wizard) can be reused on another, instead of being
+    // lost the moment you navigate away from wherever it was first uploaded.
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getMediaAssetsByUserId(ctx.user.id);
+    }),
+
+    delete: protectedProcedure
+      .input(z.number())
+      .mutation(async ({ input: id, ctx }) => {
+        await db.deleteMediaAsset(id, ctx.user.id);
+        return { success: true };
       }),
   }),
 

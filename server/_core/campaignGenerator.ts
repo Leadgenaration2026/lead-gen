@@ -42,6 +42,7 @@ export interface SectionContent {
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
   videoUrl?: string; // YouTube/Vimeo link, rendered as an embed (see server/_core/publicPages.ts)
+  backgroundImageUrl?: string; // full-bleed section background (see server/_core/publicPages.ts)
 }
 
 export interface CampaignEmailSlot {
@@ -213,7 +214,7 @@ export async function synthesizeThemeAndResearch(ctx: CampaignContext): Promise<
 
 const SECTION_INSTRUCTIONS: Record<SectionType, string> = {
   hero: `Return {"headline":"...","subheadline":"...","ctaText":"..."} -- headline is a strong, benefit-driven line under 12 words that says who this is for and what problem is solved; subheadline is one supporting sentence; ctaText is a short action phrase (e.g. "Book a Free Consultation", "Get Started", "Get Your Free Audit").`,
-  problem: `Return {"headline":"...","body":"..."} -- headline names the core problem the target audience faces; body is 2-3 sentences making it concrete and relatable, no invented statistics.`,
+  problem: `Return {"headline":"...","body":"...","bullets":["...","...","..."]} -- headline names the core problem the target audience faces; body is ONE short intro sentence (not a wall of text); bullets is 3-6 short, concrete, distinct pain points (each its own short phrase, not a paragraph), no invented statistics.`,
   solution: `Return {"headline":"...","body":"..."} -- headline names the solution/offer; body is 2-3 benefit-focused sentences on how it solves the problem.`,
   benefits: `Return {"headline":"...","bullets":["...","...","..."]} -- headline introduces the benefits section; bullets is 3-5 short, benefit-focused phrases (outcomes, not features).`,
   features: `Return {"headline":"...","bullets":["...","...","..."]} -- headline introduces what's included; bullets is 3-6 concrete feature/capability descriptions.`,
@@ -226,7 +227,7 @@ const SECTION_INSTRUCTIONS: Record<SectionType, string> = {
 
 const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
   hero: { headline: "Your headline here", subheadline: "Edit this section to describe your offer.", ctaText: "Get Started" },
-  problem: { headline: "The problem", body: "Click Edit to describe the problem your audience faces." },
+  problem: { headline: "The problem", bullets: ["Click Edit to describe the problem your audience faces."] },
   solution: { headline: "Our solution", body: "Click Edit to describe how you solve it." },
   benefits: { headline: "Benefits", bullets: ["Edit this section to add your benefits"] },
   features: { headline: "Features", bullets: ["Edit this section to add your features"] },
