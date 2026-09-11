@@ -301,7 +301,14 @@ export const leadGenTasks = mysqlTable("leadGenTasks", {
 	userId: int().notNull(),
 	name: varchar({ length: 255 }).notNull(),
 	country: varchar({ length: 100 }),
+	// Legacy single-state column, kept for backward compat with rows created
+	// before multi-state support -- new tasks use `states` (JSON array)
+	// instead, since Seamless's real API only accepts one state per search
+	// call (confirmed server/seamlessAI.ts), so multiple states means the
+	// orchestrator loops through this list, not a single wider filter.
 	state: varchar({ length: 100 }),
+	states: json(),
+	currentStateIndex: int().default(0).notNull(),
 	// Seamless.AI has no city filter at all -- this is folded into the
 	// free-text search instruction as a hint for the LLM parser only, never
 	// a guaranteed deterministic filter like country/state/industry are.
@@ -309,7 +316,20 @@ export const leadGenTasks = mysqlTable("leadGenTasks", {
 	companySize: varchar({ length: 50 }),
 	industries: json(),
 	jobTitles: json(),
-	targetLeadCount: int().notNull(),
+	// Null = run once until this many leads are extracted (original
+	// behavior). Set alongside dailyLeadLimit = "until exhausted" mode, no
+	// fixed total.
+	targetLeadCount: int(),
+	// Presence of this field is what turns on the daily-paced recurring
+	// cycle (see server/_core/leadGenTaskOrchestrator.ts) -- extract up to
+	// this many new leads per calendar day, add them to the same growing
+	// campaign, and keep going day after day until every state in `states`
+	// is exhausted. Null = the original one-shot behavior, unchanged.
+	dailyLeadLimit: int(),
+	extractedToday: int().default(0).notNull(),
+	// UTC YYYY-MM-DD of the last extraction tick -- a new day rolls
+	// extractedToday back to 0.
+	lastExtractionDate: varchar({ length: 10 }),
 	offer: text().notNull(),
 	stylePreference: varchar({ length: 50 }),
 	proofPoints: json(),
@@ -322,6 +342,14 @@ export const leadGenTasks = mysqlTable("leadGenTasks", {
 	]).default('pending').notNull(),
 	extractedCount: int().default(0).notNull(),
 	nextSeamlessToken: text(),
+	// Seamless IDs saved so far in the CURRENT extraction cycle only (cleared
+	// after each cycle's campaign send) -- used to fetch exactly this cycle's
+	// lead rows for verification, deliberately not "every lead this task has
+	// ever saved" (which would re-capture and re-verify/re-add previous
+	// cycles' already-sent leads on a recurring task).
+	currentBatchSeamlessIds: json(),
+	// The tag (leadSets row, type "tag") this task's leads get assigned to --
+	// created once, reused across every cycle of a recurring task.
 	leadSetId: int(),
 	verificationJobId: varchar({ length: 255 }),
 	verifiedLeadIds: json(),

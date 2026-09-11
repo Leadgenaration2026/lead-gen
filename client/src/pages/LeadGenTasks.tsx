@@ -35,6 +35,18 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function progressText(task: any): string {
+  const isRecurring = !!task.dailyLeadLimit;
+  const states: string[] = Array.isArray(task.states) ? task.states : task.states ? JSON.parse(task.states) : (task.state ? [task.state] : []);
+  if (isRecurring) {
+    const stateLabel = states.length
+      ? `${states[Math.min(task.currentStateIndex || 0, states.length - 1)]} (${Math.min((task.currentStateIndex || 0) + 1, states.length)} of ${states.length} states)`
+      : "";
+    if (task.status === "extracting") {
+      return `${task.extractedCount || 0} total sent so far -- today ${task.extractedToday || 0}/${task.dailyLeadLimit}, searching ${stateLabel}`;
+    }
+    if (task.status === "completed") return `Completed -- ${task.extractedCount || 0} leads sent across ${states.length} state(s)`;
+    return `${task.extractedCount || 0} total sent so far -- ${STAGE_LABELS[task.status] || task.status}`;
+  }
   if (task.status === "extracting") return `${task.extractedCount || 0} / ${task.targetLeadCount} leads extracted`;
   return STAGE_LABELS[task.status] || task.status;
 }
@@ -76,12 +88,14 @@ export default function LeadGenTasksPage() {
   const [form, setForm] = useState({
     name: "",
     country: "United States",
-    state: "",
+    states: [] as string[],
     city: "",
     companySize: "",
     industries: [] as string[],
     jobTitles: [] as string[],
+    pace: "once" as "once" | "daily",
     targetLeadCount: 50,
+    dailyLeadLimit: 100,
     offer: "",
     stylePreference: "clean_professional",
     landingPageName: "",
@@ -90,10 +104,17 @@ export default function LeadGenTasksPage() {
   });
 
   const resetForm = () => setForm({
-    name: "", country: "United States", state: "", city: "", companySize: "",
-    industries: [], jobTitles: [], targetLeadCount: 50, offer: "",
+    name: "", country: "United States", states: [], city: "", companySize: "",
+    industries: [], jobTitles: [], pace: "once", targetLeadCount: 50, dailyLeadLimit: 100, offer: "",
     stylePreference: "clean_professional", landingPageName: "", logoUrl: "", scheduledAt: "",
   });
+
+  const toggleState = (state: string) => {
+    setForm((f) => ({
+      ...f,
+      states: f.states.includes(state) ? f.states.filter((s) => s !== state) : [...f.states, state],
+    }));
+  };
 
   const toggleIndustry = (industry: string) => {
     setForm((f) => ({
@@ -114,16 +135,21 @@ export default function LeadGenTasksPage() {
       toast.error("Name, offer, and landing page name are required.");
       return;
     }
+    if (form.states.length === 0) {
+      toast.error("Pick at least one target state.");
+      return;
+    }
     try {
       await createTaskMutation.mutateAsync({
         name: form.name.trim(),
         country: form.country || undefined,
-        state: form.state || undefined,
+        states: form.states,
         city: form.city.trim() || undefined,
         companySize: form.companySize || undefined,
         industries: form.industries,
         jobTitles: form.jobTitles,
-        targetLeadCount: form.targetLeadCount,
+        targetLeadCount: form.pace === "once" ? form.targetLeadCount : undefined,
+        dailyLeadLimit: form.pace === "daily" ? form.dailyLeadLimit : undefined,
         offer: form.offer.trim(),
         stylePreference: form.stylePreference || undefined,
         landingPageName: form.landingPageName.trim(),
@@ -277,7 +303,7 @@ export default function LeadGenTasksPage() {
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Travel agencies - Q2" className="mt-1" />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">Country</label>
                 <Select value={form.country} onValueChange={(v) => setForm({ ...form, country: v })}>
@@ -286,46 +312,91 @@ export default function LeadGenTasksPage() {
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">State (US)</label>
-                <Select value={form.state || "any"} onValueChange={(v) => setForm({ ...form, state: v === "any" ? "" : v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any</SelectItem>
-                    {US_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
                 <label className="text-xs text-muted-foreground">City (best-effort)</label>
                 <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Optional" className="mt-1" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground -mt-2">
-              Seamless.AI has no real city filter -- country and state narrow the search exactly; city is only a best-effort hint.
-            </p>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground">Company size</label>
-                <Select value={form.companySize || "any"} onValueChange={(v) => setForm({ ...form, companySize: v === "any" ? "" : v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any</SelectItem>
-                    {COMPANY_SIZES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <div>
+              <label className="text-xs text-muted-foreground">Target states ({form.states.length} selected)</label>
+              <div className="flex flex-wrap gap-1.5 mt-1 max-h-28 overflow-y-auto border rounded-md p-2">
+                {US_STATES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => toggleState(s)}
+                    className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                      form.states.includes(s) ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Target lead count</label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={5000}
-                  value={form.targetLeadCount}
-                  onChange={(e) => setForm({ ...form, targetLeadCount: Math.max(1, Math.min(5000, parseInt(e.target.value, 10) || 1)) })}
-                  className="mt-1"
-                />
+              <p className="text-xs text-muted-foreground mt-1">
+                Seamless.AI only searches one state per request -- with multiple selected, it works through them in order (moving to the next once one runs out of new matches). City above has no real filter at all, just a best-effort hint.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground">Company size</label>
+              <Select value={form.companySize || "any"} onValueChange={(v) => setForm({ ...form, companySize: v === "any" ? "" : v })}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  {COMPANY_SIZES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground">Pace</label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, pace: "once" })}
+                  className={`text-left px-3 py-2 rounded-md border transition-colors ${form.pace === "once" ? "border-primary bg-primary/5" : "border-input hover:bg-muted"}`}
+                >
+                  <div className="text-sm font-medium">Run once</div>
+                  <div className="text-xs text-muted-foreground">Extract a fixed total, then send</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, pace: "daily" })}
+                  className={`text-left px-3 py-2 rounded-md border transition-colors ${form.pace === "daily" ? "border-primary bg-primary/5" : "border-input hover:bg-muted"}`}
+                >
+                  <div className="text-sm font-medium">Run daily until exhausted</div>
+                  <div className="text-xs text-muted-foreground">A capped batch every day, added to one growing campaign</div>
+                </button>
               </div>
+              {form.pace === "once" ? (
+                <div className="mt-2">
+                  <label className="text-xs text-muted-foreground">Target lead count</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={5000}
+                    value={form.targetLeadCount}
+                    onChange={(e) => setForm({ ...form, targetLeadCount: Math.max(1, Math.min(5000, parseInt(e.target.value, 10) || 1)) })}
+                    className="mt-1"
+                  />
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <label className="text-xs text-muted-foreground">Leads per day</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={form.dailyLeadLimit}
+                    onChange={(e) => setForm({ ...form, dailyLeadLimit: Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 1)) })}
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No fixed total -- it keeps going one batch a day until every selected state has no new matching contacts left.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>

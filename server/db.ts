@@ -1648,11 +1648,16 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
       name VARCHAR(255) NOT NULL,
       country VARCHAR(100) NULL,
       state VARCHAR(100) NULL,
+      states JSON NULL,
+      currentStateIndex INT NOT NULL DEFAULT 0,
       city VARCHAR(100) NULL,
       companySize VARCHAR(50) NULL,
       industries JSON NULL,
       jobTitles JSON NULL,
-      targetLeadCount INT NOT NULL,
+      targetLeadCount INT NULL,
+      dailyLeadLimit INT NULL,
+      extractedToday INT NOT NULL DEFAULT 0,
+      lastExtractionDate VARCHAR(10) NULL,
       offer TEXT NOT NULL,
       stylePreference VARCHAR(50) NULL,
       proofPoints JSON NULL,
@@ -1665,6 +1670,7 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
       ) NOT NULL DEFAULT 'pending',
       extractedCount INT NOT NULL DEFAULT 0,
       nextSeamlessToken TEXT NULL,
+      currentBatchSeamlessIds JSON NULL,
       leadSetId INT NULL,
       verificationJobId VARCHAR(255) NULL,
       verifiedLeadIds JSON NULL,
@@ -1681,6 +1687,26 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
       INDEX leadGenTasks_status (status)
     )
   `);
+  // Multi-state + daily-pace support added after the table may already
+  // exist live -- CREATE TABLE IF NOT EXISTS above is a no-op in that case,
+  // so these columns need adding explicitly, same pattern already used
+  // elsewhere in this file (e.g. userSettings) for a no-migration-tool setup.
+  const alterStatements = [
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS states JSON NULL`,
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS currentStateIndex INT NOT NULL DEFAULT 0`,
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS dailyLeadLimit INT NULL`,
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS extractedToday INT NOT NULL DEFAULT 0`,
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS lastExtractionDate VARCHAR(10) NULL`,
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS currentBatchSeamlessIds JSON NULL`,
+    sql`ALTER TABLE leadGenTasks MODIFY COLUMN targetLeadCount INT NULL`,
+  ];
+  for (const stmt of alterStatements) {
+    try {
+      await database.execute(stmt);
+    } catch (error) {
+      console.error("[ensureLeadGenTasksTable] ALTER failed (non-fatal):", error);
+    }
+  }
   leadGenTasksTableReady = true;
 }
 

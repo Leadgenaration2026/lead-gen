@@ -5683,12 +5683,21 @@ Respond in this exact JSON format:
       .input(z.object({
         name: z.string().min(1),
         country: z.string().optional(),
-        state: z.string().optional(),
+        // Multiple target states, e.g. ["Arizona", "California"] -- Seamless
+        // only accepts one state per search call, so the orchestrator loops
+        // through this list one at a time (see leadGenTaskOrchestrator.ts).
+        states: z.array(z.string()).default([]),
         city: z.string().optional(),
         companySize: z.string().optional(),
         industries: z.array(z.string()).default([]),
         jobTitles: z.array(z.string()).default([]),
-        targetLeadCount: z.number().min(1).max(5000),
+        // Null/omitted = "until every target state is exhausted" (required
+        // when dailyLeadLimit is set); otherwise a fixed one-shot total.
+        targetLeadCount: z.number().min(1).max(5000).optional(),
+        // Presence turns on the daily-paced recurring cycle -- extract up to
+        // this many NEW leads per calendar day, adding each day's batch to
+        // one growing campaign, until every target state is exhausted.
+        dailyLeadLimit: z.number().min(1).max(1000).optional(),
         offer: z.string().min(1),
         stylePreference: z.string().optional(),
         proofPoints: z.array(z.string()).optional(),
@@ -5697,16 +5706,23 @@ Respond in this exact JSON format:
         scheduledAt: z.string().optional(), // ISO datetime; omitted/past = eligible immediately
       }))
       .mutation(async ({ ctx, input }) => {
+        if (!input.states.length) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "At least one target state is required." });
+        }
+        if (!input.dailyLeadLimit && !input.targetLeadCount) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Either a target lead count or a daily lead limit is required." });
+        }
         const id = await db.createLeadGenTask({
           userId: ctx.user.id,
           name: input.name,
           country: input.country || null,
-          state: input.state || null,
+          states: input.states,
           city: input.city || null,
           companySize: input.companySize || null,
           industries: input.industries,
           jobTitles: input.jobTitles,
-          targetLeadCount: input.targetLeadCount,
+          targetLeadCount: input.targetLeadCount || null,
+          dailyLeadLimit: input.dailyLeadLimit || null,
           offer: input.offer,
           stylePreference: input.stylePreference || null,
           proofPoints: input.proofPoints || null,

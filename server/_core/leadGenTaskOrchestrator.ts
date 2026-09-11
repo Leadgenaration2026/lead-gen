@@ -91,62 +91,120 @@ async function advanceTask(task: any): Promise<void> {
         // Capped well below the API's own 1000 max -- enrichSeamlessSelection
         // spends a real Seamless credit (and a real HTTP call) per candidate,
         // so a huge page could make a single tick run long enough to risk a
-        // timeout on an ephemeral instance. A large targetLeadCount just
-        // takes more ticks, not one giant one.
+        // timeout on an ephemeral instance. A large targetLeadCount/
+        // dailyLeadLimit just takes more ticks, not one giant one.
         const MAX_PER_TICK = 50;
+        const isRecurring = !!task.dailyLeadLimit;
+        const states = parseJsonField<string[]>(task.states, task.state ? [task.state] : []);
+        let batchIds = parseJsonField<string[]>(task.currentBatchSeamlessIds, []);
+
+        if (states.length === 0) {
+          await flagAttention(task.id, "No target state configured.");
+          return;
+        }
+
+        // Daily pacing: a new UTC calendar day resets today's allowance.
+        const todayStr = new Date().toISOString().slice(0, 10);
+        let extractedToday = task.extractedToday || 0;
+        if (isRecurring && task.lastExtractionDate !== todayStr) extractedToday = 0;
+
+        if (isRecurring && extractedToday >= task.dailyLeadLimit) {
+          // Already sent today's batch -- nothing to do until tomorrow, but
+          // still persist a same-day reset so the row stays accurate even if
+          // no further work happens on this tick.
+          if (task.lastExtractionDate !== todayStr) {
+            await db.updateLeadGenTask(task.id, { extractedToday: 0, lastExtractionDate: todayStr });
+          }
+          return;
+        }
+
+        if (task.currentStateIndex >= states.length) {
+          // Every target state already exhausted in a prior tick.
+          if (batchIds.length > 0) {
+            await db.updateLeadGenTask(task.id, { status: "verifying" });
+          } else if (!task.extractedCount) {
+            await flagAttention(task.id, "No candidates found for this search across any target state -- try a broader company size or industry.");
+          } else {
+            await db.updateLeadGenTask(task.id, { status: "completed", completedAt: new Date() });
+          }
+          return;
+        }
+
+        const currentState = states[task.currentStateIndex];
         const instruction = buildInstruction(task, industries, jobTitles);
-        const pageSize = Math.min(MAX_PER_TICK, Math.max(1, task.targetLeadCount - (task.extractedCount || 0)));
+        const remainingOverall = task.targetLeadCount ? Math.max(1, task.targetLeadCount - (task.extractedCount || 0)) : MAX_PER_TICK;
+        const remainingToday = isRecurring ? Math.max(1, task.dailyLeadLimit - extractedToday) : MAX_PER_TICK;
+        const pageSize = Math.max(1, Math.min(MAX_PER_TICK, remainingOverall, remainingToday));
+
         const preview: any = await caller.leads.searchSeamlessPreview({
           instruction,
           count: pageSize,
           country: task.country || undefined,
-          state: task.state || undefined,
+          state: currentState,
           companySize: task.companySize || undefined,
           industryOverride: industries.length ? industries : undefined,
           titlesOverride: jobTitles.length ? jobTitles : undefined,
           nextToken: task.nextSeamlessToken || undefined,
         });
 
-        if (!preview.candidates?.length) {
-          if (!task.extractedCount) {
-            await flagAttention(task.id, "No candidates found for this search -- try a broader location, company size, or industry.");
-          } else {
-            await db.updateLeadGenTask(task.id, { status: "verifying" });
-          }
-          return;
+        let newExtractedCount = task.extractedCount || 0;
+        if (preview.candidates?.length) {
+          const enrichResult: any = await caller.leads.enrichSeamlessSelection({
+            leadSetName: task.name,
+            candidates: preview.candidates,
+          });
+          const newSeamlessIds = (enrichResult.leads || []).map((l: any) => l.seamlessId).filter(Boolean);
+          batchIds = [...batchIds, ...newSeamlessIds];
+          newExtractedCount += enrichResult.count || 0;
+          extractedToday += enrichResult.count || 0;
+          await logEvent(userId, "leads_generated", task, { extractedCount: newExtractedCount, state: currentState });
         }
 
-        const enrichResult: any = await caller.leads.enrichSeamlessSelection({
-          leadSetName: task.name,
-          candidates: preview.candidates,
-        });
-
-        const newExtractedCount = (task.extractedCount || 0) + (enrichResult.count || 0);
+        // No nextToken = Seamless has nothing more for this state -- advance
+        // to the next one (a genuinely empty page and "last page of results"
+        // are handled the same way here, both mean "move on").
+        const stateExhausted = !preview.nextToken;
+        const nextStateIndex = stateExhausted ? task.currentStateIndex + 1 : task.currentStateIndex;
         const patch: any = {
           extractedCount: newExtractedCount,
-          nextSeamlessToken: preview.nextToken || null,
+          currentBatchSeamlessIds: batchIds,
+          nextSeamlessToken: stateExhausted ? null : preview.nextToken,
+          currentStateIndex: nextStateIndex,
         };
-        if (enrichResult.leadSetId) patch.leadSetId = enrichResult.leadSetId;
-        await db.updateLeadGenTask(task.id, patch);
-        await logEvent(userId, "leads_generated", task, { extractedCount: newExtractedCount });
+        if (isRecurring) {
+          patch.extractedToday = extractedToday;
+          patch.lastExtractionDate = todayStr;
+        }
 
-        if (newExtractedCount >= task.targetLeadCount || !preview.nextToken) {
-          if (newExtractedCount === 0) {
-            await flagAttention(task.id, "No leads could be saved from this search (missing contact info after enrichment) -- try different criteria.");
-          } else {
-            await db.updateLeadGenTask(task.id, { status: "verifying" });
+        const overallCapHit = task.targetLeadCount ? newExtractedCount >= task.targetLeadCount : false;
+        const dailyCapHit = isRecurring && extractedToday >= task.dailyLeadLimit;
+        const allStatesDone = stateExhausted && nextStateIndex >= states.length;
+
+        if (overallCapHit || dailyCapHit || allStatesDone) {
+          if (batchIds.length > 0) {
+            patch.status = "verifying";
+          } else if (!newExtractedCount) {
+            await db.updateLeadGenTask(task.id, patch);
+            await flagAttention(task.id, "No candidates found for this search -- try a broader location, company size, or industry.");
+            return;
+          } else if (allStatesDone) {
+            patch.status = "completed";
+            patch.completedAt = new Date();
           }
         }
+
+        await db.updateLeadGenTask(task.id, patch);
         return;
       }
 
       case "verifying": {
         if (!task.verificationJobId) {
-          if (!task.leadSetId) {
+          const batchIds = parseJsonField<string[]>(task.currentBatchSeamlessIds, []);
+          if (batchIds.length === 0) {
             await flagAttention(task.id, "No leads were saved to verify.");
             return;
           }
-          const leads = await db.getLeadsBySourceListOrTag(userId, { sourceListId: task.leadSetId });
+          const leads = await db.getLeadsBySeamlessIds(batchIds, userId);
           if (!leads.length) {
             await flagAttention(task.id, "No leads were saved to verify.");
             return;
@@ -177,10 +235,29 @@ async function advanceTask(task: any): Promise<void> {
 
       case "tagging": {
         const verifiedLeadIds = parseJsonField<number[]>(task.verifiedLeadIds, []);
-        const tag: any = await caller.leadSets.create({ name: task.name, description: "Created by Lead Gen Head" });
-        await caller.leadSets.assignLeads({ leadIds: verifiedLeadIds, leadSetId: tag.id });
-        await db.updateLeadGenTask(task.id, { status: "generating" });
-        await logEvent(userId, "tag_assigned", task, { leadSetId: tag.id });
+        // The tag is created once and reused across every cycle of a
+        // recurring task (task.leadSetId persists once set).
+        let tagId = task.leadSetId;
+        if (!tagId) {
+          const tag: any = await caller.leadSets.create({ name: task.name, description: "Created by Lead Gen Head" });
+          tagId = tag.id;
+          await db.updateLeadGenTask(task.id, { leadSetId: tagId });
+        }
+        await caller.leadSets.assignLeads({ leadIds: verifiedLeadIds, leadSetId: tagId });
+        await logEvent(userId, "tag_assigned", task, { leadSetId: tagId });
+
+        if (task.landingPageId && task.campaignId) {
+          // A later cycle of a recurring task -- the landing page and
+          // campaign already exist from day 1, so skip straight past
+          // generating/creating_campaign/publishing/preflight: just add this
+          // cycle's newly-verified leads to the existing campaign and
+          // (re-)launch. campaigns.launch only emails leads with
+          // !emailSent, so re-launching never re-sends to anyone already sent.
+          await db.addLeadsToCampaign(task.campaignId, verifiedLeadIds);
+          await db.updateLeadGenTask(task.id, { status: "launching" });
+        } else {
+          await db.updateLeadGenTask(task.id, { status: "generating" });
+        }
         return;
       }
 
@@ -240,8 +317,21 @@ async function advanceTask(task: any): Promise<void> {
 
       case "launching": {
         const result: any = await caller.campaigns.launch(task.campaignId);
-        await db.updateLeadGenTask(task.id, { status: "completed", completedAt: new Date() });
         await logEvent(userId, "campaign_launched", task, { sentCount: result?.sentCount });
+
+        // Clear this cycle's batch-scoped state so the next cycle (if any)
+        // starts clean -- day 2's verification/tagging must not see day 1's
+        // already-handled leads.
+        const clearPatch: any = { verificationJobId: null, verifiedLeadIds: null, currentBatchSeamlessIds: [] };
+        const states = parseJsonField<string[]>(task.states, task.state ? [task.state] : []);
+        const stillMoreStates = !!task.dailyLeadLimit && task.currentStateIndex < states.length;
+        if (stillMoreStates) {
+          clearPatch.status = "extracting";
+        } else {
+          clearPatch.status = "completed";
+          clearPatch.completedAt = new Date();
+        }
+        await db.updateLeadGenTask(task.id, clearPatch);
         return;
       }
 
