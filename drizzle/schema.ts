@@ -288,6 +288,58 @@ export const pipelineEvents = mysqlTable("pipelineEvents", {
 	index("pipelineEvents_campaignId").on(table.campaignId),
 ]);
 
+// One row per "Lead Gen Head" autonomous task -- a structured brief (not a
+// chat conversation) that the /api/scheduled/process-leadgen-tasks heartbeat
+// (server/_core/leadGenTaskOrchestrator.ts) advances one stage at a time,
+// re-entrant on every cron tick since this app has no in-process timers/
+// worker (see references/periodic-updates.md). `status` doubles as the
+// resume point after a restart; `needsAttention`/`attentionReason` is the
+// in-app alert surfaced on the monitoring page when a stage can't proceed
+// (missing prerequisite, zero leads found, a failed preflight check, etc).
+export const leadGenTasks = mysqlTable("leadGenTasks", {
+	id: int().autoincrement().notNull(),
+	userId: int().notNull(),
+	name: varchar({ length: 255 }).notNull(),
+	country: varchar({ length: 100 }),
+	state: varchar({ length: 100 }),
+	// Seamless.AI has no city filter at all -- this is folded into the
+	// free-text search instruction as a hint for the LLM parser only, never
+	// a guaranteed deterministic filter like country/state/industry are.
+	city: varchar({ length: 100 }),
+	companySize: varchar({ length: 50 }),
+	industries: json(),
+	jobTitles: json(),
+	targetLeadCount: int().notNull(),
+	offer: text().notNull(),
+	stylePreference: varchar({ length: 50 }),
+	proofPoints: json(),
+	logoUrl: varchar({ length: 2048 }),
+	landingPageName: varchar({ length: 255 }).notNull(),
+	status: mysqlEnum([
+		'pending', 'extracting', 'verifying', 'tagging', 'generating',
+		'creating_campaign', 'publishing', 'preflight', 'launching',
+		'completed', 'failed',
+	]).default('pending').notNull(),
+	extractedCount: int().default(0).notNull(),
+	nextSeamlessToken: text(),
+	leadSetId: int(),
+	verificationJobId: varchar({ length: 255 }),
+	verifiedLeadIds: json(),
+	landingPageId: int(),
+	campaignId: int(),
+	needsAttention: tinyint().default(0).notNull(),
+	attentionReason: text(),
+	lastError: text(),
+	scheduledAt: timestamp({ mode: 'string' }),
+	createdAt: timestamp({ mode: 'string' }).default('CURRENT_TIMESTAMP').notNull(),
+	updatedAt: timestamp({ mode: 'string' }).defaultNow().onUpdateNow().notNull(),
+	completedAt: timestamp({ mode: 'string' }),
+},
+(table) => [
+	index("leadGenTasks_userId").on(table.userId),
+	index("leadGenTasks_status").on(table.status),
+]);
+
 export const claudeApiUsage = mysqlTable("claudeApiUsage", {
 	id: int().autoincrement().notNull(),
 	userId: int().notNull(),

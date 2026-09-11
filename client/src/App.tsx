@@ -28,6 +28,7 @@ import LandingPagesList from "./pages/LandingPagesList";
 import CampaignBuilder from "./pages/CampaignBuilder";
 import LandingPageEditor from "./pages/LandingPageEditor";
 import EmailVerification from "./pages/EmailVerification";
+import LeadGenTasks from "./pages/LeadGenTasks";
 
 // Wrapper to add DashboardLayout to pages
 function WithLayout({ component: Component }: { component: React.ComponentType }) {
@@ -64,6 +65,7 @@ function Router() {
       <Route path={"/search-preview"}>{() => <WithLayout component={SearchPreview} />}</Route>
       <Route path={"/seamless-leads"}>{() => <WithLayout component={SeamlessLeads} />}</Route>
       <Route path={"/email-verification"}>{() => <WithLayout component={EmailVerification} />}</Route>
+      <Route path={"/lead-gen-tasks"}>{() => <WithLayout component={LeadGenTasks} />}</Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

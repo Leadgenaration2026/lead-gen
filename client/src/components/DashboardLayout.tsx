@@ -21,16 +21,18 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, CalendarDays, MessageSquare, Trash2, Search, Inbox, History, Sparkles, LayoutTemplate, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Mail, Megaphone, BarChart3, Settings, FileText, FolderOpen, CalendarDays, MessageSquare, Trash2, Search, Inbox, History, Sparkles, LayoutTemplate, ShieldCheck, Bot } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { hasResumableWizardChat } from "@/lib/aiAgentStorage";
 import { Button } from "./ui/button";
+import { trpc } from "@/lib/trpc";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", color: "text-blue-500", activeBg: "data-[active=true]:bg-blue-50 dark:data-[active=true]:bg-blue-950/30" },
   { icon: Sparkles, label: "AI Agent", path: "/ai-agent", color: "text-purple-500", activeBg: "data-[active=true]:bg-purple-50 dark:data-[active=true]:bg-purple-950/30" },
+  { icon: Bot, label: "Lead Gen Head", path: "/lead-gen-tasks", color: "text-yellow-600", activeBg: "data-[active=true]:bg-yellow-50 dark:data-[active=true]:bg-yellow-950/30" },
   { icon: LayoutTemplate, label: "Landing Pages", path: "/landing-pages", color: "text-orange-500", activeBg: "data-[active=true]:bg-orange-50 dark:data-[active=true]:bg-orange-950/30" },
   { icon: Search, label: "Search Leads", path: "/search-preview", color: "text-lime-500", activeBg: "data-[active=true]:bg-lime-50 dark:data-[active=true]:bg-lime-950/30" },
   { icon: Users, label: "All Leads", path: "/all-leads", color: "text-violet-500", activeBg: "data-[active=true]:bg-violet-50 dark:data-[active=true]:bg-violet-950/30" },
@@ -142,6 +144,14 @@ function DashboardLayoutContent({
   }, [location]);
   const isMobile = useIsMobile();
 
+  // Visible from anywhere in the app (same "don't make them go looking for
+  // it" reasoning as the AI Agent "Resume" indicator above) -- a Lead Gen
+  // Head task that needs attention shouldn't only be discoverable by
+  // happening to open that page. Polls every 60s; this component wraps
+  // every authenticated page, so the interval is deliberately conservative.
+  const leadGenTasksQuery = trpc.leadGenTasks.list.useQuery(undefined, { refetchInterval: 60000 });
+  const leadGenTasksNeedingAttention = (leadGenTasksQuery.data || []).filter((t: any) => t.needsAttention).length;
+
   useEffect(() => {
     if (isCollapsed) {
       setIsResizing(false);
@@ -225,6 +235,11 @@ function DashboardLayoutContent({
                         {item.path === "/ai-agent" && hasResumableChat && !isActive && (
                           <span className="flex items-center gap-1 text-[10px] font-medium text-purple-600 bg-purple-50 dark:bg-purple-950/40 rounded-full px-1.5 py-0.5" title="You have an unfinished conversation">
                             <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Resume
+                          </span>
+                        )}
+                        {item.path === "/lead-gen-tasks" && leadGenTasksNeedingAttention > 0 && !isActive && (
+                          <span className="flex items-center gap-1 text-[10px] font-medium text-red-600 bg-red-50 dark:bg-red-950/40 rounded-full px-1.5 py-0.5" title={`${leadGenTasksNeedingAttention} task(s) need attention`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {leadGenTasksNeedingAttention}
                           </span>
                         )}
                       </span>

@@ -29,6 +29,9 @@ const FOLLOW_UP_HEARTBEAT_NAME = "process-scheduled-emails";
 // Name of the recurring heartbeat job that polls the IMAP inbox for replies.
 const INBOX_SYNC_HEARTBEAT_NAME = "sync-inbox-replies";
 
+// Name of the recurring heartbeat job that advances due Lead Gen Head tasks.
+const LEADGEN_TASK_HEARTBEAT_NAME = "process-leadgen-tasks";
+
 // Validation schemas
 const createLeadSchema = z.object({
   companyName: z.string().min(1),
@@ -5668,6 +5671,114 @@ Respond in this exact JSON format:
         }
         return { success: true, leadId: newLeadId };
       }),
+  }),
+
+  // ============ Lead Gen Head (autonomous task) ============
+  // A structured one-time brief instead of the AI Agent chat wizard -- runs
+  // the same underlying pipeline fully unattended via the
+  // /api/scheduled/process-leadgen-tasks heartbeat (see
+  // server/_core/leadGenTaskOrchestrator.ts for the actual state machine).
+  leadGenTasks: router({
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        country: z.string().optional(),
+        state: z.string().optional(),
+        city: z.string().optional(),
+        companySize: z.string().optional(),
+        industries: z.array(z.string()).default([]),
+        jobTitles: z.array(z.string()).default([]),
+        targetLeadCount: z.number().min(1).max(5000),
+        offer: z.string().min(1),
+        stylePreference: z.string().optional(),
+        proofPoints: z.array(z.string()).optional(),
+        logoUrl: z.string().optional(),
+        landingPageName: z.string().min(1),
+        scheduledAt: z.string().optional(), // ISO datetime; omitted/past = eligible immediately
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createLeadGenTask({
+          userId: ctx.user.id,
+          name: input.name,
+          country: input.country || null,
+          state: input.state || null,
+          city: input.city || null,
+          companySize: input.companySize || null,
+          industries: input.industries,
+          jobTitles: input.jobTitles,
+          targetLeadCount: input.targetLeadCount,
+          offer: input.offer,
+          stylePreference: input.stylePreference || null,
+          proofPoints: input.proofPoints || null,
+          logoUrl: input.logoUrl || null,
+          landingPageName: input.landingPageName,
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+        });
+
+        // Lazily register the recurring heartbeat, same idempotent
+        // check-then-create/update pattern as enableFollowUpHeartbeat above
+        // -- without this job registered, no task ever advances past "pending".
+        try {
+          const { parse: parseCookie } = await import("cookie");
+          const { COOKIE_NAME } = await import("@shared/const");
+          const { listHeartbeatJobs, createHeartbeatJob, updateHeartbeatJob } = await import("./_core/heartbeat");
+          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+          const { jobs } = await listHeartbeatJobs(sessionToken);
+          const existing = jobs.find((j) => j.name === LEADGEN_TASK_HEARTBEAT_NAME);
+          const desiredCron = "0 */2 * * * *";
+          if (existing) {
+            const patch: { enable?: boolean; cron?: string } = {};
+            if (!existing.isEnable) patch.enable = true;
+            if (existing.cronExpression !== desiredCron) patch.cron = desiredCron;
+            if (Object.keys(patch).length > 0) await updateHeartbeatJob(existing.taskUid, patch, sessionToken);
+          } else {
+            await createHeartbeatJob({
+              name: LEADGEN_TASK_HEARTBEAT_NAME,
+              cron: desiredCron,
+              path: "/api/scheduled/process-leadgen-tasks",
+              description: "Advances due Lead Gen Head autonomous tasks",
+            }, sessionToken);
+          }
+        } catch (error: any) {
+          console.error("[leadGenTasks.create] Failed to register heartbeat:", error?.message);
+        }
+
+        return { id };
+      }),
+
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return db.getLeadGenTasksByUserId(ctx.user.id);
+    }),
+
+    get: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
+      const task = await db.getLeadGenTaskById(id);
+      if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      return task;
+    }),
+
+    events: protectedProcedure.input(z.number()).query(async ({ input: id, ctx }) => {
+      const task = await db.getLeadGenTaskById(id);
+      if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      return db.listPipelineEvents(ctx.user.id, { campaignId: task.campaignId || undefined, limit: 100 });
+    }),
+
+    // Stops it being picked up again -- doesn't undo anything already done
+    // (any leads extracted/campaign created so far stay exactly as they are).
+    cancel: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const task = await db.getLeadGenTaskById(id);
+      if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateLeadGenTask(id, { status: "failed", needsAttention: false, attentionReason: null });
+      return { success: true };
+    }),
+
+    // Clears the attention flag so the next heartbeat tick resumes exactly
+    // at the stage it stopped on -- doesn't reset any progress.
+    retry: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const task = await db.getLeadGenTaskById(id);
+      if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateLeadGenTask(id, { needsAttention: false, attentionReason: null, lastError: null });
+      return { success: true };
+    }),
   }),
 
   // ============ Call Suggestions Router ============

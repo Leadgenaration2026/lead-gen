@@ -137,6 +137,32 @@ async function startServer() {
       });
     }
   });
+  // Scheduled Lead Gen Head processor (called by heartbeat cron) -- advances
+  // every due autonomous task by one bounded stage (extract a page of leads,
+  // check on a verification job, generate the landing page, etc). See
+  // server/_core/leadGenTaskOrchestrator.ts for the full state machine.
+  app.post("/api/scheduled/process-leadgen-tasks", async (req, res) => {
+    try {
+      const { sdk } = await import("./sdk");
+      const user = await sdk.authenticateRequest(req);
+      if (!user.isCron) {
+        return res.status(403).json({ error: "cron-only" });
+      }
+
+      const { processLeadGenTasks } = await import("./leadGenTaskOrchestrator");
+      const result = await processLeadGenTasks();
+      console.log(`[Heartbeat] Lead Gen Head: ${JSON.stringify(result)}`);
+      res.json({ ok: true, ...result });
+    } catch (error: any) {
+      console.error("[Heartbeat] Lead Gen Head handler error:", error);
+      res.status(500).json({
+        error: error.message || "Unknown error",
+        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // Scheduled inbox sync endpoint (called by heartbeat cron)
   // Polls the configured IMAP mailbox for new replies from known leads and
   // feeds them into the reply-classification pipeline.

@@ -1632,6 +1632,117 @@ export async function listPipelineEvents(userId: number, params: { campaignId?: 
   return database.select().from(pipelineEvents).where(and(...conditions)).orderBy(desc(pipelineEvents.createdAt)).limit(params.limit || 100);
 }
 
+// ============ Lead Gen Head (autonomous task) ============
+// One row per submitted brief, advanced one stage at a time by the
+// /api/scheduled/process-leadgen-tasks heartbeat (server/_core/
+// leadGenTaskOrchestrator.ts) -- see that file for the full state machine.
+// `status` is both the current stage and the resume point, since this app
+// has no in-process timers/worker (every tick is a fresh, stateless DB read).
+let leadGenTasksTableReady = false;
+async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (leadGenTasksTableReady) return;
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS leadGenTasks (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      country VARCHAR(100) NULL,
+      state VARCHAR(100) NULL,
+      city VARCHAR(100) NULL,
+      companySize VARCHAR(50) NULL,
+      industries JSON NULL,
+      jobTitles JSON NULL,
+      targetLeadCount INT NOT NULL,
+      offer TEXT NOT NULL,
+      stylePreference VARCHAR(50) NULL,
+      proofPoints JSON NULL,
+      logoUrl VARCHAR(2048) NULL,
+      landingPageName VARCHAR(255) NOT NULL,
+      status ENUM(
+        'pending','extracting','verifying','tagging','generating',
+        'creating_campaign','publishing','preflight','launching',
+        'completed','failed'
+      ) NOT NULL DEFAULT 'pending',
+      extractedCount INT NOT NULL DEFAULT 0,
+      nextSeamlessToken TEXT NULL,
+      leadSetId INT NULL,
+      verificationJobId VARCHAR(255) NULL,
+      verifiedLeadIds JSON NULL,
+      landingPageId INT NULL,
+      campaignId INT NULL,
+      needsAttention TINYINT NOT NULL DEFAULT 0,
+      attentionReason TEXT NULL,
+      lastError TEXT NULL,
+      scheduledAt TIMESTAMP NULL,
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+      completedAt TIMESTAMP NULL,
+      INDEX leadGenTasks_userId (userId),
+      INDEX leadGenTasks_status (status)
+    )
+  `);
+  leadGenTasksTableReady = true;
+}
+
+export async function createLeadGenTask(data: any): Promise<number | null> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureLeadGenTasksTable(database);
+  const { leadGenTasks } = await import("../drizzle/schema");
+  const result: any = await database.insert(leadGenTasks).values(convertToDbFormat(data));
+  return Number(result?.[0]?.insertId ?? result?.insertId) || null;
+}
+
+export async function getLeadGenTaskById(id: number): Promise<any> {
+  const database = await getDb();
+  if (!database) return null;
+  await ensureLeadGenTasksTable(database);
+  const { leadGenTasks } = await import("../drizzle/schema");
+  const rows = await database.select().from(leadGenTasks).where(eq(leadGenTasks.id, id)).limit(1);
+  return rows[0] || null;
+}
+
+export async function getLeadGenTasksByUserId(userId: number): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureLeadGenTasksTable(database);
+  const { leadGenTasks } = await import("../drizzle/schema");
+  return database.select().from(leadGenTasks).where(eq(leadGenTasks.userId, userId)).orderBy(desc(leadGenTasks.createdAt));
+}
+
+// Selected by the heartbeat tick -- every task not yet in a terminal state,
+// not already flagged for attention (those wait for an explicit retry), and
+// whose scheduled start (if any) has arrived. Capped per tick so one user's
+// large task can't starve everyone else's.
+export async function getDueLeadGenTasks(limit: number = 20): Promise<any[]> {
+  const database = await getDb();
+  if (!database) return [];
+  await ensureLeadGenTasksTable(database);
+  const { leadGenTasks } = await import("../drizzle/schema");
+  const rows: any = await database.execute(
+    sql`SELECT * FROM leadGenTasks
+        WHERE status NOT IN ('completed','failed') AND needsAttention = 0
+        AND (scheduledAt IS NULL OR scheduledAt <= CURRENT_TIMESTAMP)
+        ORDER BY createdAt ASC LIMIT ${limit}`
+  );
+  return Array.isArray(rows?.[0]) ? rows[0] : Array.isArray(rows) ? rows : [];
+}
+
+export async function updateLeadGenTask(id: number, data: any) {
+  const database = await getDb();
+  if (!database) return;
+  await ensureLeadGenTasksTable(database);
+  const { leadGenTasks } = await import("../drizzle/schema");
+  return database.update(leadGenTasks).set(convertToDbFormat({ ...data, updatedAt: new Date() })).where(eq(leadGenTasks.id, id));
+}
+
+export async function getUserById(id: number): Promise<any> {
+  const database = await getDb();
+  if (!database) return null;
+  const rows = await database.select().from(users).where(eq(users.id, id)).limit(1);
+  return rows[0] || null;
+}
+
 // Archive of hard-deleted leads, so "Delete List"/"Delete Tag" (below) can
 // actually remove leads (needed so Seamless dedup stops blocking them, see
 // archiveAndDeleteLeadsByTag/BySourceList) without the deletion being a true
