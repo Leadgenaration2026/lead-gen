@@ -1,4 +1,5 @@
 import { useState, Fragment } from "react";
+import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, AlertTriangle, RotateCcw, X, ChevronDown, Sparkles } from "lucide-react";
+import { Loader2, Plus, AlertTriangle, RotateCcw, X, ChevronDown, Sparkles, Pause, Play, ExternalLink, Pencil, Check } from "lucide-react";
 import { toast } from "sonner";
 import { MediaPickerDialog } from "@/components/MediaPickerDialog";
 import { COUNTRIES, US_STATES, COMPANY_SIZES, INDUSTRY_OPTIONS, JOB_TITLE_OPTIONS, STYLE_OPTIONS } from "@/lib/seamlessOptions";
@@ -69,6 +70,7 @@ function TaskEvents({ taskId }: { taskId: number }) {
 }
 
 export default function LeadGenTasksPage() {
+  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const tasksQuery = trpc.leadGenTasks.list.useQuery(undefined, {
     refetchInterval: (query) => {
@@ -80,10 +82,16 @@ export default function LeadGenTasksPage() {
   const createTaskMutation = trpc.leadGenTasks.create.useMutation();
   const cancelMutation = trpc.leadGenTasks.cancel.useMutation();
   const retryMutation = trpc.leadGenTasks.retry.useMutation();
+  const pauseMutation = trpc.leadGenTasks.pause.useMutation();
+  const resumeMutation = trpc.leadGenTasks.resume.useMutation();
+  const updateDailyLimitMutation = trpc.leadGenTasks.updateDailyLimit.useMutation();
+  const existingLandingPagesQuery = trpc.landingPages.list.useQuery();
 
   const [showNewTaskDialog, setShowNewTaskDialog] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [industryFilter, setIndustryFilter] = useState("");
+  const [editingLimitTaskId, setEditingLimitTaskId] = useState<number | null>(null);
+  const [editingLimitValue, setEditingLimitValue] = useState(100);
 
   const [form, setForm] = useState({
     name: "",
@@ -97,8 +105,10 @@ export default function LeadGenTasksPage() {
     targetLeadCount: 50,
     dailyLeadLimit: 100,
     offer: "",
+    landingPageSource: "new" as "new" | "existing",
     stylePreference: "clean_professional",
     landingPageName: "",
+    landingPageId: null as number | null,
     logoUrl: "",
     scheduledAt: "",
   });
@@ -106,7 +116,8 @@ export default function LeadGenTasksPage() {
   const resetForm = () => setForm({
     name: "", country: "United States", states: [], city: "", companySize: "",
     industries: [], jobTitles: [], pace: "once", targetLeadCount: 50, dailyLeadLimit: 100, offer: "",
-    stylePreference: "clean_professional", landingPageName: "", logoUrl: "", scheduledAt: "",
+    landingPageSource: "new", stylePreference: "clean_professional", landingPageName: "", landingPageId: null,
+    logoUrl: "", scheduledAt: "",
   });
 
   const toggleState = (state: string) => {
@@ -131,8 +142,16 @@ export default function LeadGenTasksPage() {
   };
 
   const handleCreate = async () => {
-    if (!form.name.trim() || !form.offer.trim() || !form.landingPageName.trim()) {
-      toast.error("Name, offer, and landing page name are required.");
+    if (!form.name.trim() || !form.offer.trim()) {
+      toast.error("Name and offer are required.");
+      return;
+    }
+    if (form.landingPageSource === "new" && !form.landingPageName.trim()) {
+      toast.error("Landing page name is required.");
+      return;
+    }
+    if (form.landingPageSource === "existing" && !form.landingPageId) {
+      toast.error("Pick an existing landing page.");
       return;
     }
     if (form.states.length === 0) {
@@ -151,9 +170,10 @@ export default function LeadGenTasksPage() {
         targetLeadCount: form.pace === "once" ? form.targetLeadCount : undefined,
         dailyLeadLimit: form.pace === "daily" ? form.dailyLeadLimit : undefined,
         offer: form.offer.trim(),
-        stylePreference: form.stylePreference || undefined,
-        landingPageName: form.landingPageName.trim(),
-        logoUrl: form.logoUrl || undefined,
+        stylePreference: form.landingPageSource === "new" ? form.stylePreference || undefined : undefined,
+        landingPageId: form.landingPageSource === "existing" ? form.landingPageId || undefined : undefined,
+        landingPageName: form.landingPageSource === "new" ? form.landingPageName.trim() : undefined,
+        logoUrl: form.landingPageSource === "new" ? form.logoUrl || undefined : undefined,
         scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : undefined,
       });
       toast.success("Task created -- it will start" + (form.scheduledAt ? " at the scheduled time." : " within a couple of minutes."));
@@ -182,6 +202,42 @@ export default function LeadGenTasksPage() {
       utils.leadGenTasks.list.invalidate();
     } catch (error: any) {
       toast.error(error?.message || "Failed to retry");
+    }
+  };
+
+  const handlePause = async (id: number) => {
+    try {
+      await pauseMutation.mutateAsync(id);
+      toast.success("Paused -- it won't advance until resumed.");
+      utils.leadGenTasks.list.invalidate();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to pause");
+    }
+  };
+
+  const handleResume = async (id: number) => {
+    try {
+      await resumeMutation.mutateAsync(id);
+      toast.success("Resumed.");
+      utils.leadGenTasks.list.invalidate();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to resume");
+    }
+  };
+
+  const startEditingLimit = (task: any) => {
+    setEditingLimitTaskId(task.id);
+    setEditingLimitValue(task.dailyLeadLimit || 100);
+  };
+
+  const saveEditingLimit = async (id: number) => {
+    try {
+      await updateDailyLimitMutation.mutateAsync({ id, dailyLeadLimit: editingLimitValue });
+      toast.success("Daily limit updated -- takes effect on the next check-in.");
+      setEditingLimitTaskId(null);
+      utils.leadGenTasks.list.invalidate();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to update daily limit");
     }
   };
 
@@ -237,6 +293,10 @@ export default function LeadGenTasksPage() {
                             <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">Completed</Badge>
                           ) : task.status === "failed" ? (
                             <Badge variant="outline" className="border-gray-300 text-gray-500">Cancelled</Badge>
+                          ) : task.paused ? (
+                            <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400 gap-1">
+                              <Pause className="w-3 h-3" /> Paused
+                            </Badge>
                           ) : (
                             <Badge variant="outline" className="border-blue-300 text-blue-700 dark:text-blue-400 gap-1">
                               <Loader2 className="w-3 h-3 animate-spin" /> Running
@@ -247,17 +307,59 @@ export default function LeadGenTasksPage() {
                           {task.needsAttention ? (
                             <span className="text-red-600 dark:text-red-400">{task.attentionReason}</span>
                           ) : (
-                            progressText(task)
+                            <span>{progressText(task)}</span>
+                          )}
+                          {!!task.dailyLeadLimit && !task.needsAttention && (
+                            editingLimitTaskId === task.id ? (
+                              <span className="inline-flex items-center gap-1 ml-2">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={1000}
+                                  value={editingLimitValue}
+                                  onChange={(e) => setEditingLimitValue(Math.max(1, Math.min(1000, parseInt(e.target.value, 10) || 1)))}
+                                  className="h-6 w-16 text-xs inline-block px-1"
+                                />
+                                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => saveEditingLimit(task.id)} disabled={updateDailyLimitMutation.isPending}>
+                                  <Check className="w-3 h-3" />
+                                </Button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 ml-2 text-xs text-primary hover:underline"
+                                onClick={() => startEditingLimit(task)}
+                                title="Edit daily limit"
+                              >
+                                <Pencil className="w-3 h-3" /> {task.dailyLeadLimit}/day
+                              </button>
+                            )
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">{task.scheduledAt ? formatDate(task.scheduledAt) : "Immediately"}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{formatDate(task.createdAt)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {task.campaignId && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => navigate(`/campaigns/${task.campaignId}`)}>
+                                <ExternalLink className="w-3 h-3" /> View Campaign
+                              </Button>
+                            )}
                             {task.needsAttention && (
                               <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleRetry(task.id)} disabled={retryMutation.isPending}>
                                 <RotateCcw className="w-3 h-3" /> Retry
                               </Button>
+                            )}
+                            {task.status !== "completed" && task.status !== "failed" && !task.needsAttention && (
+                              task.paused ? (
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handleResume(task.id)} disabled={resumeMutation.isPending}>
+                                  <Play className="w-3 h-3" /> Resume
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => handlePause(task.id)} disabled={pauseMutation.isPending}>
+                                  <Pause className="w-3 h-3" /> Pause
+                                </Button>
+                              )
                             )}
                             {task.status !== "completed" && task.status !== "failed" && (
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600" onClick={() => handleCancel(task.id)} title="Cancel">
@@ -442,46 +544,97 @@ export default function LeadGenTasksPage() {
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground">Landing page style</label>
-              <div className="grid gap-1.5 mt-1">
-                {STYLE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setForm({ ...form, stylePreference: opt.value })}
-                    className={`text-left px-3 py-2 rounded-md border transition-colors ${
-                      form.stylePreference === opt.value ? "border-primary bg-primary/5" : "border-input hover:bg-muted"
-                    }`}
-                  >
-                    <div className="text-sm font-medium">{opt.label}</div>
-                    <div className="text-xs text-muted-foreground">{opt.description}</div>
-                  </button>
-                ))}
+              <label className="text-xs text-muted-foreground">Landing page</label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, landingPageSource: "new" })}
+                  className={`text-left px-3 py-2 rounded-md border transition-colors ${form.landingPageSource === "new" ? "border-primary bg-primary/5" : "border-input hover:bg-muted"}`}
+                >
+                  <div className="text-sm font-medium">Create a new one</div>
+                  <div className="text-xs text-muted-foreground">Generated fresh from your brief below</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, landingPageSource: "existing" })}
+                  className={`text-left px-3 py-2 rounded-md border transition-colors ${form.landingPageSource === "existing" ? "border-primary bg-primary/5" : "border-input hover:bg-muted"}`}
+                >
+                  <div className="text-sm font-medium">Use an existing one</div>
+                  <div className="text-xs text-muted-foreground">Its 8 follow-up emails come with it</div>
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {form.landingPageSource === "new" ? (
+              <>
+                <div>
+                  <label className="text-xs text-muted-foreground">Landing page style</label>
+                  <div className="grid gap-1.5 mt-1">
+                    {STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setForm({ ...form, stylePreference: opt.value })}
+                        className={`text-left px-3 py-2 rounded-md border transition-colors ${
+                          form.stylePreference === opt.value ? "border-primary bg-primary/5" : "border-input hover:bg-muted"
+                        }`}
+                      >
+                        <div className="text-sm font-medium">{opt.label}</div>
+                        <div className="text-xs text-muted-foreground">{opt.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-muted-foreground">Landing page name</label>
+                  <Input value={form.landingPageName} onChange={(e) => setForm({ ...form, landingPageName: e.target.value })} placeholder="e.g. Travel Agency Outreach" className="mt-1" />
+                </div>
+
+                <div>
+                  <label className="text-xs text-muted-foreground">Logo (optional)</label>
+                  <div className="mt-1">
+                    <MediaPickerDialog
+                      value={form.logoUrl || undefined}
+                      onSelect={(url) => setForm({ ...form, logoUrl: url })}
+                      recommendedSize="Recommended: ~400x120px PNG, transparent background works best"
+                      aspect={null}
+                      triggerLabel="Choose logo"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
               <div>
-                <label className="text-xs text-muted-foreground">Landing page name</label>
-                <Input value={form.landingPageName} onChange={(e) => setForm({ ...form, landingPageName: e.target.value })} placeholder="e.g. Travel Agency Outreach" className="mt-1" />
+                <label className="text-xs text-muted-foreground">Choose an existing landing page</label>
+                <div className="mt-1 max-h-48 overflow-y-auto border rounded-md divide-y">
+                  {existingLandingPagesQuery.isLoading ? (
+                    <div className="p-3 text-xs text-muted-foreground flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Loading...</div>
+                  ) : !existingLandingPagesQuery.data?.length ? (
+                    <p className="p-3 text-xs text-muted-foreground">No landing pages yet -- create one first, or choose "Create a new one" above.</p>
+                  ) : (
+                    existingLandingPagesQuery.data.map((page: any) => (
+                      <button
+                        key={page.id}
+                        type="button"
+                        onClick={() => setForm({ ...form, landingPageId: page.id })}
+                        className={`w-full text-left px-3 py-2 transition-colors ${form.landingPageId === page.id ? "bg-primary/5" : "hover:bg-muted"}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium truncate">{page.name}</span>
+                          <Badge variant={page.status === "published" ? "default" : "outline"} className="shrink-0 text-[10px]">{page.status}</Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">{page.industry || "No industry set"}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Start (leave blank to start ASAP)</label>
-                <Input type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} className="mt-1" />
-              </div>
-            </div>
+            )}
 
             <div>
-              <label className="text-xs text-muted-foreground">Logo (optional)</label>
-              <div className="mt-1">
-                <MediaPickerDialog
-                  value={form.logoUrl || undefined}
-                  onSelect={(url) => setForm({ ...form, logoUrl: url })}
-                  recommendedSize="Recommended: ~400x120px PNG, transparent background works best"
-                  aspect={null}
-                  triggerLabel="Choose logo"
-                />
-              </div>
+              <label className="text-xs text-muted-foreground">Start (leave blank to start ASAP)</label>
+              <Input type="datetime-local" value={form.scheduledAt} onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} className="mt-1" />
             </div>
           </div>
           <DialogFooter>

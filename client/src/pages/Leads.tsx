@@ -57,8 +57,13 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   
-  const allLeadsQuery = trpc.leads.list.useQuery({ page: currentPage, pageSize }, { enabled: !showOnlyUnassigned });
-  const unassignedLeadsQuery = trpc.leads.listUnassigned.useQuery(undefined, { enabled: showOnlyUnassigned });
+  // Conservative polling (not just refetch-after-a-local-mutation) so a lead
+  // tagged/extracted by a background Lead Gen Head task -- which has no open
+  // client to trigger the existing post-mutation .refetch() calls below --
+  // still disappears from an already-open Imported List filter within a
+  // reasonable time instead of requiring a manual reload.
+  const allLeadsQuery = trpc.leads.list.useQuery({ page: currentPage, pageSize }, { enabled: !showOnlyUnassigned, refetchInterval: 30000 });
+  const unassignedLeadsQuery = trpc.leads.listUnassigned.useQuery(undefined, { enabled: showOnlyUnassigned, refetchInterval: 30000 });
   const leadsQuery = showOnlyUnassigned ? unassignedLeadsQuery : allLeadsQuery;
   const generateLeadsMutation = trpc.leads.generate.useMutation();
   const searchSeamlessPreviewMutation = trpc.leads.searchSeamlessPreview.useMutation();
@@ -97,7 +102,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
       sourceListId: filterSourceListId !== "all" ? parseInt(filterSourceListId) : undefined,
       leadSetId: (filterSourceListId === "all" && filterLeadSet !== "all" && filterLeadSet !== "unassigned") ? parseInt(filterLeadSet) : undefined,
     },
-    { enabled: filterSourceListId !== "all" || (filterLeadSet !== "all" && filterLeadSet !== "unassigned") }
+    { enabled: filterSourceListId !== "all" || (filterLeadSet !== "all" && filterLeadSet !== "unassigned"), refetchInterval: 30000 }
   );
   const [tagComboboxOpen, setTagComboboxOpen] = useState(false);
   const [filterIndustry, setFilterIndustry] = useState<string>("all");

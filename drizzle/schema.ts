@@ -334,7 +334,9 @@ export const leadGenTasks = mysqlTable("leadGenTasks", {
 	stylePreference: varchar({ length: 50 }),
 	proofPoints: json(),
 	logoUrl: varchar({ length: 2048 }),
-	landingPageName: varchar({ length: 255 }).notNull(),
+	// Null when reusing an existing landing page (landingPageId set at
+	// creation instead) -- required only when generating a new one.
+	landingPageName: varchar({ length: 255 }),
 	status: mysqlEnum([
 		'pending', 'extracting', 'verifying', 'tagging', 'generating',
 		'creating_campaign', 'publishing', 'preflight', 'launching',
@@ -356,6 +358,10 @@ export const leadGenTasks = mysqlTable("leadGenTasks", {
 	landingPageId: int(),
 	campaignId: int(),
 	needsAttention: tinyint().default(0).notNull(),
+	// Orthogonal to `status` -- pausing never loses the resume point, it just
+	// makes the heartbeat skip this task until resumed (see
+	// db.getDueLeadGenTasks / server/_core/leadGenTaskOrchestrator.ts).
+	paused: tinyint().default(0).notNull(),
 	attentionReason: text(),
 	lastError: text(),
 	scheduledAt: timestamp({ mode: 'string' }),

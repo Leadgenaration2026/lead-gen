@@ -5702,7 +5702,12 @@ Respond in this exact JSON format:
         stylePreference: z.string().optional(),
         proofPoints: z.array(z.string()).optional(),
         logoUrl: z.string().optional(),
-        landingPageName: z.string().min(1),
+        // Reuse an already-generated landing page (and its attached 8-email
+        // sequence, which comes along automatically since landingPageEmails
+        // is keyed by landingPageId) instead of generating a new one --
+        // mirrors the picker already built for the AI Agent wizard.
+        landingPageId: z.number().optional(),
+        landingPageName: z.string().optional(),
         scheduledAt: z.string().optional(), // ISO datetime; omitted/past = eligible immediately
       }))
       .mutation(async ({ ctx, input }) => {
@@ -5711,6 +5716,13 @@ Respond in this exact JSON format:
         }
         if (!input.dailyLeadLimit && !input.targetLeadCount) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Either a target lead count or a daily lead limit is required." });
+        }
+        if (!input.landingPageId && !input.landingPageName?.trim()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "A landing page name is required when generating a new landing page." });
+        }
+        if (input.landingPageId) {
+          const page = await db.getLandingPageById(input.landingPageId);
+          if (!page || page.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND", message: "Landing page not found" });
         }
         const id = await db.createLeadGenTask({
           userId: ctx.user.id,
@@ -5727,7 +5739,8 @@ Respond in this exact JSON format:
           stylePreference: input.stylePreference || null,
           proofPoints: input.proofPoints || null,
           logoUrl: input.logoUrl || null,
-          landingPageName: input.landingPageName,
+          landingPageId: input.landingPageId || null,
+          landingPageName: input.landingPageName || null,
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
         });
 
@@ -5795,6 +5808,34 @@ Respond in this exact JSON format:
       await db.updateLeadGenTask(id, { needsAttention: false, attentionReason: null, lastError: null });
       return { success: true };
     }),
+
+    // Orthogonal to status -- the heartbeat simply skips a paused task
+    // (db.getDueLeadGenTasks) until resumed, no progress lost either way.
+    pause: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const task = await db.getLeadGenTaskById(id);
+      if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateLeadGenTask(id, { paused: true });
+      return { success: true };
+    }),
+
+    resume: protectedProcedure.input(z.number()).mutation(async ({ input: id, ctx }) => {
+      const task = await db.getLeadGenTaskById(id);
+      if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.updateLeadGenTask(id, { paused: false });
+      return { success: true };
+    }),
+
+    // Takes effect on the task's very next tick -- the orchestrator always
+    // reads dailyLeadLimit fresh from the DB, no other change needed.
+    updateDailyLimit: protectedProcedure
+      .input(z.object({ id: z.number(), dailyLeadLimit: z.number().min(1).max(1000) }))
+      .mutation(async ({ input, ctx }) => {
+        const task = await db.getLeadGenTaskById(input.id);
+        if (!task || task.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!task.dailyLeadLimit) throw new TRPCError({ code: "BAD_REQUEST", message: "This task isn't running on a daily pace." });
+        await db.updateLeadGenTask(input.id, { dailyLeadLimit: input.dailyLeadLimit });
+        return { success: true };
+      }),
   }),
 
   // ============ Call Suggestions Router ============

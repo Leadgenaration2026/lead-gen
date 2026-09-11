@@ -1662,7 +1662,7 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
       stylePreference VARCHAR(50) NULL,
       proofPoints JSON NULL,
       logoUrl VARCHAR(2048) NULL,
-      landingPageName VARCHAR(255) NOT NULL,
+      landingPageName VARCHAR(255) NULL,
       status ENUM(
         'pending','extracting','verifying','tagging','generating',
         'creating_campaign','publishing','preflight','launching',
@@ -1677,6 +1677,7 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
       landingPageId INT NULL,
       campaignId INT NULL,
       needsAttention TINYINT NOT NULL DEFAULT 0,
+      paused TINYINT NOT NULL DEFAULT 0,
       attentionReason TEXT NULL,
       lastError TEXT NULL,
       scheduledAt TIMESTAMP NULL,
@@ -1698,7 +1699,9 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
     sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS extractedToday INT NOT NULL DEFAULT 0`,
     sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS lastExtractionDate VARCHAR(10) NULL`,
     sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS currentBatchSeamlessIds JSON NULL`,
+    sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS paused TINYINT NOT NULL DEFAULT 0`,
     sql`ALTER TABLE leadGenTasks MODIFY COLUMN targetLeadCount INT NULL`,
+    sql`ALTER TABLE leadGenTasks MODIFY COLUMN landingPageName VARCHAR(255) NULL`,
   ];
   for (const stmt of alterStatements) {
     try {
@@ -1737,9 +1740,10 @@ export async function getLeadGenTasksByUserId(userId: number): Promise<any[]> {
 }
 
 // Selected by the heartbeat tick -- every task not yet in a terminal state,
-// not already flagged for attention (those wait for an explicit retry), and
-// whose scheduled start (if any) has arrived. Capped per tick so one user's
-// large task can't starve everyone else's.
+// not already flagged for attention (those wait for an explicit retry), not
+// paused (waits for an explicit resume), and whose scheduled start (if any)
+// has arrived. Capped per tick so one user's large task can't starve
+// everyone else's.
 export async function getDueLeadGenTasks(limit: number = 20): Promise<any[]> {
   const database = await getDb();
   if (!database) return [];
@@ -1747,7 +1751,7 @@ export async function getDueLeadGenTasks(limit: number = 20): Promise<any[]> {
   const { leadGenTasks } = await import("../drizzle/schema");
   const rows: any = await database.execute(
     sql`SELECT * FROM leadGenTasks
-        WHERE status NOT IN ('completed','failed') AND needsAttention = 0
+        WHERE status NOT IN ('completed','failed') AND needsAttention = 0 AND paused = 0
         AND (scheduledAt IS NULL OR scheduledAt <= CURRENT_TIMESTAMP)
         ORDER BY createdAt ASC LIMIT ${limit}`
   );

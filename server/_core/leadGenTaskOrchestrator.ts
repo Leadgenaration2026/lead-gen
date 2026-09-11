@@ -255,6 +255,11 @@ async function advanceTask(task: any): Promise<void> {
           // !emailSent, so re-launching never re-sends to anyone already sent.
           await db.addLeadsToCampaign(task.campaignId, verifiedLeadIds);
           await db.updateLeadGenTask(task.id, { status: "launching" });
+        } else if (task.landingPageId) {
+          // Day 1, but an EXISTING landing page was picked at task creation
+          // (task.landingPageId already set, no generation needed) -- still
+          // needs its own campaign created for this task's leads.
+          await db.updateLeadGenTask(task.id, { status: "creating_campaign" });
         } else {
           await db.updateLeadGenTask(task.id, { status: "generating" });
         }
