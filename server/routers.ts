@@ -88,7 +88,6 @@ const updateUserSettingsSchema = z.object({
   ctaLink: z.string().optional(),
   retellWebhookSecret: z.string().optional(),
   seamlessApiKey: z.string().optional(),
-  bouncerApiKey: z.string().optional(),
 
   // Social profiles
   linkedinUrl: z.string().optional(),
@@ -508,25 +507,26 @@ export const appRouter = router({
               console.warn(`[Engagement] Failed for manual lead ${newLeadId}:`, e.message);
             }
           });
-          // Auto-verify email via Bouncer in background
+          // Auto-verify email (in-house, free -- no key/config needed) in background
           setImmediate(async () => {
             try {
-              const settings = await db.getUserSettings(ctx.user.id);
-              if (!settings?.bouncerApiKey) return;
-              const { validateEmail } = await import("./bouncer");
-              const result = await validateEmail(settings.bouncerApiKey, input.email);
+              const { verifyEmailsInHouse } = await import("./_core/emailVerification");
+              const [result] = await verifyEmailsInHouse([input.email]);
+              if (!result) return;
+              const legacyStatus = result.status === "valid" ? "deliverable"
+                : result.status === "invalid" || result.status === "disposable" ? "undeliverable"
+                : result.status === "catch_all" || result.status === "role_based" ? "risky"
+                : "unknown";
               await db.updateLead(newLeadId, {
-                emailVerificationStatus: result.status as any,
+                emailVerificationStatus: legacyStatus as any,
                 emailVerificationData: {
                   score: result.score,
                   reason: result.reason,
-                  toxic: result.toxic,
-                  toxicity: result.toxicity,
-                  shouldSend: result.status !== "undeliverable",
+                  shouldSend: result.shouldSend,
                   verifiedAt: new Date().toISOString(),
                 },
               });
-              console.log(`[AutoVerify] Manual lead ${newLeadId} verified: ${result.status}`);
+              console.log(`[AutoVerify] Manual lead ${newLeadId} verified: ${legacyStatus}`);
             } catch (e: any) {
               console.warn(`[AutoVerify] Failed for manual lead ${newLeadId}:`, e.message);
             }
@@ -1172,7 +1172,11 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
         country: z.string().optional(),
         state: z.string().optional(),
         companySize: z.string().optional(),
-        industryOverride: z.string().optional(), // User-confirmed/corrected industry from the detection suggestion
+        // User-confirmed/corrected industry (or industries) from the AI Agent
+        // wizard's own selection -- a string or an array of canonical Seamless
+        // industry names, both accepted so every explicitly-picked industry can
+        // override the parser deterministically, not just a single pick.
+        industryOverride: z.union([z.string(), z.array(z.string())]).optional(),
         titlesOverride: z.array(z.string()).max(10).optional(), // User-confirmed/corrected job titles
         companyNameOverride: z.string().optional(), // "Find a business's owner" lookup
         zipCode: z.string().optional(), // Same lookup -- Seamless.AI's real postal-code filter
@@ -1415,7 +1419,7 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
 
     // Reveals ONE candidate's real email/phone (spends the 1 enrichment
     // credit) WITHOUT saving it as a lead -- lets the caller check the email
-    // via Bouncer (verification.verifyEmails) before deciding whether to
+    // (verification.verifyEmails) before deciding whether to
     // commit it, instead of the lead already being saved before that choice
     // is made. Pair with saveEnrichedSeamlessLead below to actually save it,
     // which does NOT re-enrich (no extra credit spent on save).
@@ -1874,49 +1878,35 @@ Return ONLY valid JSON array, no other text. No markdown, no code fences.`;
             }
           });
 
-          // Auto-verify emails via Bouncer in background
+          // Auto-verify emails (in-house, free -- no key/config, no rate
+          // limit or credit concern, so this runs as one batch instead of a
+          // throttled per-email loop) in background
           setImmediate(async () => {
             try {
-              const settings = await db.getUserSettings(ctx.user.id);
-              if (!settings?.bouncerApiKey) {
-                console.log(`[AutoVerify] Skipping overwrite batch - no Bouncer API key configured`);
-                return;
+              const leadRows = await Promise.all(upsertedIds.map((id) => db.getLeadById(id)));
+              const withEmail = leadRows.filter((l: any) => l?.email) as any[];
+              if (withEmail.length === 0) return;
+              const { verifyEmailsInHouse } = await import("./_core/emailVerification");
+              const results = await verifyEmailsInHouse(withEmail.map((l) => l.email));
+              const byEmail = new Map(results.map((r) => [r.email, r]));
+              for (const lead of withEmail) {
+                const result = byEmail.get(lead.email);
+                if (!result) continue;
+                const legacyStatus = result.status === "valid" ? "deliverable"
+                  : result.status === "invalid" || result.status === "disposable" ? "undeliverable"
+                  : result.status === "catch_all" || result.status === "role_based" ? "risky"
+                  : "unknown";
+                await db.updateLead(lead.id, {
+                  emailVerificationStatus: legacyStatus as any,
+                  emailVerificationData: {
+                    score: result.score,
+                    reason: result.reason,
+                    shouldSend: result.shouldSend,
+                    verifiedAt: new Date().toISOString(),
+                  },
+                });
               }
-              const { validateEmail } = await import("./bouncer");
-              for (let i = 0; i < upsertedIds.length; i++) {
-                try {
-                  const lead = await db.getLeadById(upsertedIds[i]);
-                  if (!lead || !lead.email) continue;
-                  const result = await validateEmail(settings.bouncerApiKey, lead.email);
-                  await db.updateLead(upsertedIds[i], {
-                    emailVerificationStatus: result.status as any,
-                    emailVerificationData: {
-                      score: result.score,
-                      reason: result.reason,
-                      toxic: result.toxic,
-                      toxicity: result.toxicity,
-                      shouldSend: result.status !== "undeliverable",
-                      verifiedAt: new Date().toISOString(),
-                    },
-                  });
-                } catch (e: any) {
-                  if (e.message === "BOUNCER_NO_CREDITS") {
-                    console.warn(`[AutoVerify] Ran out of Bouncer credits at lead index ${i}`);
-                    break;
-                  }
-                  if (e.message === "BOUNCER_INVALID_API_KEY") {
-                    console.warn(`[AutoVerify] Invalid Bouncer API key`);
-                    break;
-                  }
-                  if (e.message === "BOUNCER_RATE_LIMIT") {
-                    await new Promise(r => setTimeout(r, 5000));
-                    i--;
-                    continue;
-                  }
-                }
-                if (i < upsertedIds.length - 1) await new Promise(r => setTimeout(r, 100));
-              }
-              console.log(`[AutoVerify] CSV overwrite batch verified ${upsertedIds.length} leads`);
+              console.log(`[AutoVerify] CSV overwrite batch verified ${withEmail.length} leads`);
             } catch (e: any) {
               console.warn(`[AutoVerify] CSV overwrite batch verification failed:`, e.message);
             }
@@ -2545,7 +2535,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
         let skippedUnsubscribed = 0;
         const successfullySentCampaignLeadIds = new Set<number>();
 
-        // Auto-block: collect leads with Bouncer "undeliverable" status
+        // Auto-block: collect leads with a verified "undeliverable" status
         const undeliverableLeadIds = new Set<number>();
         for (const cl of campaignLeads) {
           const lead = await db.getLeadById(cl.leadId);
@@ -2585,7 +2575,7 @@ Identify specific, actionable pain points that a virtual assistant / lead genera
               continue;
             }
 
-            // Auto-block: skip leads with Bouncer "undeliverable" verification status
+            // Auto-block: skip leads with an "undeliverable" verification status
             if (undeliverableLeadIds.has(lead.id)) {
               skippedUndeliverable++;
               console.log(`[Campaign ${campaignId}] Auto-blocked undeliverable email: ${lead.email}`);
@@ -6582,22 +6572,23 @@ Use the website data to:
       }),
   }),
 
-  // Email Verification via Bouncer API
+  // In-house email verification (format, MX/DNS, disposable-domain,
+  // role-based checks -- no external API, no credit cost). Previously backed
+  // by Bouncer (a paid API); removed at the user's request. Response shape
+  // is kept byte-for-byte identical to the old Bouncer-backed version so
+  // existing callers (Leads.tsx, CampaignsList.tsx, SearchPreview.tsx) don't
+  // need to change how they read the result, only that "status" values now
+  // come from the in-house engine's mapping (see legacyStatus below, the
+  // same vocabulary server/_core/emailVerification.ts's runVerificationJob
+  // already uses for leads.emailVerificationStatus).
   verification: router({
-    // Verify emails via Bouncer before campaign send
     verifyEmails: protectedProcedure
       .input(z.object({
         campaignId: z.string().optional(),
         leadIds: z.array(z.string()).optional(),
         emails: z.array(z.string()).optional(),
       }))
-      .mutation(async ({ ctx, input }) => {
-        const { validateEmails, shouldSendToEmail, getCreditsBalance } = await import("./bouncer");
-        const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.bouncerApiKey) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer API key not configured. Go to Settings → Deliverability to add it." });
-        }
-
+      .mutation(async ({ input }) => {
         // Get emails to verify
         let emailsToVerify: { email: string; leadId?: string }[] = [];
 
@@ -6624,153 +6615,79 @@ Use the website data to:
           throw new TRPCError({ code: "BAD_REQUEST", message: "No emails to verify" });
         }
 
-        // Check credits first
-        try {
-          const credits = await getCreditsBalance(settings.bouncerApiKey);
-          if (credits < emailsToVerify.length) {
-            throw new TRPCError({ 
-              code: "BAD_REQUEST", 
-              message: `Insufficient Bouncer credits. Need ${emailsToVerify.length}, have ${credits}. Add more credits at usebouncer.com` 
-            });
-          }
-        } catch (e: any) {
-          if (e.code === "BAD_REQUEST") throw e;
-          // If credit check fails, continue anyway
-        }
+        const { verifyEmailsInHouse } = await import("./_core/emailVerification");
+        const results = await verifyEmailsInHouse(emailsToVerify.map(e => e.email));
+        const byEmail = new Map(results.map((r) => [r.email, r]));
 
-        // Run verification
-        try {
-          const summary = await validateEmails(
-            settings.bouncerApiKey,
-            emailsToVerify.map(e => e.email)
-          );
+        const legacyStatus = (status: string): "deliverable" | "undeliverable" | "risky" | "unknown" =>
+          status === "valid" ? "deliverable"
+          : status === "invalid" || status === "disposable" ? "undeliverable"
+          : status === "catch_all" || status === "role_based" ? "risky"
+          : "unknown";
 
-          // Build detailed results with send/don't-send recommendation
-          const detailedResults = summary.results.map((r, idx) => {
-            const decision = shouldSendToEmail(r);
-            return {
-              email: r.email,
-              leadId: emailsToVerify[idx]?.leadId,
-              status: r.status,
-              subStatus: r.reason,
-              shouldSend: decision.send,
-              reason: decision.reason,
-              freeEmail: r.domain.free === "yes",
-              didYouMean: null as string | null,
-              score: r.score,
-              toxic: r.toxic,
-              toxicity: r.toxicity,
-            };
-          });
+        const detailedResults = emailsToVerify.map((e) => {
+          const r = byEmail.get(e.email);
+          const status = legacyStatus(r?.status || "unknown");
+          return {
+            email: e.email,
+            leadId: e.leadId,
+            status,
+            subStatus: r?.reason,
+            shouldSend: r?.shouldSend ?? false,
+            reason: r?.reason || "Could not determine",
+            freeEmail: false,
+            didYouMean: null as string | null,
+            score: r?.score,
+            toxic: false,
+            toxicity: 0,
+          };
+        });
 
-          // Save verification status per lead in the database
-          for (const result of detailedResults) {
-            if (result.leadId) {
-              try {
-                await db.updateLead(Number(result.leadId), {
-                  emailVerificationStatus: result.status as any,
-                  emailVerificationData: {
-                    score: result.score,
-                    reason: result.subStatus,
-                    toxic: result.toxic,
-                    toxicity: result.toxicity,
-                    shouldSend: result.shouldSend,
-                    verifiedAt: new Date().toISOString(),
-                  },
-                });
-              } catch (e: any) {
-                console.warn(`[Bouncer] Failed to save verification for lead ${result.leadId}:`, e.message);
-              }
+        // Save verification status per lead in the database
+        for (const result of detailedResults) {
+          if (result.leadId) {
+            try {
+              await db.updateLead(Number(result.leadId), {
+                emailVerificationStatus: result.status as any,
+                emailVerificationData: {
+                  score: result.score,
+                  reason: result.subStatus,
+                  shouldSend: result.shouldSend,
+                  verifiedAt: new Date().toISOString(),
+                },
+              });
+            } catch (e: any) {
+              console.warn(`[verification] Failed to save verification for lead ${result.leadId}:`, e.message);
             }
           }
-
-          const safeToSend = detailedResults.filter(r => r.shouldSend);
-          const doNotSend = detailedResults.filter(r => !r.shouldSend);
-
-          return {
-            total: summary.total,
-            deliverable: summary.deliverable,
-            risky: summary.risky,
-            undeliverable: summary.undeliverable,
-            unknown: summary.unknown,
-            safeToSendCount: safeToSend.length,
-            doNotSendCount: doNotSend.length,
-            results: detailedResults,
-          };
-        } catch (e: any) {
-          if (e.message === "BOUNCER_INVALID_API_KEY") {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer API key is invalid. Please check your API key in Settings." });
-          }
-          if (e.message === "BOUNCER_NO_CREDITS") {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer account has no credits remaining. Add more at usebouncer.com" });
-          }
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Email verification failed: ${e.message}` });
         }
-      }),
 
-    // Get Bouncer credit balance
-    getBouncerCredits: protectedProcedure.query(async ({ ctx }) => {
-      const { getCreditsBalance } = await import("./bouncer");
-      const settings = await db.getUserSettings(ctx.user.id);
-      if (!settings?.bouncerApiKey) {
-        return { configured: false, credits: 0 };
-      }
-      try {
-        const credits = await getCreditsBalance(settings.bouncerApiKey);
-        return { configured: true, credits };
-      } catch {
-        return { configured: true, credits: -1 };
-      }
-    }),
+        const safeToSend = detailedResults.filter(r => r.shouldSend);
+        const doNotSend = detailedResults.filter(r => !r.shouldSend);
 
-    // Inbox test placeholder (no longer uses external service)
-    createInboxTest: protectedProcedure
-      .input(z.object({
-        campaignId: z.string().optional(),
-      }))
-      .mutation(async ({ ctx }) => {
-        const settings = await db.getUserSettings(ctx.user.id);
-        if (!settings?.bouncerApiKey) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Bouncer API key not configured. Go to Settings → Deliverability to add it." });
-        }
         return {
-          testId: "bouncer-verify",
-          projectId: 0,
-          seedAddresses: [] as string[],
-          instructions: "Email verification is handled by Bouncer. Use the 'Verify Emails' button to validate all recipient emails before sending.",
-          dashboardUrl: "https://app.usebouncer.com",
-          providers: [],
-        };
-      }),
-
-    // Get inbox test results placeholder
-    getInboxTestResults: protectedProcedure
-      .input(z.object({
-        projectId: z.number(),
-        testId: z.string(),
-      }))
-      .query(async () => {
-        return {
-          testId: "bouncer-verify",
-          status: "completed" as const,
-          seedAddresses: [] as string[],
-          providers: [],
-          overall: {
-            inboxRate: 0,
-            spamRate: 0,
-            promotionsRate: 0,
-            recommendation: "review_needed" as const,
-            message: "Use Bouncer email verification to validate emails before sending. Visit app.usebouncer.com for your dashboard.",
-          },
-          dashboardUrl: "https://app.usebouncer.com",
+          total: detailedResults.length,
+          deliverable: detailedResults.filter(r => r.status === "deliverable").length,
+          risky: detailedResults.filter(r => r.status === "risky").length,
+          undeliverable: detailedResults.filter(r => r.status === "undeliverable").length,
+          unknown: detailedResults.filter(r => r.status === "unknown").length,
+          safeToSendCount: safeToSend.length,
+          doNotSendCount: doNotSend.length,
+          results: detailedResults,
         };
       }),
 
     // Background verification job -- in-house by default (no API key
-    // needed), automatically cross-checked by Bouncer on top when the user
-    // has one configured (see server/_core/emailVerification.ts). Additive:
-    // the synchronous verifyEmails above is untouched and keeps working for
-    // existing callers (Leads.tsx, CampaignsList.tsx).
+    // needed, no external API, no credit cost -- see
+    // server/_core/emailVerification.ts). Additive: the synchronous
+    // verifyEmails above is untouched and keeps working for existing callers
+    // (Leads.tsx, CampaignsList.tsx). Every requested lead is verified fresh
+    // every time -- a previous 24h "already verified" dedup existed only to
+    // conserve paid Bouncer credits, which no longer applies now that
+    // verification is in-house only (free, no rate/credit concern), and that
+    // dedup silently shrinking the job below the requested lead count with no
+    // explanation was itself a source of confusing "why did my count drop"
+    // reports.
     startJob: protectedProcedure
       .input(z.object({
         campaignId: z.string().optional(),
@@ -6781,6 +6698,7 @@ Use the website data to:
         // Same three-branch resolution verifyEmails already uses.
         let emailsToVerify: { email: string; leadId?: number }[] = [];
         let sourceType: "campaign" | "leadIds" | "emails" = "emails";
+        let skippedNoEmail = 0;
         if (input.emails && input.emails.length > 0) {
           emailsToVerify = input.emails.map((e) => ({ email: e }));
           sourceType = "emails";
@@ -6790,12 +6708,14 @@ Use the website data to:
           for (const cl of cls) {
             const lead = await db.getLeadById(cl.leadId);
             if (lead?.email) emailsToVerify.push({ email: lead.email, leadId: lead.id });
+            else skippedNoEmail++;
           }
         } else if (input.leadIds && input.leadIds.length > 0) {
           sourceType = "leadIds";
           for (const leadId of input.leadIds) {
             const lead = await db.getLeadById(Number(leadId));
             if (lead?.email) emailsToVerify.push({ email: lead.email, leadId: lead.id });
+            else skippedNoEmail++;
           }
         }
 
@@ -6803,59 +6723,31 @@ Use the website data to:
           throw new TRPCError({ code: "BAD_REQUEST", message: "No emails to verify" });
         }
 
-        // Resumable dedup: skip emails already verified by a recent job
-        // (within 24h) so a retry after a failure doesn't re-verify or
-        // re-spend Bouncer credits.
-        const alreadyVerified = await db.getAlreadyVerifiedEmailSet(emailsToVerify.map((e) => e.email), 24);
-        const toVerify = emailsToVerify.filter((e) => !alreadyVerified.has(e.email));
-        if (toVerify.length === 0) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `All ${emailsToVerify.length} email(s) were already verified in the last 24 hours. Use "Re-verify Selected" to force a re-check.` });
-        }
-
-        const settings = await db.getUserSettings(ctx.user.id);
-        const bouncerApiKey = settings?.bouncerApiKey || null;
-
-        // Best-effort credit pre-check, same as verifyEmails -- only
-        // relevant when a Bouncer key is configured (in-house verification
-        // has no credit concept).
-        if (bouncerApiKey) {
-          try {
-            const { getCreditsBalance } = await import("./bouncer");
-            const credits = await getCreditsBalance(bouncerApiKey);
-            if (credits < toVerify.length) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: `Insufficient Bouncer credits for the deeper cross-check. Need up to ${toVerify.length}, have ${credits}. Verification will still run in-house only if you continue.` });
-            }
-          } catch (e: any) {
-            if (e.code === "BAD_REQUEST") throw e;
-          }
-        }
-
         const jobId = `verify-${ctx.user.id}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
         await db.createEmailVerificationJob({
           jobId,
           userId: ctx.user.id,
           status: "pending",
-          mode: bouncerApiKey ? "in_house+bouncer" : "in_house",
-          totalEmails: toVerify.length,
+          mode: "in_house",
+          totalEmails: emailsToVerify.length,
           sourceType,
           sourceCampaignId: input.campaignId ? Number(input.campaignId) : null,
         });
 
-        await db.createPipelineEvent({ userId: ctx.user.id, eventType: "verification_started", payload: { jobId, total: toVerify.length, mode: bouncerApiKey ? "in_house+bouncer" : "in_house" } });
+        await db.createPipelineEvent({ userId: ctx.user.id, eventType: "verification_started", payload: { jobId, total: emailsToVerify.length, mode: "in_house" } });
 
         const { runVerificationJob } = await import("./_core/emailVerification");
         runVerificationJob({
           userId: ctx.user.id,
           jobId,
-          emailsToVerify: toVerify,
+          emailsToVerify,
           sourceType,
           sourceCampaignId: input.campaignId ? Number(input.campaignId) : undefined,
-          bouncerApiKey,
         }).catch((error: any) => {
           console.error(`[verification.startJob] Job ${jobId} crashed:`, error);
         });
 
-        return { jobId, totalToVerify: toVerify.length, skippedAlreadyVerified: emailsToVerify.length - toVerify.length };
+        return { jobId, totalToVerify: emailsToVerify.length, skippedNoEmail };
       }),
 
     getJobStatus: protectedProcedure.input(z.object({ jobId: z.string() })).query(async ({ ctx, input }) => {
@@ -6881,17 +6773,14 @@ Use the website data to:
         const emailsToVerify = leadRows.filter((l: any) => l?.email).map((l: any) => ({ email: l.email, leadId: l.id }));
         if (emailsToVerify.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No valid leads to re-verify" });
 
-        const settings = await db.getUserSettings(ctx.user.id);
-        const bouncerApiKey = settings?.bouncerApiKey || null;
         const jobId = `reverify-${ctx.user.id}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
         await db.createEmailVerificationJob({
-          jobId, userId: ctx.user.id, status: "pending", mode: bouncerApiKey ? "in_house+bouncer" : "in_house",
+          jobId, userId: ctx.user.id, status: "pending", mode: "in_house",
           totalEmails: emailsToVerify.length, sourceType: "leadIds",
         });
 
         const { runVerificationJob } = await import("./_core/emailVerification");
-        // Explicit user override -- bypasses the 24h dedup skip intentionally.
-        runVerificationJob({ userId: ctx.user.id, jobId, emailsToVerify, sourceType: "leadIds", bouncerApiKey }).catch((error: any) => {
+        runVerificationJob({ userId: ctx.user.id, jobId, emailsToVerify, sourceType: "leadIds" }).catch((error: any) => {
           console.error(`[verification.reverifySelected] Job ${jobId} crashed:`, error);
         });
 

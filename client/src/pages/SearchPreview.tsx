@@ -48,8 +48,8 @@ type EnrichedLeadData = {
 type RevealedContact = {
   email?: string;
   phoneNumber?: string;
-  bouncerStatus?: string;
-  bouncerReason?: string;
+  verificationStatus?: string;
+  verificationReason?: string;
   leadData: EnrichedLeadData;
   added: boolean;
 };
@@ -97,7 +97,7 @@ export default function SearchPreview() {
   const findOwnerMutation = trpc.leads.searchSeamlessPreview.useMutation();
   const revealContactMutation = trpc.leads.previewEnrichSeamlessCandidate.useMutation();
   const saveLeadMutation = trpc.leads.saveEnrichedSeamlessLead.useMutation();
-  const bouncerVerifyMutation = trpc.verification.verifyEmails.useMutation();
+  const verifyEmailMutation = trpc.verification.verifyEmails.useMutation();
   const [addingId, setAddingId] = useState<string | null>(null);
 
   const handleAddOwnerTitleChip = () => {
@@ -147,8 +147,8 @@ export default function SearchPreview() {
 
   // Reveals the real email/phone (spends the 1 enrichment credit) but does
   // NOT save a lead yet -- that's a deliberate separate step below
-  // (handleAddToLeads), so the email can be checked via Bouncer first
-  // instead of the lead already existing before that choice is made.
+  // (handleAddToLeads), so the email can be verified first instead of the
+  // lead already existing before that choice is made.
   const handleRevealContact = async (candidate: OwnerCandidate) => {
     setRevealingId(candidate.searchResultId);
     try {
@@ -180,32 +180,32 @@ export default function SearchPreview() {
     }
   };
 
-  // Checks the revealed email's deliverability via Bouncer -- lets the user
-  // confirm it's real BEFORE adding it as a lead, rather than only finding
-  // out after it's already saved.
-  const handleVerifyWithBouncer = async (searchResultId: string, email: string) => {
+  // Checks the revealed email's deliverability (in-house verification) --
+  // lets the user confirm it's real BEFORE adding it as a lead, rather than
+  // only finding out after it's already saved.
+  const handleVerifyEmail = async (searchResultId: string, email: string) => {
     setVerifyingId(searchResultId);
     try {
-      const result = await bouncerVerifyMutation.mutateAsync({ emails: [email] });
+      const result = await verifyEmailMutation.mutateAsync({ emails: [email] });
       const verified = result.results?.[0];
       setRevealedContacts((prev) => ({
         ...prev,
         [searchResultId]: {
           ...prev[searchResultId],
-          bouncerStatus: verified?.status || "unknown",
-          bouncerReason: verified?.subStatus || undefined,
+          verificationStatus: verified?.status || "unknown",
+          verificationReason: verified?.subStatus || undefined,
         },
       }));
     } catch (error: any) {
-      setOwnerSearchError(error?.message || error?.data?.message || "Bouncer verification failed");
+      setOwnerSearchError(error?.message || error?.data?.message || "Email verification failed");
     } finally {
       setVerifyingId(null);
     }
   };
 
   // Actually saves the already-enriched contact as a lead -- deliberately a
-  // separate, explicit step from revealing it, so verifying with Bouncer
-  // first is a real option, not an afterthought once the lead already exists.
+  // separate, explicit step from revealing it, so verifying the email first
+  // is a real option, not an afterthought once the lead already exists.
   const handleAddToLeads = async (searchResultId: string, leadData: EnrichedLeadData) => {
     setAddingId(searchResultId);
     try {
@@ -455,32 +455,32 @@ export default function SearchPreview() {
                         {revealed.phoneNumber || "No phone found"}
                       </p>
                       {revealed.email && (
-                        revealed.bouncerStatus ? (
+                        revealed.verificationStatus ? (
                           <p className={
                             "flex items-center justify-end gap-1.5 mt-1.5 text-xs font-medium " +
-                            (revealed.bouncerStatus === "deliverable"
+                            (revealed.verificationStatus === "deliverable"
                               ? "text-green-700 dark:text-green-500"
-                              : revealed.bouncerStatus === "risky"
+                              : revealed.verificationStatus === "risky"
                               ? "text-amber-600 dark:text-amber-500"
-                              : revealed.bouncerStatus === "undeliverable"
+                              : revealed.verificationStatus === "undeliverable"
                               ? "text-red-600 dark:text-red-500"
                               : "text-muted-foreground")
                           }>
                             <ShieldCheck className="w-3.5 h-3.5" />
-                            Bouncer: {revealed.bouncerStatus}{revealed.bouncerReason ? ` (${revealed.bouncerReason})` : ""}
+                            Verification: {revealed.verificationStatus}{revealed.verificationReason ? ` (${revealed.verificationReason})` : ""}
                           </p>
                         ) : (
                           <Button
                             size="sm"
                             variant="ghost"
                             className="mt-1.5 h-7 px-2 text-xs gap-1"
-                            onClick={() => handleVerifyWithBouncer(c.searchResultId, revealed.email!)}
+                            onClick={() => handleVerifyEmail(c.searchResultId, revealed.email!)}
                             disabled={verifyingId === c.searchResultId}
                           >
                             {verifyingId === c.searchResultId ? (
                               <><Loader2 className="w-3 h-3 animate-spin" />Checking...</>
                             ) : (
-                              <><ShieldCheck className="w-3 h-3" />Verify with Bouncer</>
+                              <><ShieldCheck className="w-3 h-3" />Verify Email</>
                             )}
                           </Button>
                         )

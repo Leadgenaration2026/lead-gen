@@ -92,7 +92,7 @@ export default function EmailVerificationPage() {
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><ShieldCheck className="w-6 h-6 text-primary" /> Email Verification</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          In-house verification (format, MX/DNS, disposable domains, role-based addresses), automatically cross-checked by Bouncer when configured in Settings.
+          In-house verification (format, MX/DNS, disposable domains, role-based addresses) -- free, no API key needed.
         </p>
       </div>
 

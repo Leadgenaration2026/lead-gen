@@ -1476,7 +1476,7 @@ export async function deleteMediaAsset(id: number, userId: number) {
   await database.delete(mediaAssets).where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)));
 }
 
-// ============ Email Verification (in-house + optional Bouncer cross-check) ============
+// ============ Email Verification (in-house) ============
 // Background job row + append-only history, created lazily like landingPages
 // above -- no migration pipeline in this deployment.
 let emailVerificationTablesReady = false;
@@ -1583,23 +1583,6 @@ export async function listEmailVerificationResults(params: { jobId?: string; lea
   query = query.orderBy(desc(emailVerificationResults.verifiedAt)).limit(params.limit || 200);
   if (params.offset) query = query.offset(params.offset);
   return query;
-}
-
-// Dedup lookup for verification.startJob's "resumable" behavior -- returns
-// the set of emails that already have a terminal (non-error) result within
-// the given window, so a retry after a mid-job failure doesn't re-verify or
-// re-spend Bouncer credits on leads already verified by a recent job.
-export async function getAlreadyVerifiedEmailSet(emails: string[], sinceHoursAgo: number): Promise<Set<string>> {
-  const database = await getDb();
-  if (!database || emails.length === 0) return new Set();
-  await ensureEmailVerificationTables(database);
-  const { emailVerificationResults } = await import("../drizzle/schema");
-  const since = new Date(Date.now() - sinceHoursAgo * 60 * 60 * 1000).toISOString();
-  const rows = await database
-    .select({ email: emailVerificationResults.email })
-    .from(emailVerificationResults)
-    .where(and(inArray(emailVerificationResults.email, emails), gte(emailVerificationResults.verifiedAt, since)));
-  return new Set(rows.map((r: any) => r.email));
 }
 
 // ============ Pipeline audit log ============

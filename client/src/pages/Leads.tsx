@@ -3427,7 +3427,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                     toast.info("All visible leads are already verified!");
                     return;
                   }
-                  toast.info(`Verifying ${pendingLeads.length} emails via Bouncer... This may take a moment.`);
+                  toast.info(`Verifying ${pendingLeads.length} emails... This may take a moment.`);
                   try {
                     const result = await verifyEmailsMutation.mutateAsync({
                       leadIds: pendingLeads.map((l: any) => String(l.id)),

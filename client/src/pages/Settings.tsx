@@ -47,13 +47,11 @@ export default function SettingsPage() {
     senderEmail: "",
     senderName: "",
     seamlessApiKey: "",
-    bouncerApiKey: "",
   });
 
   // Track whether user has typed into password fields
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [retellKeyTouched, setRetellKeyTouched] = useState(false);
-  const [bouncerKeyTouched, setBouncerKeyTouched] = useState(false);
 
 
   const [signatureHtml, setSignatureHtml] = useState("");
@@ -153,10 +151,7 @@ export default function SettingsPage() {
         senderEmail: settingsQuery.data.senderEmail || "",
         senderName: settingsQuery.data.senderName || "",
         seamlessApiKey: "",
-        bouncerApiKey: "",
-
       });
-      setBouncerKeyTouched(false);
 
       setCtaLink((settingsQuery.data as any).ctaLink || "https://cal.com/nitin-virtualassistant-group.com/30min");
       setCtaLinkTouched(false);
@@ -1134,58 +1129,27 @@ export default function SettingsPage() {
                         </CardContent>
           </Card>
 
-          {/* Bouncer Email Verification */}
+          {/* Email Verification */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-green-600" />
-                Bouncer — Email Verification
+                Email Verification
               </CardTitle>
               <CardDescription>
-                Verify email addresses before sending campaigns. Removes undeliverable, risky, and toxic emails to protect your sender reputation.
+                Built in, always on -- no setup needed.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Bouncer API Key</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    placeholder="Enter your Bouncer API key"
-                    value={formData.bouncerApiKey || ""}
-                    onChange={(e) => { setFormData({ ...formData, bouncerApiKey: e.target.value }); setBouncerKeyTouched(true); }}
-                  />
-                  <Button variant="outline" size="icon" onClick={() => {
-                    const input = document.querySelector('input[placeholder="Enter your Bouncer API key"]') as HTMLInputElement;
-                    if (input) input.type = input.type === 'password' ? 'text' : 'password';
-                  }}>
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Get your API key from <a href="https://app.usebouncer.com" target="_blank" rel="noopener" className="text-blue-600 underline">Bouncer Dashboard → API Settings</a>
-                </p>
-              </div>
+            <CardContent>
               <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
                 <h4 className="font-medium text-sm">How it works</h4>
                 <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
-                  <li>Before sending a campaign, all recipient emails are verified via Bouncer</li>
-                  <li>Undeliverable, risky, and toxic emails are automatically flagged</li>
-                  <li>Only verified "deliverable" emails proceed to the campaign send</li>
-                  <li>Includes toxicity scoring to identify spam traps and complainers</li>
+                  <li>Every email is checked in-house: format, MX/DNS records, disposable domains, and role-based addresses (info@, support@, etc.)</li>
+                  <li>Invalid and disposable emails are automatically flagged and excluded from sending</li>
+                  <li>No external API, no API key, no per-email cost</li>
+                  <li>Since this doesn't probe the mailbox itself (no SMTP handshake -- avoided deliberately, it risks your sender reputation), it can't detect a "catch-all" domain that accepts any address -- a disclosed limitation, not a bug</li>
                 </ul>
               </div>
-              <Button onClick={async () => {
-                try {
-                  await updateSettingsMutation.mutateAsync({ bouncerApiKey: bouncerKeyTouched ? formData.bouncerApiKey || undefined : undefined });
-                  toast.success("Bouncer API key saved");
-                  settingsQuery.refetch();
-                  setBouncerKeyTouched(false);
-                } catch { toast.error("Failed to save Bouncer settings"); }
-              }} disabled={updateSettingsMutation.isPending || !bouncerKeyTouched} className="gap-2">
-                {updateSettingsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save Bouncer Settings
-              </Button>
             </CardContent>
           </Card>
 

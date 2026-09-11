@@ -997,9 +997,15 @@ export async function searchAndFilterSeamlessCandidates(
   state?: string,
   companySize?: string,
   // Lets the caller override the auto-detected industry (e.g. after the user
-  // confirms or corrects a suggestion shown before searching) instead of
-  // relying purely on the LLM's own guess from the instruction text.
-  industryOverride?: string,
+  // confirms or corrects a suggestion shown before searching, or picks one or
+  // more industries from the AI Agent wizard's own canonical list) instead of
+  // relying purely on the LLM's own guess from the instruction text. Accepts
+  // an array so every explicitly-picked industry is applied deterministically
+  // -- previously only a single override was possible, so 2+ selected
+  // industries silently fell back to the LLM's fuzzy free-text parse of the
+  // combined criteria string, which could return leads from an unrelated,
+  // unintended industry.
+  industryOverride?: string | string[],
   // Same idea for job titles -- used exactly as given (no further expansion),
   // since picking specific titles is meant to narrow the search, not broaden it.
   titlesOverride?: string[],
@@ -1033,8 +1039,9 @@ export async function searchAndFilterSeamlessCandidates(
 }> {
   const filters = await parseInstructionToFiltersWithLLM(instruction, country);
   if (industryOverride) {
-    const canonical = mapToValidSeamlessIndustry(industryOverride);
-    filters.industry = canonical ? [canonical] : undefined;
+    const overrides = Array.isArray(industryOverride) ? industryOverride : [industryOverride];
+    const canonical = overrides.map((o) => mapToValidSeamlessIndustry(o)).filter((c): c is string => !!c);
+    filters.industry = canonical.length ? canonical : undefined;
   }
   if (titlesOverride?.length) {
     filters.jobTitle = titlesOverride;

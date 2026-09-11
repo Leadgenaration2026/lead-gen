@@ -166,6 +166,7 @@ interface WizardData {
   // AI landing page + verified 8-email pipeline fields
   pipelineMode: "classic" | "landing_page" | null;
   verificationJobId: string | null;
+  verificationSkippedNoEmail: number; // leads sent into startJob with no email on file, disclosed in the summary
   verifiedLeadIds: number[]; // leads the user kept selected in the verification review dialog
   verifiedLeadSetId: number | null; // the TAG assigned via the approval gate (distinct from leadSetId, the source list)
   // Lightweight lead info (not the full row) captured once right after
@@ -186,7 +187,7 @@ const DEFAULTS: WizardData = {
   industries: [], jobTitles: [], otherCriteria: "", criteria: "", count: 25,
   leadSetName: "", resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0,
   usedSeamless: false, leadSetId: null, leadIds: [], leadsSummary: "",
-  pipelineMode: null, verificationJobId: null, verifiedLeadIds: [], verifiedLeadSetId: null,
+  pipelineMode: null, verificationJobId: null, verificationSkippedNoEmail: 0, verifiedLeadIds: [], verifiedLeadSetId: null,
   leadDetails: [], logoUrl: "", heroImageUrl: "", heroVideoUrl: "", stylePreference: "",
   generatedLandingPageId: null, publishedUrl: null, preflightPassed: false,
   sampleLeadName: "", sampleLeadCompany: "", sampleLeadIndustry: "",
@@ -504,11 +505,12 @@ export default function AIAgentPage() {
           country: data.country || undefined,
           state: data.state || undefined,
           companySize: data.companySize || undefined,
-          // Only a single industry can override the parser's own multi-industry
-          // read (server/routers.ts replaces the whole filter, not merges) -- with
-          // more than one selected, the exact canonical names already embedded in
-          // `criteria` let the free-text parser pick them all up correctly.
-          industryOverride: data.industries.length === 1 ? data.industries[0] : undefined,
+          // Every explicitly-picked industry overrides the parser's own guess --
+          // these are already canonical Seamless industry names (chosen from its
+          // own list), so there's no ambiguity for the LLM free-text parser to
+          // resolve; sending them all deterministically avoids the fuzzy parser
+          // ever substituting a different, unrelated industry.
+          industryOverride: data.industries.length ? data.industries : undefined,
           titlesOverride: data.jobTitles.length ? data.jobTitles.slice(0, 10) : undefined,
           // Resumes from a saved search's pagination cursor when launched via
           // "Continue with AI Agent" from Seamless Leads > Search History --
@@ -703,10 +705,10 @@ export default function AIAgentPage() {
   const runVerification = async () => {
     setStep("verifyingEmails");
     setBusy(true);
-    addAgent("Verifying email addresses (in-house checks, plus a Bouncer cross-check if you have one configured)...");
+    addAgent("Verifying email addresses (in-house checks: format, MX/DNS, disposable domains, role-based addresses)...");
     try {
       const result = await startVerificationMutation.mutateAsync({ leadIds: data.leadIds.map(String) });
-      setData((d) => ({ ...d, verificationJobId: result.jobId }));
+      setData((d) => ({ ...d, verificationJobId: result.jobId, verificationSkippedNoEmail: result.skippedNoEmail || 0 }));
       setPollingVerificationJobId(result.jobId);
       setBusy(false);
     } catch (error: any) {
@@ -759,7 +761,16 @@ export default function AIAgentPage() {
     }
     setLeadReviewRows(rows);
     setShowLeadReviewDialog(true);
-    addAgent(`${rows.length} lead(s) verified. Review the list and pick which ones to proceed with.`);
+    // Reconciles the count against how many leads were actually sent into
+    // verification -- previously this just said "X lead(s) verified" with no
+    // explanation when X came in lower than the original extracted count,
+    // which read as leads silently vanishing. Every requested lead with an
+    // email is now verified (no more silent 24h-dedup skip), so the only
+    // gap left is leads with no email on file at all, which this discloses.
+    const skippedNoEmail = data.verificationSkippedNoEmail || 0;
+    const totalRequested = rows.length + skippedNoEmail;
+    const skippedNote = skippedNoEmail > 0 ? ` (${skippedNoEmail} of ${totalRequested} had no email on file and couldn't be verified)` : "";
+    addAgent(`${rows.length} lead(s) verified${skippedNote}. Review the list and pick which ones to proceed with.`);
   };
 
   const handleLeadReviewConfirm = (selectedLeadIds: number[]) => {
@@ -1274,7 +1285,15 @@ export default function AIAgentPage() {
               variant="outline"
               onClick={() => {
                 addUser("Start fresh instead");
-                setData((d) => ({ ...d, resumeSearchId: null, resumeNextToken: null, resumeExtractedSoFar: 0 }));
+                // Full reset (same as restart()) -- not just the resume fields.
+                // Previously this only cleared resumeSearchId/resumeNextToken/
+                // resumeExtractedSoFar, leaving the PREVIOUS search's industries/
+                // jobTitles/criteria sitting in state; picking a new industry then
+                // just appended to the stale list (toggleIndustry never clears),
+                // and with 2+ industries selected the deterministic override was
+                // bypassed in favor of fuzzy free-text parsing -- the confirmed
+                // root cause of getting a different industry's leads back.
+                setData(DEFAULTS);
                 addAgent("No problem -- let's start fresh. What location are you targeting?");
                 setStep("location");
               }}

@@ -213,16 +213,16 @@ export const landingPageEmails = mysqlTable("landingPageEmails", {
 	index("landingPageEmails_lp_seq_unique").on(table.landingPageId, table.sequenceNumber),
 ]);
 
-// One row per bulk email-verification run (in-house engine, optionally
-// cross-checked by Bouncer when a key is configured -- see
+// One row per bulk email-verification run (in-house engine -- see
 // server/_core/emailVerification.ts). Modeled on enrichmentJobs' shape.
 export const emailVerificationJobs = mysqlTable("emailVerificationJobs", {
 	id: int().autoincrement().notNull(),
 	jobId: varchar({ length: 255 }).notNull(),
 	userId: int().notNull(),
 	status: mysqlEnum(['pending','in_progress','completed','failed']).default('pending').notNull(),
-	// "in_house" or "in_house+bouncer", set at start based on whether a
-	// Bouncer key was configured -- informational, not a provider selector.
+	// Always "in_house" today -- kept as a free-form string (not an enum)
+	// since it previously also recorded "in_house+bouncer" before that
+	// integration was removed; old rows may still have that value.
 	mode: varchar({ length: 30 }).default('in_house').notNull(),
 	totalEmails: int().notNull(),
 	processedCount: int().default(0).notNull(),
@@ -585,7 +585,6 @@ export const userSettings = mysqlTable("userSettings", {
 	// Kept separate from socialDailyLimit (the old combined-across-everything cap).
 	socialDailyLimits: json(),
 	socialNotificationEmail: varchar({ length: 320 }),
-	bouncerApiKey: varchar({ length: 500 }),
 	ctaLink: varchar({ length: 500 }),
 	replyToEmail: varchar({ length: 320 }),
 	notificationEmail: varchar({ length: 320 }),

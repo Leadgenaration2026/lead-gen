@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Mail, Play, Pause, Trash2, ShieldCheck, Inbox, ArrowRight, Linkedin } from "lucide-react";
+import { Loader2, Mail, Play, Pause, Trash2, ShieldCheck, ArrowRight, Linkedin } from "lucide-react";
 import { toast } from "sonner";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { CampaignFollowUpActivity } from "@/components/CampaignFollowUpActivity";
@@ -27,7 +27,6 @@ export function CampaignsList({ limit, title = "Your Campaigns", description = "
   const deleteCampaignMutation = trpc.campaigns.delete.useMutation();
   const sendTestEmailMutation = trpc.email.sendTestEmail.useMutation();
   const verifyEmailsMutation = trpc.verification.verifyEmails.useMutation();
-  const createInboxTestMutation = trpc.verification.createInboxTest.useMutation();
   const clearPendingSocialMutation = trpc.social.clearAllPending.useMutation();
 
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
@@ -215,26 +214,6 @@ export function CampaignsList({ limit, title = "Your Campaigns", description = "
                         >
                           <ShieldCheck className="w-4 h-4" />
                           {verifyEmailsMutation.isPending ? "Verifying..." : "Verify Emails"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={async () => {
-                            try {
-                              const result = await createInboxTestMutation.mutateAsync({ campaignId: String(campaign.id) });
-                              if (result.dashboardUrl) {
-                                window.open(result.dashboardUrl, "_blank");
-                                toast.success("Opening Bouncer dashboard. Use email verification to check your list before sending.", { duration: 8000 });
-                              }
-                            } catch (error: any) {
-                              toast.error(error?.message || "Inbox test failed");
-                            }
-                          }}
-                          disabled={createInboxTestMutation.isPending}
-                          className="gap-2"
-                        >
-                          <Inbox className="w-4 h-4" />
-                          {createInboxTestMutation.isPending ? "Loading..." : "Test Inbox"}
                         </Button>
                         <Button
                           size="sm"
