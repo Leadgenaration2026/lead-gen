@@ -1661,7 +1661,7 @@ async function ensureDeletedLeadsArchiveTable(database: NonNullable<Awaited<Retu
   deletedLeadsArchiveTableReady = true;
 }
 
-async function archiveLeads(database: NonNullable<Awaited<ReturnType<typeof getDb>>>, userId: number, rows: any[], opts: { deletedVia: "list" | "tag"; sourceListName?: string; leadSetName?: string }) {
+async function archiveLeads(database: NonNullable<Awaited<ReturnType<typeof getDb>>>, userId: number, rows: any[], opts: { deletedVia: "list" | "tag" | "manual"; sourceListName?: string; leadSetName?: string }) {
   await ensureDeletedLeadsArchiveTable(database);
   for (const row of rows) {
     await database.execute(sql`
@@ -1674,23 +1674,21 @@ async function archiveLeads(database: NonNullable<Awaited<ReturnType<typeof getD
   }
 }
 
-// Deleting an imported/generated list means "this is a dead lead, never
-// offer it to me again" -- archive for recovery, hard-delete so it stops
-// counting as an owned lead, then permanently exclude it from future
-// Seamless searches via excludeSeamlessContacts (same table normal lead
-// deletion already uses).
+// Deletion is never a dead end anywhere in this app -- every path archives
+// first (browsable/restorable via deletedLeads.list/.restore) and none of
+// them exclude the contact from future Seamless searches. Previously
+// "Delete List" excluded via excludeSeamlessContacts ("never offer it to me
+// again"); removed at the user's request so List deletion behaves exactly
+// like Tag deletion below -- archived, recoverable, and never permanently
+// blocked from resurfacing in a later search.
 export async function archiveAndDeleteLeadsBySourceList(userId: number, sourceListId: number, listName?: string) {
   const database = await getDb();
   if (!database) return { archivedCount: 0 };
   const rows = await database.select().from(leads).where(and(eq(leads.sourceListId, sourceListId), eq(leads.userId, userId)));
   if (rows.length > 0) {
     await archiveLeads(database, userId, rows, { deletedVia: "list", sourceListName: listName });
-    const seamlessIds = rows.map((r: any) => r.seamlessId).filter(Boolean);
     for (const row of rows) {
       await deleteLead(row.id);
-    }
-    if (seamlessIds.length > 0) {
-      await excludeSeamlessContacts(userId, seamlessIds);
     }
   }
   await database.delete(leadSets).where(eq(leadSets.id, sourceListId));
@@ -1712,6 +1710,24 @@ export async function archiveAndDeleteLeadsByTag(userId: number, leadSetId: numb
     }
   }
   await database.delete(leadSets).where(eq(leadSets.id, leadSetId));
+  return { archivedCount: rows.length };
+}
+
+// Shared by every single/bulk/by-status/delete-all lead-deletion path
+// (server/routers.ts) -- archives each lead (browsable/restorable via
+// deletedLeads.list/.restore, same table List/Tag deletion above already
+// uses) then hard-deletes it, and deliberately does NOT exclude it from
+// future Seamless searches. Previously these paths called deleteLead()
+// directly with no archive at all (genuinely unrecoverable) and always
+// called excludeSeamlessContacts, permanently blocking the contact from
+// ever being found again -- both removed at the user's request.
+export async function archiveAndDeleteLeads(userId: number, rows: any[]): Promise<{ archivedCount: number }> {
+  const database = await getDb();
+  if (!database || rows.length === 0) return { archivedCount: 0 };
+  await archiveLeads(database, userId, rows, { deletedVia: "manual" });
+  for (const row of rows) {
+    await deleteLead(row.id);
+  }
   return { archivedCount: rows.length };
 }
 

@@ -967,15 +967,12 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
     }
   };
 
-  // Removes a candidate from THIS preview list only -- deliberately does NOT
-  // exclude it server-side. A candidate here hasn't been saved as a lead yet,
-  // so passing on it now (wrong title this round, don't like the company,
-  // etc.) isn't the same signal as deleting an actual saved lead later (e.g.
-  // for a risky/unverified email or low engagement score) -- that's a much
-  // more deliberate rejection and is what permanently excludes a contact from
-  // future searches (see leads.delete/bulkDelete/etc.). An unsaved candidate
-  // you merely didn't pick this round should still be able to come up again
-  // in a completely different future search.
+  // Removes a candidate from THIS preview list only -- it was never saved as
+  // a lead, so there's nothing to archive; it can simply come up again in a
+  // future search. Deleting an actual saved lead (leads.delete/bulkDelete/
+  // etc.) is a different, more deliberate action -- it archives the lead
+  // (recoverable from the Deleted Leads page) but, same as here, never
+  // blocks the contact from being found again by a future search.
   const handleRemoveSeamlessCandidate = (searchResultId: string) => {
     const remaining = seamlessCandidates.filter((c) => c.searchResultId !== searchResultId);
     setSeamlessCandidates(remaining);
@@ -997,7 +994,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
   const handleDeleteLead = async (leadId: number) => {
     try {
       await deleteLeadMutation.mutateAsync(leadId);
-      toast.success("Lead deleted");
+      toast.success("Lead deleted (recoverable from the Deleted Leads page)");
       setSelectedLeadIds(prev => {
         const next = new Set(prev);
         next.delete(leadId);
@@ -1880,7 +1877,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               Delete {selectedLeadIds.size} Lead(s)?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. All selected leads and their associated data (emails, calls, campaign links) will be permanently removed.
+              Selected leads will be removed from your active list. The lead itself is archived and can be restored from the Deleted Leads page (their email/call activity history is not restored). They also won't be blocked from showing up again in a future search.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1974,7 +1971,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
+            <p className="text-xs text-muted-foreground">Archived and restorable from Seamless Leads &gt; Deleted Leads if you change your mind.</p>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Button variant="outline" onClick={() => setDeleteRiskyDialogOpen(false)}>Cancel</Button>
@@ -2288,12 +2285,11 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  This will permanently delete <strong>all {(leadsQuery.data || []).length} leads</strong> from your account.
+                  This will remove <strong>all {(leadsQuery.data || []).length} leads</strong> from your active list.
                 </p>
                 <p className="text-sm font-medium text-destructive">
-                  All lead data, engagement scores, email verification status, and lead set assignments will be lost.
+                  Each lead is archived (with its engagement score and verification status intact) and can be restored from the Deleted Leads page -- but its tag/lead-set assignment and email/call activity history are not restored. None of them will be blocked from showing up again in a future search.
                 </p>
-                <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -4064,8 +4060,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              This permanently deletes every lead in this list -- they're dead leads, so they'll also be excluded from ever showing up in a Seamless search again.
-              Nothing is truly gone though: you can browse and restore any individual lead afterward from the "Seamless Leads" tab's Deleted Leads section.
+              This removes every lead in this list from your active data. Nothing is truly gone: you can browse and restore any individual lead afterward from the "Seamless Leads" tab's Deleted Leads section, and none of them are blocked from showing up again in a future Seamless search.
             </p>
           </div>
           <DialogFooter>
@@ -4077,7 +4072,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
                 setDeleteListDialogOpen(false);
                 setDeleteListId(null);
                 setFilterSourceListId("all");
-                toast.success(`Deleted ${result.archivedCount} lead(s) -- excluded from future Seamless searches. Restorable from Seamless Leads > Deleted Leads.`);
+                toast.success(`Deleted ${result.archivedCount} lead(s). Restorable from Seamless Leads > Deleted Leads.`);
                 // Refetch after dialog closes to avoid re-renders
                 setTimeout(() => {
                   leadsQuery.refetch(); listOrTagFilterQuery.refetch();
@@ -4098,8 +4093,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
           <DialogHeader>
             <DialogTitle>Delete Tag</DialogTitle>
             <DialogDescription>
-              This permanently deletes every lead under this tag -- but unlike deleting an imported list, they are NOT excluded from Seamless, so the same search can offer these exact contacts again in the future.
-              You can also restore any individual lead afterward from the "Seamless Leads" tab's Deleted Leads section.
+              This removes every lead under this tag from your active data. They're never blocked from showing up again in a future Seamless search, and you can restore any individual lead afterward from the "Seamless Leads" tab's Deleted Leads section.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -4108,7 +4102,7 @@ export default function LeadsPage({ showOnlyUnassigned = false }: { showOnlyUnas
               if (!deleteTagId) return;
               try {
                 const result = await deleteListMutation.mutateAsync({ id: deleteTagId });
-                toast.success(`Deleted ${result.archivedCount} lead(s) -- freed up for re-extraction on Seamless. Restorable from Seamless Leads > Deleted Leads.`);
+                toast.success(`Deleted ${result.archivedCount} lead(s). Restorable from Seamless Leads > Deleted Leads.`);
                 leadsQuery.refetch(); listOrTagFilterQuery.refetch();
                 leadSetsQuery.refetch();
                 setDeleteTagDialogOpen(false);

@@ -297,21 +297,19 @@ export const appRouter = router({
         return db.getLeadById(input.id);
       }),
 
+    // Every delete path below archives before removing (browsable/restorable
+    // via deletedLeads.list/.restore -- see server/db.ts's archiveAndDeleteLeads)
+    // and never excludes the contact from future Seamless searches -- deletion
+    // is a "clean up my active list" action, not a permanent, unrecoverable
+    // one, and it never blocks the same real-world contact from being found
+    // again by a later search.
     delete: protectedProcedure.input(z.number()).mutation(async ({ input: leadId, ctx }) => {
       const lead = await db.getLeadById(leadId);
       if (!lead || lead.userId !== ctx.user.id) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
-      const result = await db.deleteLead(leadId);
-      // A deleted lead that came from Seamless.AI should never silently
-      // resurface in a later search -- without this, deleting it (e.g. for a
-      // bad/risky email) only removes today's row; our own dedup check only
-      // looks at leads that currently exist, so the exact same contact could
-      // come back as "new" the next time a search happens to match them again.
-      if (lead.seamlessId) {
-        await db.excludeSeamlessContacts(ctx.user.id, [lead.seamlessId]);
-      }
-      return result;
+      await db.archiveAndDeleteLeads(ctx.user.id, [lead]);
+      return { success: true };
     }),
 
     bulkDelete: protectedProcedure
@@ -321,15 +319,7 @@ export const appRouter = router({
         const leads = await Promise.all(input.leadIds.map(id => db.getLeadById(id)));
         const validLeads = leads.filter((l): l is NonNullable<typeof l> => !!l && l.userId === ctx.user.id);
         if (validLeads.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No valid leads found" });
-        for (const lead of validLeads) {
-          await db.deleteLead(lead.id);
-        }
-        // Same as the single-delete path above -- keep every deleted
-        // Seamless.AI contact from silently resurfacing in a future search.
-        const seamlessIds = validLeads.map((l) => l.seamlessId).filter((id): id is string => !!id);
-        if (seamlessIds.length > 0) {
-          await db.excludeSeamlessContacts(ctx.user.id, seamlessIds);
-        }
+        await db.archiveAndDeleteLeads(ctx.user.id, validLeads);
         return { deleted: validLeads.length };
       }),
 
@@ -339,13 +329,7 @@ export const appRouter = router({
         const allLeads = await db.getLeadsByUserId(ctx.user.id);
         const toDelete = allLeads.filter((l: any) => input.statuses.includes(l.emailVerificationStatus));
         if (toDelete.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads found with the specified verification status" });
-        for (const lead of toDelete) {
-          await db.deleteLead(lead.id);
-        }
-        const seamlessIds = toDelete.map((l: any) => l.seamlessId).filter((id: any): id is string => !!id);
-        if (seamlessIds.length > 0) {
-          await db.excludeSeamlessContacts(ctx.user.id, seamlessIds);
-        }
+        await db.archiveAndDeleteLeads(ctx.user.id, toDelete);
         return { deleted: toDelete.length };
       }),
 
@@ -353,13 +337,7 @@ export const appRouter = router({
       .mutation(async ({ ctx }) => {
         const allLeads = await db.getLeadsByUserId(ctx.user.id);
         if (allLeads.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "No leads to delete" });
-        for (const lead of allLeads) {
-          await db.deleteLead(lead.id);
-        }
-        const seamlessIds = (allLeads as any[]).map((l: any) => l.seamlessId).filter((id: any): id is string => !!id);
-        if (seamlessIds.length > 0) {
-          await db.excludeSeamlessContacts(ctx.user.id, seamlessIds);
-        }
+        await db.archiveAndDeleteLeads(ctx.user.id, allLeads as any[]);
         return { deleted: allLeads.length };
       }),
 

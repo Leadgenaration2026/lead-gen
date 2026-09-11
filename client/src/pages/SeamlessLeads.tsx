@@ -33,6 +33,23 @@ export default function SeamlessLeadsPage() {
   const [selectedArchiveIds, setSelectedArchiveIds] = useState<Set<number>>(new Set());
   const [restoringIds, setRestoringIds] = useState<Set<number>>(new Set());
 
+  // Leads deleted before deletion was made archive-recoverable (or via the
+  // imported-list path, which used to permanently exclude too) have no
+  // archive row to restore -- they're genuinely gone. What CAN be undone for
+  // those is the block on ever finding the same real-world contact again:
+  // clearing this list means a future search can surface them fresh.
+  const excludedCountQuery = trpc.leads.getExcludedSeamlessContactsCount.useQuery();
+  const clearExcludedMutation = trpc.leads.clearExcludedSeamlessContacts.useMutation();
+  const handleClearExcluded = async () => {
+    try {
+      const result = await clearExcludedMutation.mutateAsync();
+      toast.success(`Cleared ${result.cleared} previously-blocked contact(s) -- they can show up in a future search again.`);
+      excludedCountQuery.refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to clear excluded contacts");
+    }
+  };
+
   const handleContinueSearch = (id: number) => {
     navigate(`/all-leads?resumeSearchId=${id}`);
   };
@@ -221,13 +238,36 @@ export default function SeamlessLeadsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="deleted" className="mt-4">
+        <TabsContent value="deleted" className="mt-4 space-y-4">
+          {!excludedCountQuery.isLoading && (excludedCountQuery.data?.count ?? 0) > 0 && (
+            <Card className="border-amber-300 dark:border-amber-800">
+              <CardContent className="flex items-center justify-between gap-4 py-4">
+                <div>
+                  <p className="text-sm font-medium">
+                    {excludedCountQuery.data?.count} contact(s) are blocked from ever showing up in a search again
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    These are leads deleted before restoring was possible, or via an imported list before that also stopped permanently excluding contacts. Their original lead record can't be brought back, but clearing this list lets a future search find and re-extract them fresh.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 shrink-0"
+                  disabled={clearExcludedMutation.isPending}
+                  onClick={handleClearExcluded}
+                >
+                  {clearExcludedMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  Clear Excluded List
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Deleted Leads</CardTitle>
               <CardDescription>
-                Leads deleted from an imported list are excluded from Seamless permanently. Leads deleted via a tag are freed up so Seamless can offer them again on a future search.
-                Either way, nothing is truly gone -- select any lead below and restore it back into your active data.
+                Deleting a lead never blocks it from showing up again in a future Seamless search, and it's never truly gone -- select any lead below and restore it back into your active data (its tag/lead-set assignment and email/call activity history are not restored, only the lead itself).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -257,7 +297,6 @@ export default function SeamlessLeadsPage() {
                           <TableHead>Lead</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Deleted From</TableHead>
-                          <TableHead>Effect</TableHead>
                           <TableHead>Deleted</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -277,13 +316,6 @@ export default function SeamlessLeadsPage() {
                             </TableCell>
                             <TableCell className="text-xs">{d.leadEmail || "—"}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{d.sourceListName || d.leadSetName || "—"}</TableCell>
-                            <TableCell>
-                              {d.deletedVia === "list" ? (
-                                <Badge variant="outline" className="border-red-300 text-red-700 dark:text-red-400">Excluded from Seamless</Badge>
-                              ) : (
-                                <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">Free to re-extract</Badge>
-                              )}
-                            </TableCell>
                             <TableCell className="text-xs text-muted-foreground">{formatDate(d.deletedAt)}</TableCell>
                             <TableCell className="text-right">
                               <Button
