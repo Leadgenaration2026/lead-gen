@@ -16,25 +16,27 @@ import { toast } from "sonner";
 import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/components/EmailEditorDialog";
 import { MediaPickerDialog } from "@/components/MediaPickerDialog";
 import { RichTextField } from "@/components/RichTextField";
+import { FONT_OPTIONS, SOCIAL_PLATFORM_OPTIONS, SOCIAL_PLATFORM_LABELS } from "@/lib/seamlessOptions";
 
 type SectionType =
   | "hero" | "problem" | "solution" | "benefits" | "features" | "testimonials" | "pricing" | "faq" | "final-cta" | "footer"
   // Manual-add-only block types -- not part of the AI's first-pass section
   // plan, only addable via "Add section" below or an "AI Edit" instruction.
-  | "two-column" | "single-box" | "image-block" | "video-block";
+  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons";
 
 const SECTION_LABELS: Record<SectionType, string> = {
   hero: "Hero", problem: "Problem", solution: "Solution", benefits: "Benefits", features: "Features",
   testimonials: "Testimonials", pricing: "Pricing / Offer", faq: "FAQ", "final-cta": "Final CTA", footer: "Footer",
-  "two-column": "Two Columns", "single-box": "Highlighted Box", "image-block": "Image", "video-block": "Video",
+  "two-column": "Columns (2-4)", "single-box": "CTA / Highlighted Box", "image-block": "Image", "video-block": "Video",
+  "social-icons": "Social Media Icons",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "columns";
+type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "columns" | "socialLinks";
 
 // Every section type gets image/video/background media fields -- previously
 // only "hero" did, so a user wanting a photo or background on any other
 // section had no way to add one at all.
-const MEDIA_FIELDS: SectionField[] = ["imageUrl", "videoUrl", "backgroundImageUrl"];
+const MEDIA_FIELDS: SectionField[] = ["imageUrl", "videoUrl", "backgroundImageUrl", "backgroundColor"];
 const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   hero: ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
   problem: ["headline", "body", "bullets", ...MEDIA_FIELDS],
@@ -50,6 +52,7 @@ const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   "single-box": ["headline", "body", "bullets", "ctaText", ...MEDIA_FIELDS],
   "image-block": ["headline", "imageUrl"],
   "video-block": ["headline", "videoUrl"],
+  "social-icons": ["headline", "socialLinks", "backgroundColor"],
 };
 
 interface Section {
@@ -63,7 +66,10 @@ interface Section {
   imageUrl?: string;
   videoUrl?: string;
   backgroundImageUrl?: string;
+  backgroundColor?: string;
   columns?: Array<{ headline?: string; body?: string; imageUrl?: string }>;
+  columnGap?: "sm" | "md" | "lg";
+  socialLinks?: Array<{ platform: string; url: string }>;
 }
 
 const VIEWPORT_WIDTH: Record<string, string> = { desktop: "100%", tablet: "768px", mobile: "375px" };
@@ -103,7 +109,14 @@ export default function LandingPageEditor() {
   const persistSections = async (next: Section[], successMessage?: string) => {
     try {
       await updateSectionsMutation.mutateAsync({ id, sections: next as any });
-      utils.landingPages.get.invalidate(id);
+      // Write the already-known result straight into the cache instead of
+      // invalidate()+refetch -- addSection fires two of these in a row (the
+      // placeholder save, then the AI-filled save), and two overlapping
+      // background refetches with no ordering guarantee could resolve out of
+      // order and silently revert the second (correct) write with the first
+      // (stale) one's response. The client already knows the exact resulting
+      // state, so there's nothing to refetch.
+      utils.landingPages.get.setData(id, (old: any) => (old ? { ...old, sections: next } : old));
       refreshPreview();
       if (successMessage) toast.success(successMessage);
     } catch (error: any) {
@@ -139,8 +152,11 @@ export default function LandingPageEditor() {
       const filled = [...next];
       filled[next.length - 1] = result.section as any;
       await persistSections(filled);
-    } catch {
-      // Placeholder already saved -- fine if AI fill-in fails, user can Edit/Regenerate manually.
+    } catch (error: any) {
+      // Placeholder already saved -- surface the failure rather than silently
+      // leaving an unexplained "New section" placeholder, which previously
+      // looked identical to the section never having been added at all.
+      toast.error(error?.message || "Section added, but AI couldn't fill it in -- edit it manually");
     }
   };
 
@@ -188,6 +204,18 @@ export default function LandingPageEditor() {
       refreshPreview();
     } catch (error: any) {
       toast.error(error?.message || "Failed to update color");
+    }
+  };
+
+  const handleFontChange = async (fontFamily: string) => {
+    if (!page) return;
+    const nextTheme = { ...(page.theme as any), fontFamily };
+    try {
+      await updateThemeMutation.mutateAsync({ id, theme: nextTheme });
+      utils.landingPages.get.invalidate(id);
+      refreshPreview();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to update font");
     }
   };
 
@@ -339,7 +367,7 @@ export default function LandingPageEditor() {
                 </Button>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                {theme && Object.keys(theme).map((key) => (
+                {theme && Object.keys(theme).filter((key) => key !== "fontFamily").map((key) => (
                   <label key={key} className="flex flex-col items-center gap-1 cursor-pointer">
                     <input
                       type="color"
@@ -347,9 +375,18 @@ export default function LandingPageEditor() {
                       onChange={(e) => handleColorChange(key, e.target.value)}
                       className="w-9 h-9 rounded-md border cursor-pointer"
                     />
-                    <span className="text-[10px] text-muted-foreground capitalize">{key}</span>
+                    <span className="text-[10px] text-muted-foreground capitalize">{key === "background" ? "Page Background" : key}</span>
                   </label>
                 ))}
+              </div>
+              <div className="pt-1 border-t">
+                <p className="text-xs text-muted-foreground mb-1.5">Font</p>
+                <Select value={theme?.fontFamily || "system"} onValueChange={handleFontChange}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {FONT_OPTIONS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="pt-1 border-t">
                 <p className="text-xs text-muted-foreground mb-1.5">Logo</p>
@@ -566,9 +603,14 @@ function SectionEditDialog({
   const [imageUrl, setImageUrl] = useState(section.imageUrl || "");
   const [videoUrl, setVideoUrl] = useState(section.videoUrl || "");
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(section.backgroundImageUrl || "");
+  const [backgroundColor, setBackgroundColor] = useState(section.backgroundColor || "");
   const [faqs, setFaqs] = useState(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
   const [columns, setColumns] = useState(
-    section.columns && section.columns.length === 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]
+    section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]
+  );
+  const [columnGap, setColumnGap] = useState<"sm" | "md" | "lg">(section.columnGap || "md");
+  const [socialLinks, setSocialLinks] = useState(
+    section.socialLinks && section.socialLinks.length > 0 ? section.socialLinks : [{ platform: "facebook", url: "" }]
   );
 
   useEffect(() => {
@@ -580,8 +622,11 @@ function SectionEditDialog({
     setImageUrl(section.imageUrl || "");
     setVideoUrl(section.videoUrl || "");
     setBackgroundImageUrl(section.backgroundImageUrl || "");
+    setBackgroundColor(section.backgroundColor || "");
     setFaqs(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
-    setColumns(section.columns && section.columns.length === 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]);
+    setColumns(section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]);
+    setColumnGap(section.columnGap || "md");
+    setSocialLinks(section.socialLinks && section.socialLinks.length > 0 ? section.socialLinks : [{ platform: "facebook", url: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
 
@@ -594,9 +639,11 @@ function SectionEditDialog({
     if (fields.includes("imageUrl")) updated.imageUrl = imageUrl;
     if (fields.includes("videoUrl")) updated.videoUrl = videoUrl;
     if (fields.includes("backgroundImageUrl")) updated.backgroundImageUrl = backgroundImageUrl;
+    if (fields.includes("backgroundColor")) updated.backgroundColor = backgroundColor || undefined;
     if (fields.includes("bullets")) updated.bullets = bulletsText.split("\n").map((b) => b.trim()).filter(Boolean);
     if (fields.includes("faqs")) updated.faqs = faqs.filter((f) => f.question.trim() || f.answer.trim());
-    if (fields.includes("columns")) updated.columns = columns;
+    if (fields.includes("columns")) { updated.columns = columns; updated.columnGap = columnGap; }
+    if (fields.includes("socialLinks")) updated.socialLinks = socialLinks.filter((s) => s.url.trim());
     onSave(updated);
   };
 
@@ -623,7 +670,17 @@ function SectionEditDialog({
           )}
           {fields.includes("columns") && (
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Columns</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-muted-foreground">Columns ({columns.length})</label>
+                <Select value={columnGap} onValueChange={(v) => setColumnGap(v as "sm" | "md" | "lg")}>
+                  <SelectTrigger className="h-7 text-xs w-32"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sm">Tight spacing</SelectItem>
+                    <SelectItem value="md">Medium spacing</SelectItem>
+                    <SelectItem value="lg">Wide spacing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {columns.map((col, i) => (
                   <div key={i} className="border rounded-md p-2 space-y-1.5">
@@ -645,9 +702,17 @@ function SectionEditDialog({
                       aspect={4 / 3}
                       triggerLabel="Choose image"
                     />
+                    {columns.length > 2 && (
+                      <Button size="sm" variant="ghost" className="text-red-500 h-6 text-xs w-full" onClick={() => setColumns((prev) => prev.filter((_, j) => j !== i))}>Remove column</Button>
+                    )}
                   </div>
                 ))}
               </div>
+              {columns.length < 4 && (
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setColumns((prev) => [...prev, { headline: "", body: "", imageUrl: "" }])}>
+                  <Plus className="w-3.5 h-3.5" /> Add column
+                </Button>
+              )}
             </div>
           )}
           {fields.includes("ctaText") && (
@@ -682,6 +747,48 @@ function SectionEditDialog({
                   triggerLabel="Choose background"
                 />
               </div>
+            </div>
+          )}
+          {fields.includes("backgroundColor") && (
+            <div>
+              <label className="text-xs text-muted-foreground">Section background color {backgroundImageUrl && "(hidden while a background image is set)"}</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={backgroundColor || "#ffffff"}
+                  onChange={(e) => setBackgroundColor(e.target.value)}
+                  className="w-9 h-9 rounded-md border cursor-pointer"
+                />
+                {backgroundColor && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setBackgroundColor("")}>Clear</Button>
+                )}
+              </div>
+            </div>
+          )}
+          {fields.includes("socialLinks") && (
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Social links</label>
+              {socialLinks.map((s, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <Select value={s.platform} onValueChange={(v) => setSocialLinks((prev) => prev.map((p, j) => j === i ? { ...p, platform: v } : p))}>
+                    <SelectTrigger className="h-8 text-xs w-32 shrink-0"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SOCIAL_PLATFORM_OPTIONS.map((p) => <SelectItem key={p} value={p}>{SOCIAL_PLATFORM_LABELS[p]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={s.url}
+                    placeholder="https://..."
+                    onChange={(e) => setSocialLinks((prev) => prev.map((p, j) => j === i ? { ...p, url: e.target.value } : p))}
+                  />
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500 shrink-0" onClick={() => setSocialLinks((prev) => prev.filter((_, j) => j !== i))}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))}
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setSocialLinks((prev) => [...prev, { platform: "facebook", url: "" }])}>
+                <Plus className="w-3.5 h-3.5" /> Add link
+              </Button>
             </div>
           )}
           {fields.includes("bullets") && (

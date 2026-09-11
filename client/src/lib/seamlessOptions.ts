@@ -79,3 +79,24 @@ export const STYLE_OPTIONS: Array<{ value: string; label: string; description: s
   { value: "premium_modern", label: "Premium & Modern", description: "Bolder palette, confident and polished tone" },
   { value: "bold_conversion", label: "Bold & Conversion-Focused", description: "High-contrast, punchy copy, unmissable CTA" },
 ];
+
+// Mirrors FONT_FAMILIES in server/_core/campaignGenerator.ts -- values must
+// match exactly since the server validates a saved fontFamily against that
+// same whitelist (normalizeTheme/mergeTheme). "system" keeps the original
+// hardcoded stack with no Google Fonts request at all.
+export const FONT_OPTIONS: Array<{ value: string; label: string; cssFamily: string }> = [
+  { value: "system", label: "System Default", cssFamily: `-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif` },
+  { value: "inter", label: "Inter", cssFamily: `"Inter", sans-serif` },
+  { value: "roboto", label: "Roboto", cssFamily: `"Roboto", sans-serif` },
+  { value: "open_sans", label: "Open Sans", cssFamily: `"Open Sans", sans-serif` },
+  { value: "poppins", label: "Poppins", cssFamily: `"Poppins", sans-serif` },
+  { value: "montserrat", label: "Montserrat", cssFamily: `"Montserrat", sans-serif` },
+  { value: "lato", label: "Lato", cssFamily: `"Lato", sans-serif` },
+  { value: "playfair", label: "Playfair Display", cssFamily: `"Playfair Display", serif` },
+  { value: "merriweather", label: "Merriweather", cssFamily: `"Merriweather", serif` },
+];
+
+export const SOCIAL_PLATFORM_OPTIONS = ["facebook", "twitter", "linkedin", "instagram", "youtube", "tiktok"] as const;
+export const SOCIAL_PLATFORM_LABELS: Record<string, string> = {
+  facebook: "Facebook", twitter: "Twitter / X", linkedin: "LinkedIn", instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok",
+};

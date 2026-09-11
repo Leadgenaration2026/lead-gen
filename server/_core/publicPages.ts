@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import type { SectionContent, Theme } from "./campaignGenerator";
+import { FONT_FAMILIES } from "./campaignGenerator";
 
 // Same base-URL resolution followUpScheduler.ts already uses for tracking
 // links -- kept consistent so a landing page's public URL and its emails'
@@ -87,7 +88,11 @@ function wrapSection(section: SectionContent, theme: Theme, inner: string, opts?
   const isHero = section.type === "hero";
   const isFooter = section.type === "footer";
   const hasBackgroundImage = !!section.backgroundImageUrl;
-  const background = hasBackgroundImage ? "transparent" : isHero ? theme.primary : "transparent";
+  const background = hasBackgroundImage
+    ? "transparent"
+    : section.backgroundColor
+      ? section.backgroundColor
+      : isHero ? theme.primary : "transparent";
   const padding = isFooter ? "32px 24px" : "64px 24px";
 
   const cardStyle = opts?.cardWrap
@@ -110,11 +115,25 @@ function wrapSection(section: SectionContent, theme: Theme, inner: string, opts?
   return `<section style="${sectionStyle}">${content}</section>`;
 }
 
+// Small fixed set of hand-written brand icon glyphs (white, 18x18 viewBox)
+// for the "social-icons" section type -- public pages are server-rendered
+// raw HTML with no icon library available, unlike the React editor UI.
+const SOCIAL_ICON_SVG: Record<string, string> = {
+  facebook: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.87h2.78l-.44 2.91h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94Z"/></svg>`,
+  twitter: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M18.9 2h3.3l-7.2 8.24L23.5 22h-6.6l-5.2-6.8L5.7 22H2.4l7.7-8.8L1.5 2h6.8l4.7 6.2L18.9 2Zm-1.2 18h1.8L7.4 3.9H5.5L17.7 20Z"/></svg>`,
+  linkedin: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5ZM3 9h4v12H3V9Zm7 0h3.8v1.7h.05c.53-1 1.83-2 3.77-2 4.03 0 4.78 2.65 4.78 6.1V21h-4v-5.65c0-1.35-.02-3.08-1.88-3.08-1.88 0-2.17 1.47-2.17 2.98V21h-4V9Z"/></svg>`,
+  instagram: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2c2.7 0 3.06.01 4.12.06 1.06.05 1.79.22 2.43.47.66.26 1.22.6 1.77 1.15.55.55.9 1.11 1.15 1.77.25.64.42 1.37.47 2.43.05 1.06.06 1.42.06 4.12s-.01 3.06-.06 4.12c-.05 1.06-.22 1.79-.47 2.43a4.9 4.9 0 0 1-1.15 1.77 4.9 4.9 0 0 1-1.77 1.15c-.64.25-1.37.42-2.43.47-1.06.05-1.42.06-4.12.06s-3.06-.01-4.12-.06c-1.06-.05-1.79-.22-2.43-.47a4.9 4.9 0 0 1-1.77-1.15 4.9 4.9 0 0 1-1.15-1.77c-.25-.64-.42-1.37-.47-2.43C2.01 15.06 2 14.7 2 12s.01-3.06.06-4.12c.05-1.06.22-1.79.47-2.43.26-.66.6-1.22 1.15-1.77A4.9 4.9 0 0 1 5.45.53C6.09.28 6.82.11 7.88.06 8.94.01 9.3 0 12 0Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 8.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4Zm5.2-8.4a1.17 1.17 0 1 1-2.34 0 1.17 1.17 0 0 1 2.34 0Z"/></svg>`,
+  youtube: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M23.5 6.2a3.02 3.02 0 0 0-2.12-2.14C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.38.56A3.02 3.02 0 0 0 .5 6.2 31.6 31.6 0 0 0 0 12a31.6 31.6 0 0 0 .5 5.8 3.02 3.02 0 0 0 2.12 2.14C4.5 20.5 12 20.5 12 20.5s7.5 0 9.38-.56a3.02 3.02 0 0 0 2.12-2.14A31.6 31.6 0 0 0 24 12a31.6 31.6 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z"/></svg>`,
+  tiktok: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M16.5 2h-3.3v13.9a2.7 2.7 0 1 1-1.9-2.58v-3.4a6.1 6.1 0 1 0 5.2 6.03V9.1a7.4 7.4 0 0 0 4.2 1.3V7.1a4.1 4.1 0 0 1-4.2-4.1V2Z"/></svg>`,
+  default: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="12" r="9"/></svg>`,
+};
+
 function renderSection(section: SectionContent, theme: Theme): string {
   const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${theme.text};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
   const subheadline = section.subheadline ? `<p style="font-size:18px;color:${theme.text};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
 
   if (section.type === "two-column" && section.columns?.length) {
+    const gap = { sm: 16, md: 32, lg: 56 }[section.columnGap || "md"];
     const cols = section.columns
       .map((c) => {
         const colHeadline = c.headline ? `<h3 style="font-size:20px;font-weight:700;color:${theme.text};margin:0 0 8px;">${escapeHtml(c.headline)}</h3>` : "";
@@ -123,7 +142,16 @@ function renderSection(section: SectionContent, theme: Theme): string {
         return `<div style="flex:1 1 280px;">${colHeadline}${colBody}${colImage}</div>`;
       })
       .join("");
-    const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:32px;">${cols}</div>`;
+    const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:${gap}px;">${cols}</div>`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "social-icons") {
+    const icons = (section.socialLinks || [])
+      .filter((s) => s.url && s.url.trim())
+      .map((s) => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:${theme.accent};margin:0 8px;">${SOCIAL_ICON_SVG[s.platform] || SOCIAL_ICON_SVG.default}</a>`)
+      .join("");
+    const inner = `${headline}${subheadline}<div style="text-align:center;">${icons}</div>`;
     return wrapSection(section, theme, inner);
   }
 
@@ -185,15 +213,21 @@ export function renderLandingPageHtml(page: any): string {
     ? `<img src="${escapeHtml(page.logoUrl)}" alt="${escapeHtml(page.companyName || page.name)}" style="max-height:48px;max-width:220px;width:auto;height:auto;object-fit:contain;display:block;" />`
     : `<span style="font-weight:700;font-size:18px;color:${theme.primary};">${escapeHtml(page.companyName || page.name)}</span>`;
 
+  const fontConfig = FONT_FAMILIES[theme.fontFamily || "system"] || FONT_FAMILIES.system;
+  const fontLink = fontConfig.googleFontParam
+    ? `<link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${fontConfig.googleFontParam}&display=swap" />`
+    : "";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${escapeHtml(page.name)}</title>
+${fontLink}
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: ${theme.background}; color: ${theme.text}; }
+  body { margin: 0; font-family: ${fontConfig.cssFamily}, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: ${theme.background}; color: ${theme.text}; }
   @media (max-width: 640px) {
     section { padding: 40px 20px !important; }
     h1 { font-size: 28px !important; }

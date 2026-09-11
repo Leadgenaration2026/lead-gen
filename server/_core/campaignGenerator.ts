@@ -19,7 +19,23 @@ export type SectionType =
   // Manual-add-only block types (see SECTION_TYPES below) -- not part of the
   // AI's own first-pass section plan, only addable via "Add section" in the
   // editor or an explicit "AI Edit" instruction.
-  | "two-column" | "single-box" | "image-block" | "video-block";
+  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons";
+
+// Curated whitelist -- both sides (client/src/lib/seamlessOptions.ts's
+// FONT_OPTIONS) must use these exact values since normalizeTheme/mergeTheme
+// below validate against this list. "system" keeps the original hardcoded
+// stack (server/_core/publicPages.ts) with no Google Fonts <link> tag at all.
+export const FONT_FAMILIES: Record<string, { label: string; cssFamily: string; googleFontParam: string | null }> = {
+  system: { label: "System Default", cssFamily: `-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif`, googleFontParam: null },
+  inter: { label: "Inter", cssFamily: `"Inter", sans-serif`, googleFontParam: "Inter:wght@400;600;700;800" },
+  roboto: { label: "Roboto", cssFamily: `"Roboto", sans-serif`, googleFontParam: "Roboto:wght@400;500;700;900" },
+  open_sans: { label: "Open Sans", cssFamily: `"Open Sans", sans-serif`, googleFontParam: "Open+Sans:wght@400;600;700;800" },
+  poppins: { label: "Poppins", cssFamily: `"Poppins", sans-serif`, googleFontParam: "Poppins:wght@400;500;700;800" },
+  montserrat: { label: "Montserrat", cssFamily: `"Montserrat", sans-serif`, googleFontParam: "Montserrat:wght@400;600;700;800" },
+  lato: { label: "Lato", cssFamily: `"Lato", sans-serif`, googleFontParam: "Lato:wght@400;700;900" },
+  playfair: { label: "Playfair Display", cssFamily: `"Playfair Display", serif`, googleFontParam: "Playfair+Display:wght@400;600;700;800" },
+  merriweather: { label: "Merriweather", cssFamily: `"Merriweather", serif`, googleFontParam: "Merriweather:wght@400;700;900" },
+};
 
 export interface Theme {
   primary: string;
@@ -28,6 +44,7 @@ export interface Theme {
   background: string;
   text: string;
   accent: string;
+  fontFamily?: string; // FONT_FAMILIES key, defaults to "system" -- see normalizeTheme/mergeTheme
 }
 
 export interface ThemeAndResearch {
@@ -47,7 +64,10 @@ export interface SectionContent {
   imageUrl?: string;
   videoUrl?: string; // YouTube/Vimeo link, rendered as an embed (see server/_core/publicPages.ts)
   backgroundImageUrl?: string; // full-bleed section background (see server/_core/publicPages.ts)
-  columns?: Array<{ headline?: string; body?: string; imageUrl?: string }>; // "two-column" type only, exactly 2 entries
+  backgroundColor?: string; // hex; section-level solid background, overridden by backgroundImageUrl if both set
+  columns?: Array<{ headline?: string; body?: string; imageUrl?: string }>; // "two-column" type only, 2-4 entries
+  columnGap?: "sm" | "md" | "lg"; // "two-column" type only, defaults to "md" (32px, the original hardcoded value)
+  socialLinks?: Array<{ platform: string; url: string }>; // "social-icons" type only
 }
 
 export interface CampaignEmailSlot {
@@ -63,6 +83,7 @@ const DEFAULT_THEME: Theme = {
   background: "#ffffff",
   text: "#1a1a1a",
   accent: "#2563eb",
+  fontFamily: "system",
 };
 
 // Only used if the LLM call for a theme genuinely fails twice in a row
@@ -80,7 +101,7 @@ function randomFallbackTheme(): Theme {
   return FALLBACK_THEMES[Math.floor(Math.random() * FALLBACK_THEMES.length)];
 }
 
-const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer", "two-column", "single-box", "image-block", "video-block"];
+const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer", "two-column", "single-box", "image-block", "video-block", "social-icons"];
 const DEFAULT_SECTION_PLAN: SectionType[] = ["hero", "problem", "solution", "benefits", "faq", "final-cta", "footer"];
 
 function defaultResearchNote(industry: string): string {
@@ -118,11 +139,14 @@ function isValidHexColor(value: unknown): value is string {
   return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value.trim());
 }
 
+const HEX_THEME_KEYS: Array<keyof Theme> = ["primary", "secondary", "cta", "background", "text", "accent"];
+
 export function normalizeTheme(raw: any): Theme {
   const theme = { ...DEFAULT_THEME };
-  for (const key of Object.keys(DEFAULT_THEME) as Array<keyof Theme>) {
+  for (const key of HEX_THEME_KEYS) {
     if (isValidHexColor(raw?.[key])) theme[key] = raw[key].trim();
   }
+  if (typeof raw?.fontFamily === "string" && FONT_FAMILIES[raw.fontFamily]) theme.fontFamily = raw.fontFamily;
   return theme;
 }
 
@@ -133,9 +157,10 @@ export function normalizeTheme(raw: any): Theme {
 // a generic default; anything invalid/missing just keeps its current value.
 export function mergeTheme(current: Theme, raw: any): Theme {
   const theme = { ...current };
-  for (const key of Object.keys(DEFAULT_THEME) as Array<keyof Theme>) {
+  for (const key of HEX_THEME_KEYS) {
     if (isValidHexColor(raw?.[key])) theme[key] = raw[key].trim();
   }
+  if (typeof raw?.fontFamily === "string" && FONT_FAMILIES[raw.fontFamily]) theme.fontFamily = raw.fontFamily;
   return theme;
 }
 
@@ -228,10 +253,11 @@ const SECTION_INSTRUCTIONS: Record<SectionType, string> = {
   faq: `Return {"headline":"Frequently Asked Questions","faqs":[{"question":"...","answer":"..."}]} -- 3-5 realistic Q&A pairs relevant to this offer/industry, answers grounded only in the offer described, no invented guarantees or certifications.`,
   "final-cta": `Return {"headline":"...","subheadline":"...","ctaText":"..."} -- a final, direct call to action restating the core offer.`,
   footer: `Return {"body":"..."} -- a short one-line footer (e.g. company name), no invented legal/certification claims.`,
-  "two-column": `Return {"headline":"...","columns":[{"headline":"...","body":"..."},{"headline":"...","body":"..."}]} -- headline introduces the pairing (e.g. "Before vs After", "Problem vs Solution", two complementary benefits); each column gets a short headline and 1-2 sentences of body, no invented statistics.`,
+  "two-column": `Return {"headline":"...","columns":[{"headline":"...","body":"..."},{"headline":"...","body":"..."}]} -- headline introduces the pairing (e.g. "Before vs After", "Problem vs Solution", complementary benefits); return 2-4 columns, whichever count genuinely suits the content (default to 2 unless there's a natural 3-4-way grouping); each column gets a short headline and 1-2 sentences of body, no invented statistics.`,
   "single-box": `Return {"headline":"...","body":"...","bullets":["...","..."],"ctaText":"..."} -- a single highlighted call-out (e.g. a guarantee, a limited offer, a key differentiator); body is 1-2 sentences, bullets are optional short supporting points (omit if not needed), ctaText is optional.`,
   "image-block": `Return {"headline":"..."} -- a short caption (under 10 words) for a full-width image; the image itself is added separately by the user, not generated here.`,
   "video-block": `Return {"headline":"..."} -- a short caption (under 10 words) for a full-width video; the video itself is added separately by the user, not generated here.`,
+  "social-icons": `Return {"headline":"Follow us"} -- just a short section heading; the actual social media links are added separately by the user (a real Facebook/LinkedIn/etc. URL can't be invented), not generated here.`,
 };
 
 const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
@@ -249,6 +275,7 @@ const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
   "single-box": { headline: "Highlighted offer", body: "Click Edit to describe this call-out." },
   "image-block": { headline: "Click Edit to choose an image" },
   "video-block": { headline: "Click Edit to choose a video" },
+  "social-icons": { headline: "Follow us", socialLinks: [] },
 };
 
 // Phrases that show up constantly in generic AI-written marketing copy --

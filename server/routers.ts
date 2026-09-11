@@ -4841,7 +4841,7 @@ Respond in this exact JSON format:
     updateTheme: protectedProcedure
       .input(z.object({
         id: z.number(),
-        theme: z.object({ primary: z.string(), secondary: z.string(), cta: z.string(), background: z.string(), text: z.string(), accent: z.string() }),
+        theme: z.object({ primary: z.string(), secondary: z.string(), cta: z.string(), background: z.string(), text: z.string(), accent: z.string(), fontFamily: z.string().optional() }),
       }))
       .mutation(async ({ input, ctx }) => {
         const page = await db.getLandingPageById(input.id);
