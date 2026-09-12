@@ -5199,10 +5199,29 @@ Respond in this exact JSON format:
         const buffer = Buffer.from(match[2], "base64");
         const { storagePut } = await import("./storage");
 
+        // The filename comes straight from the picked file's own name on the
+        // user's computer (client/src/components/MediaPickerDialog.tsx) --
+        // confirmed live that an unusual real-world filename (spaces, quotes,
+        // semicolons) becomes part of the storage path and breaks the
+        // storage backend's ability to serve the file back afterward, even
+        // though the upload itself reports success. Strip it down to a safe
+        // character set before it's ever used as a storage key, regardless
+        // of what the original file happened to be named.
+        const sanitizeFilename = (name: string): string => {
+          const lastDot = name.lastIndexOf(".");
+          const ext = (lastDot > -1 ? name.slice(lastDot + 1) : "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10);
+          const base = (lastDot > -1 ? name.slice(0, lastDot) : name)
+            .replace(/[^a-zA-Z0-9_-]+/g, "_")
+            .replace(/^_+|_+$/g, "")
+            .slice(0, 60);
+          return `${base || "upload"}${ext ? `.${ext}` : ""}`;
+        };
+        const safeFilename = sanitizeFilename(input.filename);
+
         let url: string;
         let storageKey: string;
         try {
-          const result = await storagePut(`landing-pages/${input.filename}`, buffer, mimeType);
+          const result = await storagePut(`landing-pages/${safeFilename}`, buffer, mimeType);
           url = result.url;
           storageKey = result.key;
         } catch (error: any) {
