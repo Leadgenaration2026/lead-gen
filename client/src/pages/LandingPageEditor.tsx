@@ -22,21 +22,22 @@ type SectionType =
   | "hero" | "problem" | "solution" | "benefits" | "features" | "testimonials" | "pricing" | "faq" | "final-cta" | "footer"
   // Manual-add-only block types -- not part of the AI's first-pass section
   // plan, only addable via "Add section" below or an "AI Edit" instruction.
-  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons" | "lead-form";
+  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons" | "lead-form" | "heading";
 
 const SECTION_LABELS: Record<SectionType, string> = {
   hero: "Hero", problem: "Problem", solution: "Solution", benefits: "Benefits", features: "Features",
   testimonials: "Testimonials", pricing: "Pricing / Offer", faq: "FAQ", "final-cta": "Final CTA", footer: "Footer",
   "two-column": "Columns (2-4)", "single-box": "CTA / Highlighted Box", "image-block": "Image", "video-block": "Video",
-  "social-icons": "Social Media Icons", "lead-form": "Lead Capture Form",
+  "social-icons": "Social Media Icons", "lead-form": "Lead Capture Form", heading: "Heading (H1/H2/H3)",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "ctaUrl" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "columns" | "socialLinks" | "tiers" | "testimonialItems";
+type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "ctaUrl" | "bullets" | "faqs" | "imageUrl" | "imageLinkUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "textColor" | "columns" | "socialLinks" | "tiers" | "testimonialItems" | "headingLevel";
 
-// Every section type gets image/video/background media fields -- previously
-// only "hero" did, so a user wanting a photo or background on any other
-// section had no way to add one at all.
-const MEDIA_FIELDS: SectionField[] = ["imageUrl", "videoUrl", "backgroundImageUrl", "backgroundColor"];
+// Every section type gets image/video/background/text-color fields --
+// previously only "hero" had image/video at all, so a user wanting a photo,
+// background, or a text color different from the page-wide theme on any
+// other section had no way to add one.
+const MEDIA_FIELDS: SectionField[] = ["imageUrl", "imageLinkUrl", "videoUrl", "backgroundImageUrl", "backgroundColor", "textColor"];
 const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   hero: ["headline", "subheadline", "ctaText", "ctaUrl", ...MEDIA_FIELDS],
   problem: ["headline", "body", "bullets", ...MEDIA_FIELDS],
@@ -50,10 +51,11 @@ const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   footer: ["body", ...MEDIA_FIELDS],
   "two-column": ["headline", "columns", ...MEDIA_FIELDS],
   "single-box": ["headline", "body", "bullets", "ctaText", "ctaUrl", ...MEDIA_FIELDS],
-  "image-block": ["headline", "imageUrl"],
+  "image-block": ["headline", "imageUrl", "imageLinkUrl"],
   "video-block": ["headline", "videoUrl"],
   "social-icons": ["headline", "socialLinks", "backgroundColor"],
   "lead-form": ["headline", "subheadline", "ctaText", "backgroundColor"],
+  heading: ["headline", "headingLevel", "backgroundColor", "textColor"],
 };
 
 interface Section {
@@ -66,14 +68,17 @@ interface Section {
   bullets?: string[];
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
+  imageLinkUrl?: string;
   videoUrl?: string;
   backgroundImageUrl?: string;
   backgroundColor?: string;
+  textColor?: string;
   columns?: Array<{ headline?: string; body?: string; imageUrl?: string; videoUrl?: string }>;
   columnGap?: "sm" | "md" | "lg";
   socialLinks?: Array<{ platform: string; url: string }>;
   tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; ctaUrl?: string; highlighted?: boolean }>;
   testimonialItems?: Array<{ quote: string; name: string; company?: string; rating?: number }>;
+  headingLevel?: "h1" | "h2" | "h3";
 }
 
 const VIEWPORT_WIDTH: Record<string, string> = { desktop: "100%", tablet: "768px", mobile: "375px" };
@@ -606,9 +611,12 @@ function SectionEditDialog({
   const [ctaUrl, setCtaUrl] = useState(section.ctaUrl || "");
   const [bulletsText, setBulletsText] = useState((section.bullets || []).join("\n"));
   const [imageUrl, setImageUrl] = useState(section.imageUrl || "");
+  const [imageLinkUrl, setImageLinkUrl] = useState(section.imageLinkUrl || "");
   const [videoUrl, setVideoUrl] = useState(section.videoUrl || "");
   const [backgroundImageUrl, setBackgroundImageUrl] = useState(section.backgroundImageUrl || "");
   const [backgroundColor, setBackgroundColor] = useState(section.backgroundColor || "");
+  const [textColor, setTextColor] = useState(section.textColor || "");
+  const [headingLevel, setHeadingLevel] = useState<"h1" | "h2" | "h3">(section.headingLevel || "h2");
   const [faqs, setFaqs] = useState(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
   const [columns, setColumns] = useState(
     section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "", videoUrl: "" }, { headline: "", body: "", imageUrl: "", videoUrl: "" }]
@@ -632,9 +640,12 @@ function SectionEditDialog({
     setCtaUrl(section.ctaUrl || "");
     setBulletsText((section.bullets || []).join("\n"));
     setImageUrl(section.imageUrl || "");
+    setImageLinkUrl(section.imageLinkUrl || "");
     setVideoUrl(section.videoUrl || "");
     setBackgroundImageUrl(section.backgroundImageUrl || "");
     setBackgroundColor(section.backgroundColor || "");
+    setTextColor(section.textColor || "");
+    setHeadingLevel(section.headingLevel || "h2");
     setFaqs(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
     setColumns(section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "", videoUrl: "" }, { headline: "", body: "", imageUrl: "", videoUrl: "" }]);
     setColumnGap(section.columnGap || "md");
@@ -652,9 +663,12 @@ function SectionEditDialog({
     if (fields.includes("ctaText")) updated.ctaText = ctaText;
     if (fields.includes("ctaUrl")) updated.ctaUrl = ctaUrl || undefined;
     if (fields.includes("imageUrl")) updated.imageUrl = imageUrl;
+    if (fields.includes("imageLinkUrl")) updated.imageLinkUrl = imageLinkUrl || undefined;
     if (fields.includes("videoUrl")) updated.videoUrl = videoUrl;
     if (fields.includes("backgroundImageUrl")) updated.backgroundImageUrl = backgroundImageUrl;
     if (fields.includes("backgroundColor")) updated.backgroundColor = backgroundColor || undefined;
+    if (fields.includes("textColor")) updated.textColor = textColor || undefined;
+    if (fields.includes("headingLevel")) updated.headingLevel = headingLevel;
     if (fields.includes("bullets")) updated.bullets = bulletsText.split("\n").map((b) => b.trim()).filter(Boolean);
     if (fields.includes("faqs")) updated.faqs = faqs.filter((f) => f.question.trim() || f.answer.trim());
     if (fields.includes("columns")) { updated.columns = columns; updated.columnGap = columnGap; }
@@ -825,6 +839,17 @@ function SectionEditDialog({
               </div>
             </div>
           )}
+          {fields.includes("imageLinkUrl") && (
+            <div>
+              <label className="text-xs text-muted-foreground">Make the image a link (optional)</label>
+              <Input
+                value={imageLinkUrl}
+                onChange={(e) => setImageLinkUrl(e.target.value)}
+                placeholder="https://..., mailto:, or tel:"
+                className="mt-1"
+              />
+            </div>
+          )}
           {fields.includes("backgroundImageUrl") && (
             <div>
               <label className="text-xs text-muted-foreground">Section background image</label>
@@ -853,6 +878,35 @@ function SectionEditDialog({
                   <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setBackgroundColor("")}>Clear</Button>
                 )}
               </div>
+            </div>
+          )}
+          {fields.includes("textColor") && (
+            <div>
+              <label className="text-xs text-muted-foreground">Text color (this section only)</label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={textColor || "#000000"}
+                  onChange={(e) => setTextColor(e.target.value)}
+                  className="w-9 h-9 rounded-md border cursor-pointer"
+                />
+                {textColor && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setTextColor("")}>Use page default</Button>
+                )}
+              </div>
+            </div>
+          )}
+          {fields.includes("headingLevel") && (
+            <div>
+              <label className="text-xs text-muted-foreground">Heading level</label>
+              <Select value={headingLevel} onValueChange={(v) => setHeadingLevel(v as "h1" | "h2" | "h3")}>
+                <SelectTrigger className="h-9 text-sm mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="h1">H1 (largest)</SelectItem>
+                  <SelectItem value="h2">H2 (medium)</SelectItem>
+                  <SelectItem value="h3">H3 (smallest)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
           {fields.includes("socialLinks") && (

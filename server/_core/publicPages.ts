@@ -144,15 +144,22 @@ const SOCIAL_ICON_SVG: Record<string, string> = {
 };
 
 function renderSection(section: SectionContent, theme: Theme, slug: string): string {
-  const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${theme.text};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
-  const subheadline = section.subheadline ? `<p style="font-size:18px;color:${theme.text};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
+  // A per-section text color override -- falls back to the page-wide
+  // theme.text when unset, so existing pages render unchanged. Threaded
+  // through as both a plain string (for direct color:${textColor} use) and
+  // a shallow-overridden Theme (for renderRichText's body text, which reads
+  // theme.text/theme.accent internally).
+  const textColor = section.textColor || theme.text;
+  const sectionTheme: Theme = section.textColor ? { ...theme, text: section.textColor } : theme;
+  const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${textColor};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
+  const subheadline = section.subheadline ? `<p style="font-size:18px;color:${textColor};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
 
   if (section.type === "two-column" && section.columns?.length) {
     const gap = { sm: 16, md: 32, lg: 56 }[section.columnGap || "md"];
     const cols = section.columns
       .map((c) => {
-        const colHeadline = c.headline ? `<h3 style="font-size:20px;font-weight:700;color:${theme.text};margin:0 0 8px;">${escapeHtml(c.headline)}</h3>` : "";
-        const colBody = c.body ? renderRichText(c.body, `font-size:15px;line-height:1.6;color:${theme.text};margin:0 0 8px;`, theme) : "";
+        const colHeadline = c.headline ? `<h3 style="font-size:20px;font-weight:700;color:${textColor};margin:0 0 8px;">${escapeHtml(c.headline)}</h3>` : "";
+        const colBody = c.body ? renderRichText(c.body, `font-size:15px;line-height:1.6;color:${textColor};margin:0 0 8px;`, sectionTheme) : "";
         // Video takes priority over a static image, same rule the top-level
         // section body already uses -- applied per-column here.
         const colEmbedUrl = c.videoUrl ? toEmbedUrl(c.videoUrl) : null;
@@ -164,6 +171,13 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
       })
       .join("");
     const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:${gap}px;">${cols}</div>`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "heading" && section.headline) {
+    const level = section.headingLevel || "h2";
+    const fontSize = { h1: 44, h2: 32, h3: 24 }[level];
+    const inner = `<${level} style="font-size:${fontSize}px;font-weight:700;color:${textColor};margin:0;text-align:center;">${escapeHtml(section.headline)}</${level}>`;
     return wrapSection(section, theme, inner);
   }
 
@@ -180,15 +194,15 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
     const cards = section.tiers
       .map((tier) => {
         const isHighlighted = !!tier.highlighted;
-        const price = tier.price ? `<p style="font-size:36px;font-weight:800;color:${theme.text};margin:8px 0;">${escapeHtml(tier.price)}${tier.period ? `<span style="font-size:14px;font-weight:400;opacity:0.7;"> /${escapeHtml(tier.period)}</span>` : ""}</p>` : "";
+        const price = tier.price ? `<p style="font-size:36px;font-weight:800;color:${textColor};margin:8px 0;">${escapeHtml(tier.price)}${tier.period ? `<span style="font-size:14px;font-weight:400;opacity:0.7;"> /${escapeHtml(tier.period)}</span>` : ""}</p>` : "";
         const features = tier.features?.length
-          ? `<ul style="list-style:none;padding:0;margin:16px 0;display:grid;gap:10px;text-align:left;">${tier.features.map((f) => `<li style="font-size:14px;color:${theme.text};padding-left:24px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(f)}</li>`).join("")}</ul>`
+          ? `<ul style="list-style:none;padding:0;margin:16px 0;display:grid;gap:10px;text-align:left;">${tier.features.map((f) => `<li style="font-size:14px;color:${textColor};padding-left:24px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(f)}</li>`).join("")}</ul>`
           : "";
         const tierCta = tier.ctaText
           ? `<a href="${escapeHtml(sanitizeCtaUrl(tier.ctaUrl))}" style="display:inline-block;margin-top:12px;padding:12px 28px;background:${isHighlighted ? theme.cta : "transparent"};color:${isHighlighted ? "#fff" : theme.cta};border:2px solid ${theme.cta};border-radius:8px;font-weight:600;text-decoration:none;font-size:14px;">${escapeHtml(tier.ctaText)}</a>`
           : "";
         const border = isHighlighted ? `border:2px solid ${theme.cta};` : `border:1px solid rgba(0,0,0,0.08);`;
-        return `<div style="flex:1 1 240px;text-align:center;padding:32px 24px;border-radius:16px;${border}background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${tier.name ? `<h3 style="font-size:18px;font-weight:700;color:${theme.text};margin:0;">${escapeHtml(tier.name)}</h3>` : ""}${price}${features}${tierCta}</div>`;
+        return `<div style="flex:1 1 240px;text-align:center;padding:32px 24px;border-radius:16px;${border}background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${tier.name ? `<h3 style="font-size:18px;font-weight:700;color:${textColor};margin:0;">${escapeHtml(tier.name)}</h3>` : ""}${price}${features}${tierCta}</div>`;
       })
       .join("");
     const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:24px;justify-content:center;">${cards}</div>`;
@@ -199,7 +213,7 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
     const stars = (rating?: number) =>
       rating ? `<div style="color:${theme.accent};font-size:16px;margin-bottom:8px;">${"&#9733;".repeat(Math.max(0, Math.min(5, rating)))}${"&#9734;".repeat(5 - Math.max(0, Math.min(5, rating)))}</div>` : "";
     const cards = section.testimonialItems
-      .map((t) => `<div style="flex:1 1 260px;padding:28px 24px;border-radius:16px;border:1px solid rgba(0,0,0,0.08);background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${stars(t.rating)}<p style="font-size:15px;line-height:1.6;color:${theme.text};margin:0 0 16px;font-style:italic;">&ldquo;${escapeHtml(t.quote)}&rdquo;</p><p style="font-size:14px;font-weight:700;color:${theme.text};margin:0;">${escapeHtml(t.name)}</p>${t.company ? `<p style="font-size:13px;color:${theme.text};opacity:0.7;margin:0;">${escapeHtml(t.company)}</p>` : ""}</div>`)
+      .map((t) => `<div style="flex:1 1 260px;padding:28px 24px;border-radius:16px;border:1px solid rgba(0,0,0,0.08);background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${stars(t.rating)}<p style="font-size:15px;line-height:1.6;color:${textColor};margin:0 0 16px;font-style:italic;">&ldquo;${escapeHtml(t.quote)}&rdquo;</p><p style="font-size:14px;font-weight:700;color:${textColor};margin:0;">${escapeHtml(t.name)}</p>${t.company ? `<p style="font-size:13px;color:${textColor};opacity:0.7;margin:0;">${escapeHtml(t.company)}</p>` : ""}</div>`)
       .join("");
     const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:24px;">${cards}</div>`;
     return wrapSection(section, theme, inner);
@@ -207,7 +221,7 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
 
   if ((section.type === "features" || section.type === "benefits") && section.bullets?.length) {
     const cards = section.bullets
-      .map((b) => `<div style="padding:24px;border-radius:12px;background:${theme.background};border:1px solid rgba(0,0,0,0.08);"><span style="color:${theme.accent};font-size:20px;">&#10003;</span><p style="font-size:15px;line-height:1.5;color:${theme.text};margin:8px 0 0;">${escapeHtml(b)}</p></div>`)
+      .map((b) => `<div style="padding:24px;border-radius:12px;background:${theme.background};border:1px solid rgba(0,0,0,0.08);"><span style="color:${theme.accent};font-size:20px;">&#10003;</span><p style="font-size:15px;line-height:1.5;color:${textColor};margin:8px 0 0;">${escapeHtml(b)}</p></div>`)
       .join("");
     const inner = `${headline}${subheadline}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;">${cards}</div>`;
     return wrapSection(section, theme, inner);
@@ -226,26 +240,28 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
   }
 
   if (section.type === "image-block" && section.imageUrl) {
-    const caption = section.headline ? `<p style="text-align:center;font-size:14px;color:${theme.text};opacity:0.7;margin-top:10px;">${escapeHtml(section.headline)}</p>` : "";
-    const inner = `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;display:block;margin:0 auto;" />${caption}`;
+    const caption = section.headline ? `<p style="text-align:center;font-size:14px;color:${textColor};opacity:0.7;margin-top:10px;">${escapeHtml(section.headline)}</p>` : "";
+    const imgTag = `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;display:block;margin:0 auto;" />`;
+    const linkedImg = section.imageLinkUrl ? `<a href="${escapeHtml(sanitizeCtaUrl(section.imageLinkUrl))}" style="display:block;">${imgTag}</a>` : imgTag;
+    const inner = `${linkedImg}${caption}`;
     return wrapSection(section, theme, inner);
   }
 
   if (section.type === "video-block" && section.videoUrl) {
     const embedUrl = toEmbedUrl(section.videoUrl);
     if (embedUrl) {
-      const caption = section.headline ? `<p style="text-align:center;font-size:14px;color:${theme.text};opacity:0.7;margin-top:10px;">${escapeHtml(section.headline)}</p>` : "";
+      const caption = section.headline ? `<p style="text-align:center;font-size:14px;color:${textColor};opacity:0.7;margin-top:10px;">${escapeHtml(section.headline)}</p>` : "";
       const inner = `<div style="position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;"><iframe src="${escapeHtml(embedUrl)}" title="Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe></div>${caption}`;
       return wrapSection(section, theme, inner);
     }
   }
 
-  const body = section.body ? renderRichText(section.body, `font-size:16px;line-height:1.6;color:${theme.text};max-width:720px;margin:0 0 12px;`, theme) : "";
+  const body = section.body ? renderRichText(section.body, `font-size:16px;line-height:1.6;color:${textColor};max-width:720px;margin:0 0 12px;`, sectionTheme) : "";
   const bullets = section.bullets?.length
-    ? `<ul style="list-style:none;padding:0;margin:20px 0;display:grid;gap:14px;">${section.bullets.map((b) => `<li style="font-size:16px;color:${theme.text};padding-left:28px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(b)}</li>`).join("")}</ul>`
+    ? `<ul style="list-style:none;padding:0;margin:20px 0;display:grid;gap:14px;">${section.bullets.map((b) => `<li style="font-size:16px;color:${textColor};padding-left:28px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(b)}</li>`).join("")}</ul>`
     : "";
   const faqs = section.faqs?.length
-    ? `<div style="display:grid;gap:16px;max-width:720px;">${section.faqs.map((f) => `<div><p style="font-weight:600;color:${theme.text};margin:0 0 4px;">${escapeHtml(f.question)}</p><p style="color:${theme.text};opacity:0.8;margin:0;">${escapeHtml(f.answer)}</p></div>`).join("")}</div>`
+    ? `<div style="display:grid;gap:16px;max-width:720px;">${section.faqs.map((f) => `<div><p style="font-weight:600;color:${textColor};margin:0 0 4px;">${escapeHtml(f.question)}</p><p style="color:${textColor};opacity:0.8;margin:0;">${escapeHtml(f.answer)}</p></div>`).join("")}</div>`
     : "";
   const cta = section.ctaText
     ? `<a href="${escapeHtml(sanitizeCtaUrl(section.ctaUrl))}" style="display:inline-block;margin-top:20px;padding:14px 32px;background:${theme.cta};color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:16px;">${escapeHtml(section.ctaText)}</a>`
@@ -256,14 +272,22 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
     : "";
   // A video takes priority over a static image in the same section -- both
   // filled in would mean the image is stale from before a video was added.
-  const image = !video && section.imageUrl ? `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:20px;" />` : "";
+  const plainImage = !video && section.imageUrl ? `<img src="${escapeHtml(section.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:20px;" />` : "";
+  // An image can optionally be a click-through link (e.g. to the same
+  // #contact form, an external page, or a phone/email link) -- same
+  // sanitizeCtaUrl restriction as every other user-supplied href on this
+  // page, wrapped around the <img> only when a destination is actually set.
+  const image = plainImage && section.imageLinkUrl
+    ? `<a href="${escapeHtml(sanitizeCtaUrl(section.imageLinkUrl))}" style="display:inline-block;">${plainImage}</a>`
+    : plainImage;
 
   const isHero = section.type === "hero";
+  const heroTextColor = section.textColor || "#fff";
   const innerHeadline = isHero && section.headline
-    ? `<h1 style="font-size:40px;font-weight:800;color:#fff;margin:0 0 12px;max-width:800px;">${escapeHtml(section.headline)}</h1>`
+    ? `<h1 style="font-size:40px;font-weight:800;color:${heroTextColor};margin:0 0 12px;max-width:800px;">${escapeHtml(section.headline)}</h1>`
     : headline;
   const innerSub = isHero && section.subheadline
-    ? `<p style="font-size:19px;color:#fff;opacity:0.9;margin:0 0 24px;max-width:640px;">${escapeHtml(section.subheadline)}</p>`
+    ? `<p style="font-size:19px;color:${heroTextColor};opacity:0.9;margin:0 0 24px;max-width:640px;">${escapeHtml(section.subheadline)}</p>`
     : subheadline;
 
   const inner = `${innerHeadline}${innerSub}${body}${bullets}${faqs}${video}${image}${cta}`;

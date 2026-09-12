@@ -19,7 +19,7 @@ export type SectionType =
   // Manual-add-only block types (see SECTION_TYPES below) -- not part of the
   // AI's own first-pass section plan, only addable via "Add section" in the
   // editor or an explicit "AI Edit" instruction.
-  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons" | "lead-form";
+  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons" | "lead-form" | "heading";
 
 // Curated whitelist -- both sides (client/src/lib/seamlessOptions.ts's
 // FONT_OPTIONS) must use these exact values since normalizeTheme/mergeTheme
@@ -63,14 +63,17 @@ export interface SectionContent {
   bullets?: string[];
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
+  imageLinkUrl?: string; // makes the section's image (or image-block's image) a click-through link
   videoUrl?: string; // YouTube/Vimeo link, rendered as an embed (see server/_core/publicPages.ts)
   backgroundImageUrl?: string; // full-bleed section background (see server/_core/publicPages.ts)
   backgroundColor?: string; // hex; section-level solid background, overridden by backgroundImageUrl if both set
+  textColor?: string; // hex; section-level text color override, defaults to theme.text (theme.background's contrast pairing) when unset
   columns?: Array<{ headline?: string; body?: string; imageUrl?: string; videoUrl?: string }>; // "two-column" type only, 2-4 entries
   columnGap?: "sm" | "md" | "lg"; // "two-column" type only, defaults to "md" (32px, the original hardcoded value)
   socialLinks?: Array<{ platform: string; url: string }>; // "social-icons" type only
   tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; ctaUrl?: string; highlighted?: boolean }>; // "pricing" type only; falls back to plain headline+body when absent
   testimonialItems?: Array<{ quote: string; name: string; company?: string; rating?: number }>; // "testimonials" type only; falls back to plain headline+body when absent
+  headingLevel?: "h1" | "h2" | "h3"; // "heading" type only, defaults to "h2"
 }
 
 export interface CampaignEmailSlot {
@@ -104,7 +107,7 @@ function randomFallbackTheme(): Theme {
   return FALLBACK_THEMES[Math.floor(Math.random() * FALLBACK_THEMES.length)];
 }
 
-const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer", "two-column", "single-box", "image-block", "video-block", "social-icons", "lead-form"];
+const SECTION_TYPES: SectionType[] = ["hero", "problem", "solution", "benefits", "features", "testimonials", "pricing", "faq", "final-cta", "footer", "two-column", "single-box", "image-block", "video-block", "social-icons", "lead-form", "heading"];
 const DEFAULT_SECTION_PLAN: SectionType[] = ["hero", "problem", "solution", "benefits", "faq", "final-cta", "footer"];
 
 function defaultResearchNote(industry: string): string {
@@ -262,6 +265,7 @@ const SECTION_INSTRUCTIONS: Record<SectionType, string> = {
   "video-block": `Return {"headline":"..."} -- a short caption (under 10 words) for a full-width video; the video itself is added separately by the user, not generated here.`,
   "social-icons": `Return {"headline":"Follow us"} -- just a short section heading; the actual social media links are added separately by the user (a real Facebook/LinkedIn/etc. URL can't be invented), not generated here.`,
   "lead-form": `Return {"headline":"...","subheadline":"...","ctaText":"..."} -- a short heading and one supporting sentence inviting the visitor to get in touch (e.g. "Get your free consultation"), and ctaText is the submit button label (e.g. "Get Started", "Talk to our team"); the form fields themselves (name/email/phone/message) are fixed and not generated here.`,
+  heading: `Return {"headline":"..."} -- a short, punchy standalone heading or section title (under 10 words) that fits naturally wherever this is placed in the page.`,
 };
 
 const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
@@ -281,6 +285,7 @@ const PLACEHOLDER_SECTION: Record<SectionType, Partial<SectionContent>> = {
   "video-block": { headline: "Click Edit to choose a video" },
   "social-icons": { headline: "Follow us", socialLinks: [] },
   "lead-form": { headline: "Get in touch", subheadline: "We'll get back to you shortly.", ctaText: "Submit" },
+  heading: { headline: "Your heading here" },
 };
 
 // Phrases that show up constantly in generic AI-written marketing copy --
