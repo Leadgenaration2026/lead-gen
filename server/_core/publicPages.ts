@@ -84,7 +84,7 @@ function renderRichText(text: string, paragraphStyle: string, theme: Theme): str
 // Shared final composition step (background/background-image/padding/
 // content-wrapping) -- extracted so the generic field-driven path and the
 // new block-type branches below don't each duplicate this logic.
-function wrapSection(section: SectionContent, theme: Theme, inner: string, opts?: { cardWrap?: boolean }): string {
+function wrapSection(section: SectionContent, theme: Theme, inner: string, opts?: { cardWrap?: boolean; id?: string }): string {
   const isHero = section.type === "hero";
   const isFooter = section.type === "footer";
   const hasBackgroundImage = !!section.backgroundImageUrl;
@@ -112,7 +112,8 @@ function wrapSection(section: SectionContent, theme: Theme, inner: string, opts?
     ? `background-image:url('${escapeHtml(section.backgroundImageUrl!).replace(/'/g, "%27")}');background-size:cover;background-position:center;padding:${padding};`
     : `background:${background};padding:${padding};`;
 
-  return `<section style="${sectionStyle}">${content}</section>`;
+  const idAttr = opts?.id ? ` id="${escapeHtml(opts.id)}"` : "";
+  return `<section${idAttr} style="${sectionStyle}">${content}</section>`;
 }
 
 // Small fixed set of hand-written brand icon glyphs (white, 18x18 viewBox)
@@ -128,7 +129,7 @@ const SOCIAL_ICON_SVG: Record<string, string> = {
   default: `<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><circle cx="12" cy="12" r="9"/></svg>`,
 };
 
-function renderSection(section: SectionContent, theme: Theme): string {
+function renderSection(section: SectionContent, theme: Theme, slug: string): string {
   const headline = section.headline ? `<h2 style="font-size:32px;font-weight:700;color:${theme.text};margin:0 0 12px;">${escapeHtml(section.headline)}</h2>` : "";
   const subheadline = section.subheadline ? `<p style="font-size:18px;color:${theme.text};opacity:0.75;margin:0 0 20px;">${escapeHtml(section.subheadline)}</p>` : "";
 
@@ -138,8 +139,14 @@ function renderSection(section: SectionContent, theme: Theme): string {
       .map((c) => {
         const colHeadline = c.headline ? `<h3 style="font-size:20px;font-weight:700;color:${theme.text};margin:0 0 8px;">${escapeHtml(c.headline)}</h3>` : "";
         const colBody = c.body ? renderRichText(c.body, `font-size:15px;line-height:1.6;color:${theme.text};margin:0 0 8px;`, theme) : "";
-        const colImage = c.imageUrl ? `<img src="${escapeHtml(c.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:8px;" />` : "";
-        return `<div style="flex:1 1 280px;">${colHeadline}${colBody}${colImage}</div>`;
+        // Video takes priority over a static image, same rule the top-level
+        // section body already uses -- applied per-column here.
+        const colEmbedUrl = c.videoUrl ? toEmbedUrl(c.videoUrl) : null;
+        const colVideo = colEmbedUrl
+          ? `<div style="position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;margin-top:8px;"><iframe src="${escapeHtml(colEmbedUrl)}" title="Video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe></div>`
+          : "";
+        const colImage = !colVideo && c.imageUrl ? `<img src="${escapeHtml(c.imageUrl)}" alt="" style="max-width:100%;border-radius:12px;margin-top:8px;" />` : "";
+        return `<div style="flex:1 1 280px;">${colHeadline}${colBody}${colVideo}${colImage}</div>`;
       })
       .join("");
     const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:${gap}px;">${cols}</div>`;
@@ -153,6 +160,55 @@ function renderSection(section: SectionContent, theme: Theme): string {
       .join("");
     const inner = `${headline}${subheadline}<div style="text-align:center;">${icons}</div>`;
     return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "pricing" && section.tiers?.length) {
+    const cards = section.tiers
+      .map((tier) => {
+        const isHighlighted = !!tier.highlighted;
+        const price = tier.price ? `<p style="font-size:36px;font-weight:800;color:${theme.text};margin:8px 0;">${escapeHtml(tier.price)}${tier.period ? `<span style="font-size:14px;font-weight:400;opacity:0.7;"> /${escapeHtml(tier.period)}</span>` : ""}</p>` : "";
+        const features = tier.features?.length
+          ? `<ul style="list-style:none;padding:0;margin:16px 0;display:grid;gap:10px;text-align:left;">${tier.features.map((f) => `<li style="font-size:14px;color:${theme.text};padding-left:24px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(f)}</li>`).join("")}</ul>`
+          : "";
+        const tierCta = tier.ctaText
+          ? `<a href="#contact" style="display:inline-block;margin-top:12px;padding:12px 28px;background:${isHighlighted ? theme.cta : "transparent"};color:${isHighlighted ? "#fff" : theme.cta};border:2px solid ${theme.cta};border-radius:8px;font-weight:600;text-decoration:none;font-size:14px;">${escapeHtml(tier.ctaText)}</a>`
+          : "";
+        const border = isHighlighted ? `border:2px solid ${theme.cta};` : `border:1px solid rgba(0,0,0,0.08);`;
+        return `<div style="flex:1 1 240px;text-align:center;padding:32px 24px;border-radius:16px;${border}background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${tier.name ? `<h3 style="font-size:18px;font-weight:700;color:${theme.text};margin:0;">${escapeHtml(tier.name)}</h3>` : ""}${price}${features}${tierCta}</div>`;
+      })
+      .join("");
+    const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:24px;justify-content:center;">${cards}</div>`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "testimonials" && section.testimonialItems?.length) {
+    const stars = (rating?: number) =>
+      rating ? `<div style="color:${theme.accent};font-size:16px;margin-bottom:8px;">${"&#9733;".repeat(Math.max(0, Math.min(5, rating)))}${"&#9734;".repeat(5 - Math.max(0, Math.min(5, rating)))}</div>` : "";
+    const cards = section.testimonialItems
+      .map((t) => `<div style="flex:1 1 260px;padding:28px 24px;border-radius:16px;border:1px solid rgba(0,0,0,0.08);background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${stars(t.rating)}<p style="font-size:15px;line-height:1.6;color:${theme.text};margin:0 0 16px;font-style:italic;">&ldquo;${escapeHtml(t.quote)}&rdquo;</p><p style="font-size:14px;font-weight:700;color:${theme.text};margin:0;">${escapeHtml(t.name)}</p>${t.company ? `<p style="font-size:13px;color:${theme.text};opacity:0.7;margin:0;">${escapeHtml(t.company)}</p>` : ""}</div>`)
+      .join("");
+    const inner = `${headline}${subheadline}<div style="display:flex;flex-wrap:wrap;gap:24px;">${cards}</div>`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if ((section.type === "features" || section.type === "benefits") && section.bullets?.length) {
+    const cards = section.bullets
+      .map((b) => `<div style="padding:24px;border-radius:12px;background:${theme.background};border:1px solid rgba(0,0,0,0.08);"><span style="color:${theme.accent};font-size:20px;">&#10003;</span><p style="font-size:15px;line-height:1.5;color:${theme.text};margin:8px 0 0;">${escapeHtml(b)}</p></div>`)
+      .join("");
+    const inner = `${headline}${subheadline}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;">${cards}</div>`;
+    return wrapSection(section, theme, inner);
+  }
+
+  if (section.type === "lead-form") {
+    const submitLabel = section.ctaText || "Submit";
+    const inner = `${headline}${subheadline}<form method="POST" action="/p/${escapeHtml(slug)}/lead-form" style="max-width:480px;margin:0 auto;display:grid;gap:12px;text-align:left;">
+      <input type="text" name="name" placeholder="Your name" required style="padding:12px 14px;border-radius:8px;border:1px solid rgba(0,0,0,0.15);font-size:15px;" />
+      <input type="email" name="email" placeholder="Your email" required style="padding:12px 14px;border-radius:8px;border:1px solid rgba(0,0,0,0.15);font-size:15px;" />
+      <input type="tel" name="phone" placeholder="Phone (optional)" style="padding:12px 14px;border-radius:8px;border:1px solid rgba(0,0,0,0.15);font-size:15px;" />
+      <textarea name="message" placeholder="Message (optional)" rows="3" style="padding:12px 14px;border-radius:8px;border:1px solid rgba(0,0,0,0.15);font-size:15px;font-family:inherit;"></textarea>
+      <button type="submit" style="padding:14px 28px;background:${theme.cta};color:#fff;border:none;border-radius:8px;font-weight:600;font-size:16px;cursor:pointer;">${escapeHtml(submitLabel)}</button>
+    </form>`;
+    return wrapSection(section, theme, inner, { id: "contact" });
   }
 
   if (section.type === "image-block" && section.imageUrl) {
@@ -237,7 +293,7 @@ ${fontLink}
 </head>
 <body>
 <header style="padding:20px 24px;border-bottom:1px solid rgba(0,0,0,0.06);">${logo}</header>
-${sections.map((s) => renderSection(s, theme)).join("")}
+${sections.map((s) => renderSection(s, theme, page.slug || "")).join("")}
 <div style="text-align:center;padding:16px;font-size:12px;opacity:0.6;">
   <a href="/p/${escapeHtml(page.slug || "")}/unsubscribe" style="color:${theme.text};text-decoration:underline;">Unsubscribe from future emails</a>
 </div>
@@ -252,6 +308,48 @@ function renderUnsubscribeFormHtml(page: any): string {
 
 function renderUnsubscribeConfirmedHtml(): string {
   return `<!DOCTYPE html><html><head><title>Unsubscribed</title><meta charset="utf-8" /></head><body style="font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;"><div style="text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;"><h1 style="color:#111;font-size:24px;">&#9989; Unsubscribed</h1><p style="color:#666;font-size:16px;">You have been successfully unsubscribed from future emails. We're sorry to see you go.</p></div></body></html>`;
+}
+
+function renderLeadFormSubmittedHtml(page: any): string {
+  const theme: Theme = page.theme;
+  return `<!DOCTYPE html><html><head><title>Thank you</title><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head><body style="font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;"><div style="text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;"><h1 style="color:#111;font-size:24px;margin:0 0 8px;">Thanks!</h1><p style="color:#666;font-size:16px;margin:0 0 20px;">We've received your message and will be in touch shortly.</p><a href="/p/${escapeHtml(page.slug || "")}" style="color:${theme?.cta || "#2563eb"};text-decoration:underline;font-size:14px;">&larr; Back to the page</a></div></body></html>`;
+}
+
+function renderLeadFormErrorHtml(page: any): string {
+  const theme: Theme = page.theme;
+  return `<!DOCTYPE html><html><head><title>Please try again</title><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head><body style="font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;"><div style="text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;"><h1 style="color:#111;font-size:22px;margin:0 0 8px;">Please enter your name and a valid email</h1><a href="/p/${escapeHtml(page.slug || "")}" style="color:${theme?.cta || "#2563eb"};text-decoration:underline;font-size:14px;">&larr; Back to the page</a></div></body></html>`;
+}
+
+const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Best-effort "you have a new lead" notification to the landing page owner's
+// own inbox, reusing the exact transporter-creation pattern the existing
+// sendTestEmail mutation uses (server/routers.ts) -- there's no shared
+// low-level sendEmail() helper anywhere in this codebase, every call site
+// builds its own nodemailer transport from db.getUserSettings. Failures here
+// must never block the lead from being saved or the visitor from seeing a
+// success page, so every error is swallowed after logging.
+async function notifyOwnerOfNewLead(userId: number, page: any, name: string, email: string, phone: string, message: string) {
+  try {
+    const settings = await db.getUserSettings(userId);
+    if (!settings?.smtpHost || !settings?.smtpUsername || !settings?.smtpPassword) return;
+    const nodemailer = await import("nodemailer");
+    const transporter = nodemailer.default.createTransport({
+      host: settings.smtpHost,
+      port: settings.smtpPort || 587,
+      secure: (settings.smtpPort || 587) === 465,
+      auth: { user: settings.smtpUsername, pass: settings.smtpPassword },
+    });
+    const recipient = settings.senderEmail || settings.smtpUsername;
+    await transporter.sendMail({
+      from: `"${settings.senderName || "Lead Gen Pro"}" <${settings.senderEmail || settings.smtpUsername}>`,
+      to: recipient,
+      subject: `New lead from ${page.name}: ${name}`,
+      html: `<p>New lead capture form submission on <strong>${escapeHtml(page.name)}</strong>:</p><ul><li><strong>Name:</strong> ${escapeHtml(name)}</li><li><strong>Email:</strong> ${escapeHtml(email)}</li>${phone ? `<li><strong>Phone:</strong> ${escapeHtml(phone)}</li>` : ""}${message ? `<li><strong>Message:</strong> ${escapeHtml(message)}</li>` : ""}</ul>`,
+    });
+  } catch (error) {
+    console.error("[publicPages] Failed to send lead-form owner notification:", error);
+  }
 }
 
 function renderNotFoundHtml(): string {
@@ -314,6 +412,43 @@ export function registerPublicPageRoutes(app: Express) {
       console.error("[publicPages] Failed to process unsubscribe:", error);
       res.setHeader("Content-Type", "text/html");
       res.send(renderUnsubscribeConfirmedHtml());
+    }
+  });
+
+  // The "lead-form" section type's real submission target -- gives every
+  // other section's dead "#contact" CTA anchor something to land on, and is
+  // the one section type on this static, no-JS public page that actually
+  // writes new data (a new lead) rather than just rendering content.
+  app.post("/p/:slug/lead-form", async (req: Request, res: Response) => {
+    try {
+      const page = await db.getLandingPageBySlug(req.params.slug);
+      res.setHeader("Content-Type", "text/html");
+      if (!page) {
+        res.status(404).send(renderNotFoundHtml());
+        return;
+      }
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
+      const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+      if (!name || !SIMPLE_EMAIL_PATTERN.test(email)) {
+        res.status(400).send(renderLeadFormErrorHtml(page));
+        return;
+      }
+      await db.createLead({
+        userId: page.userId,
+        companyName: page.companyName || page.name,
+        ownerName: name,
+        email,
+        phoneNumber: phone,
+        customData: { source: "landing_page_form", landingPageId: page.id, message: message || undefined },
+      } as any);
+      notifyOwnerOfNewLead(page.userId, page, name, email, phone, message).catch(() => {});
+      res.send(renderLeadFormSubmittedHtml(page));
+    } catch (error) {
+      console.error("[publicPages] Failed to process lead-form submission:", error);
+      res.status(500).setHeader("Content-Type", "text/html");
+      res.send(renderNotFoundHtml());
     }
   });
 }

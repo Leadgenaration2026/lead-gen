@@ -22,16 +22,16 @@ type SectionType =
   | "hero" | "problem" | "solution" | "benefits" | "features" | "testimonials" | "pricing" | "faq" | "final-cta" | "footer"
   // Manual-add-only block types -- not part of the AI's first-pass section
   // plan, only addable via "Add section" below or an "AI Edit" instruction.
-  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons";
+  | "two-column" | "single-box" | "image-block" | "video-block" | "social-icons" | "lead-form";
 
 const SECTION_LABELS: Record<SectionType, string> = {
   hero: "Hero", problem: "Problem", solution: "Solution", benefits: "Benefits", features: "Features",
   testimonials: "Testimonials", pricing: "Pricing / Offer", faq: "FAQ", "final-cta": "Final CTA", footer: "Footer",
   "two-column": "Columns (2-4)", "single-box": "CTA / Highlighted Box", "image-block": "Image", "video-block": "Video",
-  "social-icons": "Social Media Icons",
+  "social-icons": "Social Media Icons", "lead-form": "Lead Capture Form",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "columns" | "socialLinks";
+type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "columns" | "socialLinks" | "tiers" | "testimonialItems";
 
 // Every section type gets image/video/background media fields -- previously
 // only "hero" did, so a user wanting a photo or background on any other
@@ -43,8 +43,8 @@ const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   solution: ["headline", "body", ...MEDIA_FIELDS],
   benefits: ["headline", "bullets", ...MEDIA_FIELDS],
   features: ["headline", "bullets", ...MEDIA_FIELDS],
-  testimonials: ["headline", "body", ...MEDIA_FIELDS],
-  pricing: ["headline", "body", ...MEDIA_FIELDS],
+  testimonials: ["headline", "body", "testimonialItems", ...MEDIA_FIELDS],
+  pricing: ["headline", "body", "tiers", ...MEDIA_FIELDS],
   faq: ["headline", "faqs", ...MEDIA_FIELDS],
   "final-cta": ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
   footer: ["body", ...MEDIA_FIELDS],
@@ -53,6 +53,7 @@ const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   "image-block": ["headline", "imageUrl"],
   "video-block": ["headline", "videoUrl"],
   "social-icons": ["headline", "socialLinks", "backgroundColor"],
+  "lead-form": ["headline", "subheadline", "ctaText", "backgroundColor"],
 };
 
 interface Section {
@@ -67,9 +68,11 @@ interface Section {
   videoUrl?: string;
   backgroundImageUrl?: string;
   backgroundColor?: string;
-  columns?: Array<{ headline?: string; body?: string; imageUrl?: string }>;
+  columns?: Array<{ headline?: string; body?: string; imageUrl?: string; videoUrl?: string }>;
   columnGap?: "sm" | "md" | "lg";
   socialLinks?: Array<{ platform: string; url: string }>;
+  tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; highlighted?: boolean }>;
+  testimonialItems?: Array<{ quote: string; name: string; company?: string; rating?: number }>;
 }
 
 const VIEWPORT_WIDTH: Record<string, string> = { desktop: "100%", tablet: "768px", mobile: "375px" };
@@ -606,11 +609,17 @@ function SectionEditDialog({
   const [backgroundColor, setBackgroundColor] = useState(section.backgroundColor || "");
   const [faqs, setFaqs] = useState(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
   const [columns, setColumns] = useState(
-    section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]
+    section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "", videoUrl: "" }, { headline: "", body: "", imageUrl: "", videoUrl: "" }]
   );
   const [columnGap, setColumnGap] = useState<"sm" | "md" | "lg">(section.columnGap || "md");
   const [socialLinks, setSocialLinks] = useState(
     section.socialLinks && section.socialLinks.length > 0 ? section.socialLinks : [{ platform: "facebook", url: "" }]
+  );
+  const [tiers, setTiers] = useState(
+    section.tiers && section.tiers.length > 0 ? section.tiers.map((t) => ({ name: t.name, price: t.price, period: t.period, ctaText: t.ctaText, highlighted: t.highlighted, featuresText: (t.features || []).join("\n") })) : [{ name: "", price: "", period: "", featuresText: "", ctaText: "", highlighted: false }]
+  );
+  const [testimonialItems, setTestimonialItems] = useState(
+    section.testimonialItems && section.testimonialItems.length > 0 ? section.testimonialItems : [{ quote: "", name: "", company: "", rating: 5 }]
   );
 
   useEffect(() => {
@@ -624,9 +633,11 @@ function SectionEditDialog({
     setBackgroundImageUrl(section.backgroundImageUrl || "");
     setBackgroundColor(section.backgroundColor || "");
     setFaqs(section.faqs && section.faqs.length > 0 ? section.faqs : [{ question: "", answer: "" }]);
-    setColumns(section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "" }, { headline: "", body: "", imageUrl: "" }]);
+    setColumns(section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "", videoUrl: "" }, { headline: "", body: "", imageUrl: "", videoUrl: "" }]);
     setColumnGap(section.columnGap || "md");
     setSocialLinks(section.socialLinks && section.socialLinks.length > 0 ? section.socialLinks : [{ platform: "facebook", url: "" }]);
+    setTiers(section.tiers && section.tiers.length > 0 ? section.tiers.map((t) => ({ name: t.name, price: t.price, period: t.period, ctaText: t.ctaText, highlighted: t.highlighted, featuresText: (t.features || []).join("\n") })) : [{ name: "", price: "", period: "", featuresText: "", ctaText: "", highlighted: false }]);
+    setTestimonialItems(section.testimonialItems && section.testimonialItems.length > 0 ? section.testimonialItems : [{ quote: "", name: "", company: "", rating: 5 }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
 
@@ -644,6 +655,12 @@ function SectionEditDialog({
     if (fields.includes("faqs")) updated.faqs = faqs.filter((f) => f.question.trim() || f.answer.trim());
     if (fields.includes("columns")) { updated.columns = columns; updated.columnGap = columnGap; }
     if (fields.includes("socialLinks")) updated.socialLinks = socialLinks.filter((s) => s.url.trim());
+    if (fields.includes("tiers")) {
+      updated.tiers = tiers
+        .filter((t) => t.name.trim() || t.price.trim())
+        .map((t) => ({ name: t.name, price: t.price, period: t.period || undefined, features: t.featuresText.split("\n").map((f) => f.trim()).filter(Boolean), ctaText: t.ctaText || undefined, highlighted: t.highlighted }));
+    }
+    if (fields.includes("testimonialItems")) updated.testimonialItems = testimonialItems.filter((t) => t.quote.trim() && t.name.trim());
     onSave(updated);
   };
 
@@ -695,6 +712,11 @@ function SectionEditDialog({
                       rows={3}
                       onChange={(e) => setColumns((prev) => prev.map((c, j) => j === i ? { ...c, body: e.target.value } : c))}
                     />
+                    <Input
+                      value={col.videoUrl || ""}
+                      placeholder="Video URL (YouTube/Vimeo, optional -- takes priority over image)"
+                      onChange={(e) => setColumns((prev) => prev.map((c, j) => j === i ? { ...c, videoUrl: e.target.value } : c))}
+                    />
                     <MediaPickerDialog
                       value={col.imageUrl || undefined}
                       onSelect={(url) => setColumns((prev) => prev.map((c, j) => j === i ? { ...c, imageUrl: url } : c))}
@@ -709,10 +731,62 @@ function SectionEditDialog({
                 ))}
               </div>
               {columns.length < 4 && (
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setColumns((prev) => [...prev, { headline: "", body: "", imageUrl: "" }])}>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setColumns((prev) => [...prev, { headline: "", body: "", imageUrl: "", videoUrl: "" }])}>
                   <Plus className="w-3.5 h-3.5" /> Add column
                 </Button>
               )}
+            </div>
+          )}
+          {fields.includes("tiers") && (
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Pricing tiers</label>
+              {tiers.map((tier, i) => (
+                <div key={i} className="border rounded-md p-2 space-y-1.5">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Input value={tier.name} placeholder="Plan name" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, name: e.target.value } : t))} />
+                    <Input value={tier.price} placeholder="Price (e.g. $99)" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, price: e.target.value } : t))} />
+                  </div>
+                  <Input value={tier.period || ""} placeholder="Billing period (e.g. month) -- optional" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, period: e.target.value } : t))} />
+                  <Textarea value={tier.featuresText} placeholder="Features (one per line)" rows={3} onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, featuresText: e.target.value } : t))} />
+                  <Input value={tier.ctaText || ""} placeholder="Button text (optional, e.g. Get Started)" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, ctaText: e.target.value } : t))} />
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <input type="checkbox" checked={!!tier.highlighted} onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, highlighted: e.target.checked } : t))} />
+                    Highlight as recommended plan
+                  </label>
+                  {tiers.length > 1 && (
+                    <Button size="sm" variant="ghost" className="text-red-500 h-6 text-xs w-full" onClick={() => setTiers((prev) => prev.filter((_, j) => j !== i))}>Remove tier</Button>
+                  )}
+                </div>
+              ))}
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setTiers((prev) => [...prev, { name: "", price: "", period: "", featuresText: "", ctaText: "", highlighted: false }])}>
+                <Plus className="w-3.5 h-3.5" /> Add tier
+              </Button>
+            </div>
+          )}
+          {fields.includes("testimonialItems") && (
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Reviews</label>
+              {testimonialItems.map((t, i) => (
+                <div key={i} className="border rounded-md p-2 space-y-1.5">
+                  <Textarea value={t.quote} placeholder="Quote" rows={2} onChange={(e) => setTestimonialItems((prev) => prev.map((p, j) => j === i ? { ...p, quote: e.target.value } : p))} />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Input value={t.name} placeholder="Reviewer name" onChange={(e) => setTestimonialItems((prev) => prev.map((p, j) => j === i ? { ...p, name: e.target.value } : p))} />
+                    <Input value={t.company || ""} placeholder="Company (optional)" onChange={(e) => setTestimonialItems((prev) => prev.map((p, j) => j === i ? { ...p, company: e.target.value } : p))} />
+                  </div>
+                  <Select value={String(t.rating || 5)} onValueChange={(v) => setTestimonialItems((prev) => prev.map((p, j) => j === i ? { ...p, rating: Number(v) } : p))}>
+                    <SelectTrigger className="h-8 text-xs w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[5, 4, 3, 2, 1].map((n) => <SelectItem key={n} value={String(n)}>{"★".repeat(n)}{"☆".repeat(5 - n)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {testimonialItems.length > 1 && (
+                    <Button size="sm" variant="ghost" className="text-red-500 h-6 text-xs w-full" onClick={() => setTestimonialItems((prev) => prev.filter((_, j) => j !== i))}>Remove review</Button>
+                  )}
+                </div>
+              ))}
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setTestimonialItems((prev) => [...prev, { quote: "", name: "", company: "", rating: 5 }])}>
+                <Plus className="w-3.5 h-3.5" /> Add review
+              </Button>
             </div>
           )}
           {fields.includes("ctaText") && (
