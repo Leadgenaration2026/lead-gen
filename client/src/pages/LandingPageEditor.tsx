@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Loader2, ArrowUp, ArrowDown, Trash2, Copy, Pencil, Plus, Monitor, Tablet, Smartphone,
-  Globe, RotateCcw, Check, Palette, ExternalLink, Mail, Sparkles, Megaphone,
+  Globe, RotateCcw, Check, Palette, ExternalLink, Mail, Sparkles, Megaphone, GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/components/EmailEditorDialog";
@@ -139,6 +139,26 @@ export default function LandingPageEditor() {
     const next = [...sections];
     [next[index], next[target]] = [next[target], next[index]];
     persistSections(next);
+  };
+
+  // Native HTML5 drag-and-drop -- no extra dependency needed for a single
+  // reorderable list. The up/down buttons stay alongside this as a
+  // keyboard/touch-friendly fallback, this is purely an additional way to
+  // reorder, not a replacement.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const handleSectionDrop = (targetIndex: number) => {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const next = [...sections];
+    const [moved] = next.splice(dragIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    persistSections(next);
+    setDragIndex(null);
+    setDragOverIndex(null);
   };
 
   const removeSection = (index: number) => {
@@ -328,7 +348,17 @@ export default function LandingPageEditor() {
               </div>
               <div className="space-y-1.5">
                 {sections.map((section, index) => (
-                  <div key={index} className="flex items-center gap-1.5 border rounded-md px-2 py-1.5 bg-muted/30">
+                  <div
+                    key={index}
+                    draggable
+                    onDragStart={() => setDragIndex(index)}
+                    onDragOver={(e) => { e.preventDefault(); if (dragOverIndex !== index) setDragOverIndex(index); }}
+                    onDragLeave={() => setDragOverIndex((cur) => (cur === index ? null : cur))}
+                    onDrop={(e) => { e.preventDefault(); handleSectionDrop(index); }}
+                    onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                    className={`flex items-center gap-1.5 border rounded-md px-2 py-1.5 bg-muted/30 transition-colors ${dragIndex === index ? "opacity-40" : ""} ${dragOverIndex === index && dragIndex !== null && dragIndex !== index ? "border-primary border-2" : ""}`}
+                  >
+                    <GripVertical className="w-3.5 h-3.5 text-muted-foreground shrink-0 cursor-grab active:cursor-grabbing" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium truncate">{SECTION_LABELS[section.type] || section.type}</p>
                       <p className="text-xs text-muted-foreground truncate">{section.headline || section.body || ""}</p>
