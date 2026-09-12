@@ -5219,15 +5219,28 @@ Respond in this exact JSON format:
           storageKey = "inline";
         }
 
-        const id = await db.createMediaAsset({
-          userId: ctx.user.id,
-          url,
-          storageKey,
-          filename: input.filename,
-          mimeType,
-          width: input.width,
-          height: input.height,
-        });
+        // Saving to the reusable media-library row is a nice-to-have (backs
+        // the Gallery tab for reuse across other pages) -- the thing the
+        // caller actually needs right now is just a usable `url` to set as
+        // the logo/image immediately. Don't let a failure here (e.g. a
+        // column-width DDL change that didn't apply cleanly on this
+        // deployment's database) block that, since the fallback above
+        // already guarantees `url` itself is always something the browser
+        // can render.
+        let id: number | null = null;
+        try {
+          id = await db.createMediaAsset({
+            userId: ctx.user.id,
+            url,
+            storageKey,
+            filename: input.filename,
+            mimeType,
+            width: input.width,
+            height: input.height,
+          });
+        } catch (error: any) {
+          console.error("[media.uploadImage] createMediaAsset failed (non-fatal, url still returned):", error?.message);
+        }
         return { url, id };
       }),
 

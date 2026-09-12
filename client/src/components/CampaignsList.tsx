@@ -10,6 +10,7 @@ import { ActivityFeed } from "@/components/ActivityFeed";
 import { CampaignFollowUpActivity } from "@/components/CampaignFollowUpActivity";
 import { CampaignCallAgent } from "@/components/CampaignCallAgent";
 import { EngagementPopups } from "@/components/EngagementPopups";
+import { LandingPagePreviewDialog } from "@/components/LandingPagePreviewDialog";
 
 interface CampaignsListProps {
   // Caps the list to the N most recent campaigns (undefined = show all).
@@ -215,6 +216,9 @@ export function CampaignsList({ limit, title = "Your Campaigns", description = "
                           <ShieldCheck className="w-4 h-4" />
                           {verifyEmailsMutation.isPending ? "Verifying..." : "Verify Emails"}
                         </Button>
+                        {(campaign as any).landingPageId && (
+                          <LandingPagePreviewDialog landingPageId={(campaign as any).landingPageId} />
+                        )}
                         <Button
                           size="sm"
                           onClick={() => handleLaunchCampaign(campaign.id)}

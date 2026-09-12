@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Check, Pencil, ArrowRight, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { EmailEditorDialog, SLOT_LABELS, type LandingPageEmail } from "@/components/EmailEditorDialog";
+import { LandingPagePreviewDialog } from "@/components/LandingPagePreviewDialog";
+import { Eye } from "lucide-react";
 
 // Self-contained review card, same shape as TagPicker/SequenceReviewCard --
 // owns its own state, calls back once the user is done -- so it can be
@@ -84,6 +86,14 @@ export function EmailApprovalCard({ landingPageId, onAllApproved }: { landingPag
           trigger={
             <Button size="sm" variant="outline" className="gap-1.5">
               <Pencil className="w-3.5 h-3.5" /> Edit
+            </Button>
+          }
+        />
+        <LandingPagePreviewDialog
+          landingPageId={landingPageId}
+          trigger={
+            <Button size="sm" variant="outline" className="gap-1.5">
+              <Eye className="w-3.5 h-3.5" /> Preview Landing Page
             </Button>
           }
         />
