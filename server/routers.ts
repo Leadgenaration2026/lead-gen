@@ -5195,14 +5195,34 @@ Respond in this exact JSON format:
       .mutation(async ({ input, ctx }) => {
         const match = input.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
         if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "Expected a base64 data URL" });
-        const [, mimeType, base64] = match;
-        const buffer = Buffer.from(base64, "base64");
+        const [, mimeType] = match;
+        const buffer = Buffer.from(match[2], "base64");
         const { storagePut } = await import("./storage");
-        const { key, url } = await storagePut(`landing-pages/${input.filename}`, buffer, mimeType);
+
+        let url: string;
+        let storageKey: string;
+        try {
+          const result = await storagePut(`landing-pages/${input.filename}`, buffer, mimeType);
+          url = result.url;
+          storageKey = result.key;
+        } catch (error: any) {
+          // External storage (Manus's Forge-backed S3) is unavailable or
+          // unconfigured on this deployment -- rather than fail the upload
+          // outright, fall back to storing the image inline as the data URL
+          // itself. Works for anything reasonably sized (a logo, in
+          // particular, is always small) since it's served directly from
+          // this same row/column with no external round-trip at all; the
+          // tradeoff is DB row size, which is why mediaAssets.url/landingPages.logoUrl
+          // were widened to MEDIUMTEXT to hold it.
+          console.error("[media.uploadImage] storagePut failed, falling back to inline data URL:", error?.message);
+          url = input.dataUrl;
+          storageKey = "inline";
+        }
+
         const id = await db.createMediaAsset({
           userId: ctx.user.id,
           url,
-          storageKey: key,
+          storageKey,
           filename: input.filename,
           mimeType,
           width: input.width,

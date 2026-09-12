@@ -1304,7 +1304,7 @@ async function ensureLandingPagesTables(database: NonNullable<Awaited<ReturnType
       targetAudience VARCHAR(500) NULL,
       offer TEXT NULL,
       companyName VARCHAR(255) NULL,
-      logoUrl VARCHAR(2048) NULL,
+      logoUrl MEDIUMTEXT NULL,
       proofPoints JSON NULL,
       theme JSON NOT NULL,
       sections JSON NOT NULL,
@@ -1317,6 +1317,15 @@ async function ensureLandingPagesTables(database: NonNullable<Awaited<ReturnType
       UNIQUE INDEX landingPages_slug_unique (slug)
     )
   `);
+  // Widened after the table may already exist live -- same
+  // no-migration-tool pattern used elsewhere in this file (e.g.
+  // leadGenTasks) -- lets a logo fall back to an inline base64 data URL
+  // when the external storage backend isn't configured/reachable.
+  try {
+    await database.execute(sql`ALTER TABLE landingPages MODIFY COLUMN logoUrl MEDIUMTEXT NULL`);
+  } catch (error) {
+    console.error("[ensureLandingPagesTables] ALTER failed (non-fatal):", error);
+  }
   await database.execute(sql`
     CREATE TABLE IF NOT EXISTS landingPageEmails (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1438,7 +1447,7 @@ async function ensureMediaAssetsTable(database: NonNullable<Awaited<ReturnType<t
     CREATE TABLE IF NOT EXISTS mediaAssets (
       id INT AUTO_INCREMENT PRIMARY KEY,
       userId INT NOT NULL,
-      url VARCHAR(2048) NOT NULL,
+      url MEDIUMTEXT NOT NULL,
       storageKey VARCHAR(1024) NOT NULL,
       filename VARCHAR(255) NOT NULL,
       mimeType VARCHAR(100) NOT NULL,
@@ -1448,6 +1457,15 @@ async function ensureMediaAssetsTable(database: NonNullable<Awaited<ReturnType<t
       INDEX mediaAssets_userId (userId)
     )
   `);
+  // Widened after the table may already exist live -- lets media.uploadImage
+  // fall back to storing an inline base64 data URL directly (see
+  // routers.ts) when the external storage backend isn't configured/reachable,
+  // which is far past VARCHAR(2048)'s limit.
+  try {
+    await database.execute(sql`ALTER TABLE mediaAssets MODIFY COLUMN url MEDIUMTEXT NOT NULL`);
+  } catch (error) {
+    console.error("[ensureMediaAssetsTable] ALTER failed (non-fatal):", error);
+  }
   mediaAssetsTableReady = true;
 }
 
@@ -1661,7 +1679,7 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
       offer TEXT NOT NULL,
       stylePreference VARCHAR(50) NULL,
       proofPoints JSON NULL,
-      logoUrl VARCHAR(2048) NULL,
+      logoUrl MEDIUMTEXT NULL,
       landingPageName VARCHAR(255) NULL,
       status ENUM(
         'pending','extracting','verifying','tagging','generating',
@@ -1702,6 +1720,11 @@ async function ensureLeadGenTasksTable(database: NonNullable<Awaited<ReturnType<
     sql`ALTER TABLE leadGenTasks ADD COLUMN IF NOT EXISTS paused TINYINT NOT NULL DEFAULT 0`,
     sql`ALTER TABLE leadGenTasks MODIFY COLUMN targetLeadCount INT NULL`,
     sql`ALTER TABLE leadGenTasks MODIFY COLUMN landingPageName VARCHAR(255) NULL`,
+    // Widened so a logo can fall back to an inline base64 data URL when the
+    // external storage backend isn't configured/reachable (see media.uploadImage
+    // in routers.ts) -- a data URL is easily tens of thousands of characters,
+    // far past VARCHAR(2048)'s limit.
+    sql`ALTER TABLE leadGenTasks MODIFY COLUMN logoUrl MEDIUMTEXT NULL`,
   ];
   for (const stmt of alterStatements) {
     try {

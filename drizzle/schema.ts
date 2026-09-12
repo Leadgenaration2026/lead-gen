@@ -1,4 +1,4 @@
-import { mysqlTable, mysqlSchema, AnyMySqlColumn, index, int, varchar, mysqlEnum, text, json, timestamp, decimal, tinyint } from "drizzle-orm/mysql-core"
+import { mysqlTable, mysqlSchema, AnyMySqlColumn, index, int, varchar, mysqlEnum, text, mediumtext, json, timestamp, decimal, tinyint } from "drizzle-orm/mysql-core"
 import { sql } from "drizzle-orm"
 
 export const callLogs = mysqlTable("callLogs", {
@@ -145,7 +145,10 @@ export const landingPages = mysqlTable("landingPages", {
 	targetAudience: varchar({ length: 500 }),
 	offer: text(),
 	companyName: varchar({ length: 255 }),
-	logoUrl: varchar({ length: 2048 }),
+	// MEDIUMTEXT, not VARCHAR -- can hold an inline base64 data URL when
+	// media.uploadImage falls back to one (server/routers.ts) because the
+	// external storage backend isn't configured/reachable.
+	logoUrl: mediumtext(),
 	// Real, user-supplied proof points (verified testimonial quotes, case
 	// study facts, stats) -- generation is instructed to use ONLY these and
 	// never invent its own; kept alongside the page so a later single-section
@@ -177,7 +180,10 @@ export const landingPages = mysqlTable("landingPages", {
 export const mediaAssets = mysqlTable("mediaAssets", {
 	id: int().autoincrement().notNull(),
 	userId: int().notNull(),
-	url: varchar({ length: 2048 }).notNull(),
+	// MEDIUMTEXT, not VARCHAR -- can hold an inline base64 data URL when
+	// media.uploadImage falls back to one (server/routers.ts) because the
+	// external storage backend isn't configured/reachable.
+	url: mediumtext().notNull(),
 	// The raw storage key (server/storage.ts's storagePut result) -- kept for
 	// a future storage-level delete; today `media.delete` only removes this
 	// row, not the underlying S3 object (server/storage.ts has no delete API).
@@ -333,7 +339,10 @@ export const leadGenTasks = mysqlTable("leadGenTasks", {
 	offer: text().notNull(),
 	stylePreference: varchar({ length: 50 }),
 	proofPoints: json(),
-	logoUrl: varchar({ length: 2048 }),
+	// MEDIUMTEXT, not VARCHAR -- can hold an inline base64 data URL when
+	// media.uploadImage falls back to one (server/routers.ts) because the
+	// external storage backend isn't configured/reachable.
+	logoUrl: mediumtext(),
 	// Null when reusing an existing landing page (landingPageId set at
 	// creation instead) -- required only when generating a new one.
 	landingPageName: varchar({ length: 255 }),
