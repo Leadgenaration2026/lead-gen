@@ -11,6 +11,20 @@ export function buildPublicLandingPageUrl(slug: string): string {
   return `${baseUrl}/p/${slug}`;
 }
 
+// A CTA button's destination is user-supplied free text on their own landing
+// page (not attacker-controlled input from someone else), but it's still
+// rendered straight into an href -- restrict it to schemes that can't run
+// script (http(s)/mailto/tel/a same-page anchor) rather than trusting it
+// outright. Falls back to "#contact" (the lead-form section's anchor, when
+// one exists) so every page generated before this field existed, and any
+// button left blank, keeps today's behavior.
+function sanitizeCtaUrl(url: string | undefined): string {
+  const trimmed = (url || "").trim();
+  if (!trimmed) return "#contact";
+  if (/^(https?:|mailto:|tel:|#)/i.test(trimmed)) return trimmed;
+  return "#contact";
+}
+
 function escapeHtml(text: string): string {
   return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -171,7 +185,7 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
           ? `<ul style="list-style:none;padding:0;margin:16px 0;display:grid;gap:10px;text-align:left;">${tier.features.map((f) => `<li style="font-size:14px;color:${theme.text};padding-left:24px;position:relative;"><span style="position:absolute;left:0;color:${theme.accent};">&#10003;</span>${escapeHtml(f)}</li>`).join("")}</ul>`
           : "";
         const tierCta = tier.ctaText
-          ? `<a href="#contact" style="display:inline-block;margin-top:12px;padding:12px 28px;background:${isHighlighted ? theme.cta : "transparent"};color:${isHighlighted ? "#fff" : theme.cta};border:2px solid ${theme.cta};border-radius:8px;font-weight:600;text-decoration:none;font-size:14px;">${escapeHtml(tier.ctaText)}</a>`
+          ? `<a href="${escapeHtml(sanitizeCtaUrl(tier.ctaUrl))}" style="display:inline-block;margin-top:12px;padding:12px 28px;background:${isHighlighted ? theme.cta : "transparent"};color:${isHighlighted ? "#fff" : theme.cta};border:2px solid ${theme.cta};border-radius:8px;font-weight:600;text-decoration:none;font-size:14px;">${escapeHtml(tier.ctaText)}</a>`
           : "";
         const border = isHighlighted ? `border:2px solid ${theme.cta};` : `border:1px solid rgba(0,0,0,0.08);`;
         return `<div style="flex:1 1 240px;text-align:center;padding:32px 24px;border-radius:16px;${border}background:${theme.background};box-shadow:0 2px 12px rgba(0,0,0,0.06);">${tier.name ? `<h3 style="font-size:18px;font-weight:700;color:${theme.text};margin:0;">${escapeHtml(tier.name)}</h3>` : ""}${price}${features}${tierCta}</div>`;
@@ -234,7 +248,7 @@ function renderSection(section: SectionContent, theme: Theme, slug: string): str
     ? `<div style="display:grid;gap:16px;max-width:720px;">${section.faqs.map((f) => `<div><p style="font-weight:600;color:${theme.text};margin:0 0 4px;">${escapeHtml(f.question)}</p><p style="color:${theme.text};opacity:0.8;margin:0;">${escapeHtml(f.answer)}</p></div>`).join("")}</div>`
     : "";
   const cta = section.ctaText
-    ? `<a href="#contact" style="display:inline-block;margin-top:20px;padding:14px 32px;background:${theme.cta};color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:16px;">${escapeHtml(section.ctaText)}</a>`
+    ? `<a href="${escapeHtml(sanitizeCtaUrl(section.ctaUrl))}" style="display:inline-block;margin-top:20px;padding:14px 32px;background:${theme.cta};color:#fff;border-radius:8px;font-weight:600;text-decoration:none;font-size:16px;">${escapeHtml(section.ctaText)}</a>`
     : "";
   const embedUrl = section.videoUrl ? toEmbedUrl(section.videoUrl) : null;
   const video = embedUrl
@@ -318,6 +332,15 @@ function renderLeadFormSubmittedHtml(page: any): string {
 function renderLeadFormErrorHtml(page: any): string {
   const theme: Theme = page.theme;
   return `<!DOCTYPE html><html><head><title>Please try again</title><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head><body style="font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;"><div style="text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;"><h1 style="color:#111;font-size:22px;margin:0 0 8px;">Please enter your name and a valid email</h1><a href="/p/${escapeHtml(page.slug || "")}" style="color:${theme?.cta || "#2563eb"};text-decoration:underline;font-size:14px;">&larr; Back to the page</a></div></body></html>`;
+}
+
+// Deliberately distinct from renderNotFoundHtml -- a DB/save failure here
+// previously rendered the same "Page not found" screen as a bad slug,
+// which made a real backend error indistinguishable from the visitor simply
+// having a broken link, and from the submission just "doing nothing."
+function renderLeadFormSaveErrorHtml(page: any): string {
+  const theme: Theme = page?.theme;
+  return `<!DOCTYPE html><html><head><title>Something went wrong</title><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head><body style="font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f9fafb;"><div style="text-align:center;padding:40px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:400px;"><h1 style="color:#111;font-size:22px;margin:0 0 8px;">Something went wrong saving your submission</h1><p style="color:#666;font-size:14px;margin:0 0 20px;">Please try again in a moment.</p><a href="/p/${escapeHtml(page?.slug || "")}" style="color:${theme?.cta || "#2563eb"};text-decoration:underline;font-size:14px;">&larr; Back to the page</a></div></body></html>`;
 }
 
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -420,8 +443,9 @@ export function registerPublicPageRoutes(app: Express) {
   // the one section type on this static, no-JS public page that actually
   // writes new data (a new lead) rather than just rendering content.
   app.post("/p/:slug/lead-form", async (req: Request, res: Response) => {
+    let page: any = null;
     try {
-      const page = await db.getLandingPageBySlug(req.params.slug);
+      page = await db.getLandingPageBySlug(req.params.slug);
       res.setHeader("Content-Type", "text/html");
       if (!page) {
         res.status(404).send(renderNotFoundHtml());
@@ -431,6 +455,7 @@ export function registerPublicPageRoutes(app: Express) {
       const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
       const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
       const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+      console.log(`[publicPages] lead-form submission for slug=${req.params.slug}: name=${!!name} email=${!!email} bodyKeys=${Object.keys(req.body || {}).join(",")}`);
       if (!name || !SIMPLE_EMAIL_PATTERN.test(email)) {
         res.status(400).send(renderLeadFormErrorHtml(page));
         return;
@@ -443,12 +468,13 @@ export function registerPublicPageRoutes(app: Express) {
         phoneNumber: phone,
         customData: { source: "landing_page_form", landingPageId: page.id, message: message || undefined },
       } as any);
+      console.log(`[publicPages] lead-form: created lead for userId=${page.userId}, email=${email}`);
       notifyOwnerOfNewLead(page.userId, page, name, email, phone, message).catch(() => {});
       res.send(renderLeadFormSubmittedHtml(page));
     } catch (error) {
       console.error("[publicPages] Failed to process lead-form submission:", error);
       res.status(500).setHeader("Content-Type", "text/html");
-      res.send(renderNotFoundHtml());
+      res.send(page ? renderLeadFormSaveErrorHtml(page) : renderNotFoundHtml());
     }
   });
 }

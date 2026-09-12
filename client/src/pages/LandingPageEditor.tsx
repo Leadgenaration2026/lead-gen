@@ -31,14 +31,14 @@ const SECTION_LABELS: Record<SectionType, string> = {
   "social-icons": "Social Media Icons", "lead-form": "Lead Capture Form",
 };
 const SECTION_TYPES = Object.keys(SECTION_LABELS) as SectionType[];
-type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "columns" | "socialLinks" | "tiers" | "testimonialItems";
+type SectionField = "headline" | "subheadline" | "body" | "ctaText" | "ctaUrl" | "bullets" | "faqs" | "imageUrl" | "videoUrl" | "backgroundImageUrl" | "backgroundColor" | "columns" | "socialLinks" | "tiers" | "testimonialItems";
 
 // Every section type gets image/video/background media fields -- previously
 // only "hero" did, so a user wanting a photo or background on any other
 // section had no way to add one at all.
 const MEDIA_FIELDS: SectionField[] = ["imageUrl", "videoUrl", "backgroundImageUrl", "backgroundColor"];
 const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
-  hero: ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
+  hero: ["headline", "subheadline", "ctaText", "ctaUrl", ...MEDIA_FIELDS],
   problem: ["headline", "body", "bullets", ...MEDIA_FIELDS],
   solution: ["headline", "body", ...MEDIA_FIELDS],
   benefits: ["headline", "bullets", ...MEDIA_FIELDS],
@@ -46,10 +46,10 @@ const SECTION_FIELDS: Record<SectionType, SectionField[]> = {
   testimonials: ["headline", "body", "testimonialItems", ...MEDIA_FIELDS],
   pricing: ["headline", "body", "tiers", ...MEDIA_FIELDS],
   faq: ["headline", "faqs", ...MEDIA_FIELDS],
-  "final-cta": ["headline", "subheadline", "ctaText", ...MEDIA_FIELDS],
+  "final-cta": ["headline", "subheadline", "ctaText", "ctaUrl", ...MEDIA_FIELDS],
   footer: ["body", ...MEDIA_FIELDS],
   "two-column": ["headline", "columns", ...MEDIA_FIELDS],
-  "single-box": ["headline", "body", "bullets", "ctaText", ...MEDIA_FIELDS],
+  "single-box": ["headline", "body", "bullets", "ctaText", "ctaUrl", ...MEDIA_FIELDS],
   "image-block": ["headline", "imageUrl"],
   "video-block": ["headline", "videoUrl"],
   "social-icons": ["headline", "socialLinks", "backgroundColor"],
@@ -62,6 +62,7 @@ interface Section {
   subheadline?: string;
   body?: string;
   ctaText?: string;
+  ctaUrl?: string;
   bullets?: string[];
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
@@ -71,7 +72,7 @@ interface Section {
   columns?: Array<{ headline?: string; body?: string; imageUrl?: string; videoUrl?: string }>;
   columnGap?: "sm" | "md" | "lg";
   socialLinks?: Array<{ platform: string; url: string }>;
-  tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; highlighted?: boolean }>;
+  tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; ctaUrl?: string; highlighted?: boolean }>;
   testimonialItems?: Array<{ quote: string; name: string; company?: string; rating?: number }>;
 }
 
@@ -602,6 +603,7 @@ function SectionEditDialog({
   const [subheadline, setSubheadline] = useState(section.subheadline || "");
   const [body, setBody] = useState(section.body || "");
   const [ctaText, setCtaText] = useState(section.ctaText || "");
+  const [ctaUrl, setCtaUrl] = useState(section.ctaUrl || "");
   const [bulletsText, setBulletsText] = useState((section.bullets || []).join("\n"));
   const [imageUrl, setImageUrl] = useState(section.imageUrl || "");
   const [videoUrl, setVideoUrl] = useState(section.videoUrl || "");
@@ -616,7 +618,7 @@ function SectionEditDialog({
     section.socialLinks && section.socialLinks.length > 0 ? section.socialLinks : [{ platform: "facebook", url: "" }]
   );
   const [tiers, setTiers] = useState(
-    section.tiers && section.tiers.length > 0 ? section.tiers.map((t) => ({ name: t.name, price: t.price, period: t.period, ctaText: t.ctaText, highlighted: t.highlighted, featuresText: (t.features || []).join("\n") })) : [{ name: "", price: "", period: "", featuresText: "", ctaText: "", highlighted: false }]
+    section.tiers && section.tiers.length > 0 ? section.tiers.map((t) => ({ name: t.name, price: t.price, period: t.period, ctaText: t.ctaText, ctaUrl: t.ctaUrl, highlighted: t.highlighted, featuresText: (t.features || []).join("\n") })) : [{ name: "", price: "", period: "", featuresText: "", ctaText: "", ctaUrl: "", highlighted: false }]
   );
   const [testimonialItems, setTestimonialItems] = useState(
     section.testimonialItems && section.testimonialItems.length > 0 ? section.testimonialItems : [{ quote: "", name: "", company: "", rating: 5 }]
@@ -627,6 +629,7 @@ function SectionEditDialog({
     setSubheadline(section.subheadline || "");
     setBody(section.body || "");
     setCtaText(section.ctaText || "");
+    setCtaUrl(section.ctaUrl || "");
     setBulletsText((section.bullets || []).join("\n"));
     setImageUrl(section.imageUrl || "");
     setVideoUrl(section.videoUrl || "");
@@ -636,7 +639,7 @@ function SectionEditDialog({
     setColumns(section.columns && section.columns.length >= 2 ? section.columns : [{ headline: "", body: "", imageUrl: "", videoUrl: "" }, { headline: "", body: "", imageUrl: "", videoUrl: "" }]);
     setColumnGap(section.columnGap || "md");
     setSocialLinks(section.socialLinks && section.socialLinks.length > 0 ? section.socialLinks : [{ platform: "facebook", url: "" }]);
-    setTiers(section.tiers && section.tiers.length > 0 ? section.tiers.map((t) => ({ name: t.name, price: t.price, period: t.period, ctaText: t.ctaText, highlighted: t.highlighted, featuresText: (t.features || []).join("\n") })) : [{ name: "", price: "", period: "", featuresText: "", ctaText: "", highlighted: false }]);
+    setTiers(section.tiers && section.tiers.length > 0 ? section.tiers.map((t) => ({ name: t.name, price: t.price, period: t.period, ctaText: t.ctaText, ctaUrl: t.ctaUrl, highlighted: t.highlighted, featuresText: (t.features || []).join("\n") })) : [{ name: "", price: "", period: "", featuresText: "", ctaText: "", ctaUrl: "", highlighted: false }]);
     setTestimonialItems(section.testimonialItems && section.testimonialItems.length > 0 ? section.testimonialItems : [{ quote: "", name: "", company: "", rating: 5 }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
@@ -647,6 +650,7 @@ function SectionEditDialog({
     if (fields.includes("subheadline")) updated.subheadline = subheadline;
     if (fields.includes("body")) updated.body = body;
     if (fields.includes("ctaText")) updated.ctaText = ctaText;
+    if (fields.includes("ctaUrl")) updated.ctaUrl = ctaUrl || undefined;
     if (fields.includes("imageUrl")) updated.imageUrl = imageUrl;
     if (fields.includes("videoUrl")) updated.videoUrl = videoUrl;
     if (fields.includes("backgroundImageUrl")) updated.backgroundImageUrl = backgroundImageUrl;
@@ -658,7 +662,7 @@ function SectionEditDialog({
     if (fields.includes("tiers")) {
       updated.tiers = tiers
         .filter((t) => t.name.trim() || t.price.trim())
-        .map((t) => ({ name: t.name, price: t.price, period: t.period || undefined, features: t.featuresText.split("\n").map((f) => f.trim()).filter(Boolean), ctaText: t.ctaText || undefined, highlighted: t.highlighted }));
+        .map((t) => ({ name: t.name, price: t.price, period: t.period || undefined, features: t.featuresText.split("\n").map((f) => f.trim()).filter(Boolean), ctaText: t.ctaText || undefined, ctaUrl: t.ctaUrl || undefined, highlighted: t.highlighted }));
     }
     if (fields.includes("testimonialItems")) updated.testimonialItems = testimonialItems.filter((t) => t.quote.trim() && t.name.trim());
     onSave(updated);
@@ -749,6 +753,7 @@ function SectionEditDialog({
                   <Input value={tier.period || ""} placeholder="Billing period (e.g. month) -- optional" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, period: e.target.value } : t))} />
                   <Textarea value={tier.featuresText} placeholder="Features (one per line)" rows={3} onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, featuresText: e.target.value } : t))} />
                   <Input value={tier.ctaText || ""} placeholder="Button text (optional, e.g. Get Started)" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, ctaText: e.target.value } : t))} />
+                  <Input value={tier.ctaUrl || ""} placeholder="Button destination (optional -- URL, mailto:, or tel:)" onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, ctaUrl: e.target.value } : t))} />
                   <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <input type="checkbox" checked={!!tier.highlighted} onChange={(e) => setTiers((prev) => prev.map((t, j) => j === i ? { ...t, highlighted: e.target.checked } : t))} />
                     Highlight as recommended plan
@@ -758,7 +763,7 @@ function SectionEditDialog({
                   )}
                 </div>
               ))}
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setTiers((prev) => [...prev, { name: "", price: "", period: "", featuresText: "", ctaText: "", highlighted: false }])}>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setTiers((prev) => [...prev, { name: "", price: "", period: "", featuresText: "", ctaText: "", ctaUrl: "", highlighted: false }])}>
                 <Plus className="w-3.5 h-3.5" /> Add tier
               </Button>
             </div>
@@ -791,6 +796,17 @@ function SectionEditDialog({
           )}
           {fields.includes("ctaText") && (
             <div><label className="text-xs text-muted-foreground">CTA button text</label><Input value={ctaText} onChange={(e) => setCtaText(e.target.value)} className="mt-1" /></div>
+          )}
+          {fields.includes("ctaUrl") && (
+            <div>
+              <label className="text-xs text-muted-foreground">CTA button destination</label>
+              <Input
+                value={ctaUrl}
+                onChange={(e) => setCtaUrl(e.target.value)}
+                placeholder="https://... , mailto:you@company.com, tel:+1..., or leave blank to scroll to a Lead Capture Form section"
+                className="mt-1"
+              />
+            </div>
           )}
           {fields.includes("videoUrl") && (
             <div><label className="text-xs text-muted-foreground">Video URL (YouTube/Vimeo -- takes priority over the image below)</label><Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." className="mt-1" /></div>

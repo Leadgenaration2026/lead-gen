@@ -59,6 +59,7 @@ export interface SectionContent {
   subheadline?: string;
   body?: string;
   ctaText?: string;
+  ctaUrl?: string; // where the main CTA button links to -- defaults to "#contact" (the lead-form section, if present) when unset
   bullets?: string[];
   faqs?: Array<{ question: string; answer: string }>;
   imageUrl?: string;
@@ -68,7 +69,7 @@ export interface SectionContent {
   columns?: Array<{ headline?: string; body?: string; imageUrl?: string; videoUrl?: string }>; // "two-column" type only, 2-4 entries
   columnGap?: "sm" | "md" | "lg"; // "two-column" type only, defaults to "md" (32px, the original hardcoded value)
   socialLinks?: Array<{ platform: string; url: string }>; // "social-icons" type only
-  tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; highlighted?: boolean }>; // "pricing" type only; falls back to plain headline+body when absent
+  tiers?: Array<{ name: string; price: string; period?: string; features: string[]; ctaText?: string; ctaUrl?: string; highlighted?: boolean }>; // "pricing" type only; falls back to plain headline+body when absent
   testimonialItems?: Array<{ quote: string; name: string; company?: string; rating?: number }>; // "testimonials" type only; falls back to plain headline+body when absent
 }
 
